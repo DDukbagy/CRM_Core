@@ -10,6 +10,7 @@
         "ms-python.python",
         "ms-python.vscode-pylance"
         ],
+        
         "settings": {
         // 1. 색상 테마 설정
         "workbench.colorTheme": "Default Dark+",

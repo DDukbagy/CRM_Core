@@ -12,12 +12,13 @@ RUN git lfs install
 # Poetry 설치
 RUN pip install poetry
 
+# 작업 디렉토리
 WORKDIR /workspace
 
-# 의존성 파일 복사
+# 의존성 파일 복사 (캐시 최적화)
 COPY pyproject.toml poetry.lock* ./
 
-# Python 의존성 설치
+# 의존성 설치
 RUN poetry install --no-root
 
 # 전체 코드 복사
