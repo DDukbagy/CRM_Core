@@ -1,8 +1,13 @@
 FROM python:3.11-slim
 
-# OS 패키지 (git 필요)
-RUN apt-get update && apt-get install -y git \
+# OS 패키지 설치 (git + git-lfs)
+RUN apt-get update && apt-get install -y \
+    git \
+    git-lfs \
     && rm -rf /var/lib/apt/lists/*
+
+# git-lfs 초기화 (전역 1회)
+RUN git lfs install
 
 # Poetry 설치
 RUN pip install poetry
