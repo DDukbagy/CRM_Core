@@ -1,8 +1,8 @@
-내가 회원 어플에서 시간예약을 받는 알고리즘을 만들고 그걸 서버에서 체크하는걸 만들려고 하는데
 from datetime import date, time, timezone, datetime
 from typing import TYPE_CHECKING
 from sqlmodel import SQLModel, Field, Relationship, func, Text, JSON
 from pydantic import AwareDatetime
+from sqlalchemy import UniqueConstraint
 from sqlalchemy_utc import UtcDateTime
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -26,7 +26,7 @@ class Calendar(SQLModel, table=True):
         sa_relationship_kwargs={"uselist": False, "single_parent": True},
         )
     
-    time_slots: list["TimeSlot"] = Relationship(back_populates="calender")
+    time_slots: list["TimeSlot"] = Relationship(back_populates="calendar")
 
     created_at: AwareDatetime = Field(
         default=None,
@@ -83,10 +83,17 @@ class TimeSlot(SQLModel, table=True):
 
 class Booking(SQLModel, table=True):
     __tablename__ = "bookings"
+    __table_args__ = (
+    UniqueConstraint("when", "time_slot_id", name="uq_booking_slot_date"),
+    )
 
     id: int = Field(default=None, primary_key=True)
     when: date
     topic: str
+    status: str = Field(
+        default="CONFIRMED",
+        description="CONFIRMED / CANCELLED / COMPLETED"
+    )
     description: str = Field(sa_type=Text, description="예약 설명")
 
     time_slot_id: int = Field(foreign_key="time_slots.id")
