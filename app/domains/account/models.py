@@ -1,9 +1,9 @@
 from datetime import datetime, timezone
 from sqlmodel import SQLModel, Field, Relationship, func, Column, AutoString
 from pydantic import EmailStr, AwareDatetime
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import UniqueConstraint, String
 from sqlalchemy_utc import UtcDateTime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from app.domains.calendar.models import Calendar, Booking
@@ -16,10 +16,15 @@ class User(SQLModel, table=True):
 
     id: int = Field(default=None, primary_key=True)
     username: str = Field(unique=True, max_length=40, description="사용자 계정 ID")
-    email : EmailStr = Field(max_length=128, description="사용자 이메일")
+    email: Optional[EmailStr] = Field(
+    default=None,
+    sa_type=String(255),
+    index=True,
+    unique=True,
+    nullable=True, description="사용자 이메일")
     display_name: str = Field(max_length=40, description="사용자 표시 이름")
     password: str = Field(max_length=128, description="사용자 비밀번호")
-    is_host: str = Field(default=False, description="사용자가 호스트인지 여부")
+    is_host: bool = Field(default=False, description="사용자가 호스트인지 여부")
 
     created_at: AwareDatetime = Field(
         default=None,

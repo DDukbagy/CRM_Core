@@ -1,15 +1,23 @@
-from fastapi import FastAPI
-from sqlmodel import Session, text
-from app.db import engine
+from fastapi import FastAPI, Depends
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db import get_session
+from app.domains.account.router import router as account_router
 
 app = FastAPI()
 
+
 @app.get("/")
-def root():
+async def root():
     return {"status": "ok"}
 
+
 @app.get("/health/db")
-def health_db():
-    with Session(engine) as session:
-        result = session.exec(text("SELECT 1")).scalar_one()
-        return {"db": result}
+async def health_db(session: AsyncSession = Depends(get_session)):
+    result = await session.execute(text("SELECT 1"))
+    value = result.scalar_one()
+    return {"db": value}
+
+
+app.include_router(account_router)

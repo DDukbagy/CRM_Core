@@ -1,13 +1,8 @@
-from pydantic_settings import BaseSettings
-from pathlib import Path
+# 앱 내부 고정 설정 (환경변수 아님)
 
-BASE_DIR = Path(__file__).resolve().parents[2]
+DEFAULT_PAGE_SIZE = 20
+MAX_UPLOAD_SIZE_MB = 500
 
-class Settings(BaseSettings):
-    DATABASE_URL: str
-    DB_ECHO: bool = True
-
-    class Config:
-        env_file = BASE_DIR / ".env"
-
-settings = Settings()
+ROLE_ADMIN = "admin"
+ROLE_COACH = "coach"
+ROLE_USER = "user"
