@@ -32,7 +32,8 @@ class User(SQLModel, table=True):
         description="사용자 이메일",
     )
     display_name: str = Field(max_length=40, description="사용자 표시 이름")
-    password: str = Field(max_length=128, description="사용자 비밀번호")
+
+    password: Optional[str] = Field(default=None, max_length=128, description="사용자 비밀번호")
     is_host: bool = Field(default=False, description="사용자가 호스트인지 여부")
 
     created_at: AwareDatetime = Field(

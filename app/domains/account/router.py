@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from uuid import UUID
+import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -12,10 +14,14 @@ from app.db import get_session
 from app.domains.account.models import User
 from app.domains.account.schemas import UserRead, UsersListResponse
 
-router = APIRouter(
-    prefix="/accounts",
-    tags=["Account"],
-)
+router = APIRouter(prefix="/accounts", tags=["Account"])
+
+
+def _make_username(user_id: UUID, email: str | None) -> str:
+    # email이 있으면 prefix 우선, 없으면 uuid 기반
+    base = (email.split("@")[0] if email else f"user_{str(user_id)[:8]}")
+    base = base[:30]  # 너무 길면 잘라서 suffix 붙일 여지 확보
+    return base
 
 
 @router.get("/me", response_model=UserRead)
@@ -23,76 +29,48 @@ async def get_my_account(
     current_user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    """
-    내 계정 조회
-    - 로그인한 유저 본인만 접근
-    - response_model=UserRead로 민감정보(password 등) 노출 방지
-    """
     user_id = UUID(current_user["id"])
+    email = current_user.get("email")
 
+    # 1) 먼저 조회
     result = await session.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
+    if user:
+        return user
 
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="사용자 정보가 DB에 없습니다. (users row가 아직 없을 수 있습니다.)",
+    # 2) 없으면 생성(자동 동기화)
+    username_base = _make_username(user_id, email)
+    display_name = current_user.get("display_name") or "사용자"
+
+    # username unique 충돌 대비(아주 드물지만 운영에서 한 번이라도 터지면 귀찮음)
+    for i in range(5):
+        suffix = "" if i == 0 else "_" + secrets.token_hex(2)  # 4 hex
+        username = (username_base + suffix)[:40]
+
+        new_user = User(
+            id=user_id,
+            username=username,
+            email=email,
+            display_name=display_name,
+            password=None,      # ✅ nullable로 변경했으니 OK
+            is_host=False,
         )
 
-    return user
+        session.add(new_user)
+        try:
+            await session.commit()
+            await session.refresh(new_user)
+            return new_user
+        except IntegrityError:
+            await session.rollback()
+            # id conflict(동시에 두 요청이 들어온 등)면 다시 조회해서 반환
+            result = await session.execute(select(User).where(User.id == user_id))
+            existing = result.scalar_one_or_none()
+            if existing:
+                return existing
+            # 아니면 username 충돌 가능성 → retry
 
-
-@router.get("/{user_id}", response_model=UserRead)
-async def get_account_by_id(
-    user_id: UUID,
-    current_host: dict = Depends(get_current_host),
-    session: AsyncSession = Depends(get_session),
-):
-    """
-    특정 유저 조회(호스트 전용)
-    - 현재는 host 권한만 체크
-    - 운영 확장 시 current_host를 이용해 '코치별 소유권/범위 제한' 로직을 붙일 수 있음
-    """
-    # (현재는 권한 체크만 하고 값은 쓰지 않음. 운영 확장 시 사용 예정)
-    _ = current_host
-
-    result = await session.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-
-    return user
-
-
-@router.get("", response_model=UsersListResponse)
-async def list_accounts(
-    current_host: dict = Depends(get_current_host),
-    session: AsyncSession = Depends(get_session),
-    limit: int = 50,
-    offset: int = 0,
-):
-    """
-    유저 목록 조회(호스트 전용)
-    - limit/offset 기반 페이지네이션 기본 틀
-    - response_model을 UsersListResponse로 고정하여 메타데이터 확장에 안전
-    """
-    _ = current_host
-
-    limit = min(max(limit, 1), 200)
-    offset = max(offset, 0)
-
-    stmt = select(User).order_by(User.created_at.desc()).limit(limit).offset(offset)
-    result = await session.execute(stmt)
-    users = result.scalars().all()
-
-    total_stmt = select(func.count()).select_from(User)
-    total_result = await session.execute(total_stmt)
-    total = total_result.scalar_one()
-
-    return {
-        "items": users,
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-    }
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="사용자 자동 생성에 실패했습니다. (username 충돌 등)",
+    )
