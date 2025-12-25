@@ -1,19 +1,18 @@
 {
   "name": "crm_backend-devcontainer",
   "build": {
-    "dockerfile": "../Dockerfile"
+    "dockerfile": "../Dockerfile.dev"
   },
-  "workspaceFolder": "/workspace",
+  "postCreateCommand": "poetry install --no-root",
   "customizations": {
     "vscode": {
       "extensions": [
         "ms-python.python",
         "ms-python.vscode-pylance"
-        ],        
-        "settings": {
-        // 1. 색상 테마 설정
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
         "workbench.colorTheme": "Default Dark+",
-        // 2. 터미널 기본 프로필을 PowerShell로 설정 (리눅스 환경용)
         "terminal.integrated.defaultProfile.linux": "bash"
       }
     }
