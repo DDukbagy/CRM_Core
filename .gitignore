@@ -33,3 +33,6 @@ htmlcov/
 .DS_Store
 .vscode/
 .idea/
+
+# --- txt ---
+/test_table_remove_sql.txt
