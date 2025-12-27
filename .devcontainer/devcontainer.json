@@ -4,6 +4,7 @@
     "dockerfile": "../Dockerfile.dev"
   },
   "postCreateCommand": "poetry install --no-root",
+  "postStartCommand": "test -x .venv/bin/python || poetry install --no-root",
   "customizations": {
     "vscode": {
       "extensions": [
@@ -12,6 +13,7 @@
       ],
       "settings": {
         "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+        "python.terminal.activateEnvironment": false,
         "workbench.colorTheme": "Default Dark+",
         "terminal.integrated.defaultProfile.linux": "bash"
       }

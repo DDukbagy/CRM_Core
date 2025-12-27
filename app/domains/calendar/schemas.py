@@ -1,28 +1,30 @@
 from __future__ import annotations
 
-from datetime import date, time, datetime
-from typing import Optional, Literal, List
+from datetime import date, datetime, time
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 
-# ---------- Calendar ----------
-
 class CalendarCreate(BaseModel):
     """
     호스트가 '자체 캘린더'를 처음 생성할 때 입력
     """
-    topics: List[str] = Field(default_factory=list, description="게스트와 나눌 주제들")
-    description: str = Field(..., min_length=1, description="게스트에게 보여 줄 설명")
+    topics: list[str] = Field(default_factory=list, description="게스트와 나눌 주제들")
+    description: str = Field(min_length=1, description="게스트에게 보여 줄 설명")
+
+    model_config = {"extra": "forbid"}
 
 
 class CalendarUpdate(BaseModel):
     """
     호스트가 캘린더 정보를 수정할 때 입력(부분 수정)
     """
-    topics: Optional[List[str]] = Field(default=None, description="게스트와 나눌 주제들")
-    description: Optional[str] = Field(default=None, min_length=1, description="게스트에게 보여 줄 설명")
+    topics: list[str] | None = Field(default=None, description="게스트와 나눌 주제들")
+    description: str | None = Field(default=None, min_length=1, description="게스트에게 보여 줄 설명")
+
+    model_config = {"extra": "forbid"}
 
 
 class CalendarRead(BaseModel):
@@ -31,16 +33,13 @@ class CalendarRead(BaseModel):
     """
     id: int
     host_id: UUID
-    topics: List[str]
+    topics: list[str]
     description: str
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
-
-# ---------- TimeSlot ----------
 
 class TimeSlotCreate(BaseModel):
     """
@@ -49,13 +48,20 @@ class TimeSlotCreate(BaseModel):
     """
     start_time: time
     end_time: time
-    weekdays: List[int] = Field(..., min_length=1, description="예약 가능한 요일들 (0=월 ... 6=일)")
+    weekdays: list[int] = Field(min_length=1, description="예약 가능한 요일들 (0=월 ... 6=일)")
 
-    # 간단 검증(운영에서 반드시 필요)
-    # - end_time > start_time
-    # - weekdays 값 범위(0~6)
-    # Pydantic v2 기준 validator를 쓰면 더 엄격하게 가능하지만,
-    # 여기서는 라우터에서도 방어하므로 스키마는 최소로 둠.
+    model_config = {"extra": "forbid"}
+
+
+class TimeSlotUpdate(BaseModel):
+    """
+    반복 시간대 수정(호스트 전용, 부분 수정)
+    """
+    start_time: time | None = None
+    end_time: time | None = None
+    weekdays: list[int] | None = None
+
+    model_config = {"extra": "forbid"}
 
 
 class TimeSlotRead(BaseModel):
@@ -63,35 +69,40 @@ class TimeSlotRead(BaseModel):
     calendar_id: int
     start_time: time
     end_time: time
-    weekdays: List[int]
+    weekdays: list[int]
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
-
-# ---------- Availability ----------
 
 class AvailabilitySlot(BaseModel):
     time_slot_id: int
     start_time: time
     end_time: time
 
+    model_config = {"extra": "forbid"}
+
 
 class AvailabilityDay(BaseModel):
     date: date
-    slots: List[AvailabilitySlot]
+    slots: list[AvailabilitySlot]
+
+    model_config = {"extra": "forbid"}
 
 
 class AvailabilityResponse(BaseModel):
+    """
+    특정 기간 동안 '예약 가능한 시간표'를 계산해서 내려주는 응답
+    - 실제 구현에서는 bookings(이미 예약된 것)까지 반영해서 slots를 필터링하게 됨
+    """
     host_id: UUID
     start: date
     end: date
-    days: List[AvailabilityDay]
+    days: list[AvailabilityDay]
 
+    model_config = {"extra": "forbid"}
 
-# ---------- Booking ----------
 
 BookingStatus = Literal["CONFIRMED", "CANCELLED", "COMPLETED"]
 
@@ -99,11 +110,14 @@ BookingStatus = Literal["CONFIRMED", "CANCELLED", "COMPLETED"]
 class BookingCreate(BaseModel):
     """
     게스트가 예약 생성할 때 입력
+    - description은 DB에서 nullable 허용이므로 Optional
     """
     time_slot_id: int
     when: date
-    topic: str = Field(..., min_length=1)
-    description: Optional[str] = Field(default=None)
+    topic: str = Field(min_length=1)
+    description: str | None = None
+
+    model_config = {"extra": "forbid"}
 
 
 class BookingRead(BaseModel):
@@ -114,17 +128,22 @@ class BookingRead(BaseModel):
     when: date
     topic: str
     status: BookingStatus
-    description: Optional[str]
+    description: str | None
     time_slot_id: int
     guest_id: UUID
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class BookingCancelResponse(BaseModel):
+    """
+    예약 취소 응답(최소 응답 형태)
+    - 클라이언트가 상태 변경만 빠르게 확인할 수 있게 함
+    """
     id: int
     status: BookingStatus
     updated_at: datetime
+
+    model_config = {"extra": "forbid"}

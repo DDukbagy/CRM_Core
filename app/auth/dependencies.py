@@ -21,9 +21,15 @@ _JWKS_CACHE_EXPIRES_AT: float = 0.0
 _JWKS_TTL_SECONDS: int = 60 * 60  # 1시간
 
 
+def _issuer() -> str:
+    # SUPABASE_URL 끝의 / 유무에 안전하게
+    base = settings.SUPABASE_URL.rstrip("/")
+    return f"{base}/auth/v1"
+
+
 def _jwks_url() -> str:
-    """Supabase 표준 JWKS 엔드포인트 URL"""
-    return f"{settings.SUPABASE_URL}/auth/v1/.well-known/jwks.json"
+    """Supabase 표준 JWKS 엔드포인트 URL (RS256용)"""
+    return f"{_issuer()}/.well-known/jwks.json"
 
 
 def get_supabase_jwks() -> Dict[str, Any]:
@@ -44,12 +50,11 @@ def get_supabase_jwks() -> Dict[str, Any]:
         data = resp.json()
         if "keys" not in data or not isinstance(data["keys"], list):
             raise ValueError("JWKS 형식이 올바르지 않습니다.")
-    except Exception:
-        # JWKS를 못 가져오면 인증 자체가 불가능하므로 503(서비스 불가)로 처리한다.
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Supabase JWKS를 가져오지 못했습니다.",
-        )
+        ) from e
 
     _JWKS_CACHE = data
     _JWKS_CACHE_EXPIRES_AT = now + _JWKS_TTL_SECONDS
@@ -58,15 +63,15 @@ def get_supabase_jwks() -> Dict[str, Any]:
 
 def _get_public_key_pem_from_token(token: str) -> bytes:
     """
-    JWT 헤더의 kid(key id)를 이용해 JWKS에서 해당 공개키를 찾아 PEM(bytes)로 변환한다.
+    JWT 헤더의 kid(key id)를 이용해 JWKS에서 해당 공개키를 찾아 PEM(bytes)로 변환한다. (RS256용)
     """
     try:
         header = jwt.get_unverified_header(token)
-    except Exception:
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="토큰 헤더가 올바르지 않습니다.",
-        )
+        ) from e
 
     kid = header.get("kid")
     if not kid:
@@ -86,11 +91,11 @@ def _get_public_key_pem_from_token(token: str) -> bytes:
     try:
         key = jwk.construct(key_dict)
         return key.to_pem()
-    except Exception:
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="공개키 변환에 실패했습니다.",
-        )
+        ) from e
 
 
 def get_current_user(
@@ -105,10 +110,6 @@ def get_current_user(
       "email": "<str|None>",
       "role": "<str|None>"
     }
-
-    주의:
-    - 여기서 id는 UUID 객체로 변환해서 반환하지 않고, 문자열 그대로 반환한다.
-    - 대신 UUID 형식 검증(UUID(user_id))만 하고, 라우터에서 필요할 때 UUID(...)로 변환해 사용한다.
     """
     if credentials is None:
         raise HTTPException(
@@ -116,19 +117,54 @@ def get_current_user(
             detail="Authorization 헤더가 없습니다.",
         )
 
-    token = credentials.credentials
-    public_pem = _get_public_key_pem_from_token(token)
+    # scheme(Bearer) 엄격 체크 (혼란 방지)
+    if (credentials.scheme or "").lower() != "bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="토큰 헤더가 올바르지 않습니다.",
+        )
 
-    issuer = f"{settings.SUPABASE_URL}/auth/v1"
+    token = credentials.credentials
+
+    # alg에 따라 HS256/RS256 분기
+    try:
+        header = jwt.get_unverified_header(token)
+        alg = header.get("alg")
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="토큰 헤더가 올바르지 않습니다.",
+        )
+
+    issuer = _issuer()
 
     try:
-        payload = jwt.decode(
-            token,
-            public_pem,
-            algorithms=["RS256"],
-            audience=settings.SUPABASE_JWT_AUDIENCE,
-            issuer=issuer,
-        )
+        if alg == "HS256":
+            # Supabase 기본(대칭키): JWT Secret으로 검증 (JWKS 필요 없음)
+            payload = jwt.decode(
+                token,
+                settings.SUPABASE_JWT_SECRET,
+                algorithms=["HS256"],
+                audience=settings.SUPABASE_JWT_AUDIENCE,
+                issuer=issuer,
+            )
+
+        elif alg == "RS256":
+            # 공개키(JWKS) 방식
+            public_pem = _get_public_key_pem_from_token(token)
+            payload = jwt.decode(
+                token,
+                public_pem,
+                algorithms=["RS256"],
+                audience=settings.SUPABASE_JWT_AUDIENCE,
+                issuer=issuer,
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"지원하지 않는 JWT 알고리즘: {alg}",
+            )
+
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

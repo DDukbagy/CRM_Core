@@ -1,40 +1,40 @@
-from datetime import date, time, timezone, datetime
-from typing import TYPE_CHECKING
-from sqlmodel import SQLModel, Field, Relationship, func, Text, JSON
+from __future__ import annotations
+
+from datetime import date, datetime, time, timezone
+from typing import TYPE_CHECKING, List
+from uuid import UUID
+
 from pydantic import AwareDatetime
-from sqlalchemy import UniqueConstraint
-from sqlalchemy_utc import UtcDateTime
+from sqlalchemy import Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy_utc import UtcDateTime
+from sqlmodel import Field, Relationship, SQLModel, func
 
 if TYPE_CHECKING:
     from app.domains.account.models import User
+
 
 class Calendar(SQLModel, table=True):
     __tablename__ = "calendars"
 
     id: int = Field(default=None, primary_key=True)
-    topics: list[str] = Field(
-        sa_type=JSON().with_variant(JSONB(astext_type=Text()), "postgresql"),
-        description="게스트와 나눌 주제들"
-        )
+    
+    topics: List[str] = Field(sa_type=JSONB, description="게스트와 나눌 주제들")
     description: str = Field(sa_type=Text, description="게스트에게 보여 줄 설명")
-    google_calendar_id: str = Field(max_length=1024, description="Google Calendar ID")
 
-    host_id: int = Field(foreign_key="users.id", unique=True)
+    host_id: UUID = Field(foreign_key="users.id", unique=True)
     host: "User" = Relationship(
         back_populates="calendar",
         sa_relationship_kwargs={"uselist": False, "single_parent": True},
-        )
-    
-    time_slots: list["TimeSlot"] = Relationship(back_populates="calendar")
+    )
+
+    time_slots: List["TimeSlot"] = Relationship(back_populates="calendar")
 
     created_at: AwareDatetime = Field(
         default=None,
         nullable=False,
         sa_type=UtcDateTime,
-        sa_column_kwargs={
-            "server_default": func.now(),
-        },
+        sa_column_kwargs={"server_default": func.now()},
     )
     updated_at: AwareDatetime = Field(
         default=None,
@@ -45,6 +45,7 @@ class Calendar(SQLModel, table=True):
             "onupdate": lambda: datetime.now(timezone.utc),
         },
     )
+
 
 class TimeSlot(SQLModel, table=True):
     __tablename__ = "time_slots"
@@ -52,25 +53,20 @@ class TimeSlot(SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
     start_time: time
     end_time: time
-    weekdays: list[int] = Field(
-        sa_type=JSON().with_variant(JSONB(astext_type=Text()), "postgresql"),
-        description="예약 가능한 요일들"
-    )
+
+    weekdays: List[int] = Field(sa_type=JSONB, description="예약 가능한 요일들(월0~일6)")
 
     calendar_id: int = Field(foreign_key="calendars.id")
     calendar: Calendar = Relationship(back_populates="time_slots")
 
-    bookings: list["Booking"] = Relationship(back_populates="time_slot")
+    bookings: List["Booking"] = Relationship(back_populates="time_slot")
 
     created_at: AwareDatetime = Field(
         default=None,
         nullable=False,
         sa_type=UtcDateTime,
-        sa_column_kwargs={
-            "server_default": func.now(),
-        },
+        sa_column_kwargs={"server_default": func.now()},
     )
-
     updated_at: AwareDatetime = Field(
         default=None,
         nullable=False,
@@ -80,6 +76,7 @@ class TimeSlot(SQLModel, table=True):
             "onupdate": lambda: datetime.now(timezone.utc),
         },
     )
+
 
 class Booking(SQLModel, table=True):
     __tablename__ = "bookings"
@@ -88,29 +85,24 @@ class Booking(SQLModel, table=True):
     )
 
     id: int = Field(default=None, primary_key=True)
+
     when: date
     topic: str
-    status: str = Field(
-        default="CONFIRMED",
-        description="CONFIRMED / CANCELLED / COMPLETED"
-    )
+    status: str = Field(default="CONFIRMED", description="CONFIRMED / CANCELLED / COMPLETED")
     description: str = Field(sa_type=Text, description="예약 설명")
 
     time_slot_id: int = Field(foreign_key="time_slots.id")
     time_slot: TimeSlot = Relationship(back_populates="bookings")
 
-    guest_id: int = Field(foreign_key="users.id")
+    guest_id: UUID = Field(foreign_key="users.id")
     guest: "User" = Relationship(back_populates="bookings")
 
     created_at: AwareDatetime = Field(
         default=None,
         nullable=False,
         sa_type=UtcDateTime,
-        sa_column_kwargs={
-            "server_default": func.now(),
-        },
+        sa_column_kwargs={"server_default": func.now()},
     )
-
     updated_at: AwareDatetime = Field(
         default=None,
         nullable=False,

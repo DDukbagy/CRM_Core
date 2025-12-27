@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     DB_ECHO: bool = False
 
     SUPABASE_URL: str
+    SUPABASE_ANON_KEY: str
+    SUPABASE_JWT_SECRET: str
     SUPABASE_JWT_AUDIENCE: str = "authenticated"
 
     CORS_ALLOW_ORIGINS: str = '["*"]'
@@ -45,6 +47,9 @@ class Settings(BaseSettings):
             return json.loads(self.CORS_ALLOW_ORIGINS)
         except Exception:
             return ["*"]
-
+        
+    @property
+    def SUPABASE_ISSUER(self) -> str:
+        return self.SUPABASE_URL.rstrip("/") + "/auth/v1"
 
 settings = Settings()
