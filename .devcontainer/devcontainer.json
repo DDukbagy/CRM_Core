@@ -1,7 +1,7 @@
 {
   "name": "crm_backend-devcontainer",
   "build": {
-    "dockerfile": "../Dockerfile.dev"
+    "dockerfile": "Dockerfile"
   },
   "postCreateCommand": "poetry install --no-root",
   "postStartCommand": "test -x .venv/bin/python || poetry install --no-root",
