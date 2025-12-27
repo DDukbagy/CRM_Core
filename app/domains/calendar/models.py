@@ -1,7 +1,5 @@
-from __future__ import annotations
-
 from datetime import date, datetime, time, timezone
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, Optional, List
 from uuid import UUID
 
 from pydantic import AwareDatetime
@@ -17,7 +15,7 @@ if TYPE_CHECKING:
 class Calendar(SQLModel, table=True):
     __tablename__ = "calendars"
 
-    id: int = Field(default=None, primary_key=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
     
     topics: List[str] = Field(sa_type=JSONB, description="게스트와 나눌 주제들")
     description: str = Field(sa_type=Text, description="게스트에게 보여 줄 설명")
@@ -30,13 +28,13 @@ class Calendar(SQLModel, table=True):
 
     time_slots: List["TimeSlot"] = Relationship(back_populates="calendar")
 
-    created_at: AwareDatetime = Field(
+    created_at: Optional[AwareDatetime] = Field(
         default=None,
         nullable=False,
         sa_type=UtcDateTime,
         sa_column_kwargs={"server_default": func.now()},
     )
-    updated_at: AwareDatetime = Field(
+    updated_at: Optional[AwareDatetime] = Field(
         default=None,
         nullable=False,
         sa_type=UtcDateTime,
@@ -50,7 +48,7 @@ class Calendar(SQLModel, table=True):
 class TimeSlot(SQLModel, table=True):
     __tablename__ = "time_slots"
 
-    id: int = Field(default=None, primary_key=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
     start_time: time
     end_time: time
 
@@ -61,13 +59,13 @@ class TimeSlot(SQLModel, table=True):
 
     bookings: List["Booking"] = Relationship(back_populates="time_slot")
 
-    created_at: AwareDatetime = Field(
+    created_at: Optional[AwareDatetime] = Field(
         default=None,
         nullable=False,
         sa_type=UtcDateTime,
         sa_column_kwargs={"server_default": func.now()},
     )
-    updated_at: AwareDatetime = Field(
+    updated_at: Optional[AwareDatetime] = Field(
         default=None,
         nullable=False,
         sa_type=UtcDateTime,
@@ -84,7 +82,7 @@ class Booking(SQLModel, table=True):
         UniqueConstraint("when", "time_slot_id", name="uq_booking_slot_date"),
     )
 
-    id: int = Field(default=None, primary_key=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
 
     when: date
     topic: str
@@ -97,13 +95,13 @@ class Booking(SQLModel, table=True):
     guest_id: UUID = Field(foreign_key="users.id")
     guest: "User" = Relationship(back_populates="bookings")
 
-    created_at: AwareDatetime = Field(
+    created_at: Optional[AwareDatetime] = Field(
         default=None,
         nullable=False,
         sa_type=UtcDateTime,
         sa_column_kwargs={"server_default": func.now()},
     )
-    updated_at: AwareDatetime = Field(
+    updated_at: Optional[AwareDatetime] = Field(
         default=None,
         nullable=False,
         sa_type=UtcDateTime,

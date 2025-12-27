@@ -16,6 +16,8 @@ venv/
 .env
 .env.*
 !.env.example
+scripts/dev_tokens.sh
+env.local.sh
 
 # --- Logs ---
 *.log

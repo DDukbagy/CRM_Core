@@ -30,9 +30,8 @@ async def root():
 
 @app.get("/health/db")
 async def health_db(session: AsyncSession = Depends(get_session)):
-    # DB 연결이 살아있는지 최소 쿼리로 확인
     result = await session.execute(text("SELECT 1"))
-    return {"db": result.scalar_one()}
+    return {"ok"}
 
 
 app.include_router(account_router)

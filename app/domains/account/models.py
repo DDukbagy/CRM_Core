@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional, List
 from uuid import UUID
@@ -23,6 +21,7 @@ class User(SQLModel, table=True):
     id: UUID = Field(primary_key=True, sa_type=PGUUID(as_uuid=True))
 
     username: str = Field(unique=True, max_length=40, description="사용자 계정 ID")
+
     email: Optional[EmailStr] = Field(
         default=None,
         sa_type=String(255),
@@ -31,21 +30,20 @@ class User(SQLModel, table=True):
         nullable=True,
         description="사용자 이메일",
     )
+
     display_name: str = Field(max_length=40, description="사용자 표시 이름")
 
     password: Optional[str] = Field(default=None, max_length=128, description="사용자 비밀번호")
     is_host: bool = Field(default=False, description="사용자가 호스트인지 여부")
 
-    created_at: AwareDatetime = Field(
+    created_at: Optional[AwareDatetime] = Field(
         default=None,
         nullable=False,
         sa_type=UtcDateTime,
-        sa_column_kwargs={
-            "server_default": func.now(),
-        },
+        sa_column_kwargs={"server_default": func.now()},
     )
 
-    updated_at: AwareDatetime = Field(
+    updated_at: Optional[AwareDatetime] = Field(
         default=None,
         nullable=False,
         sa_type=UtcDateTime,
@@ -56,7 +54,8 @@ class User(SQLModel, table=True):
     )
 
     oauth_accounts: List["OAuthAccount"] = Relationship(back_populates="user")
-    calendar: "Calendar" = Relationship(
+
+    calendar: Optional["Calendar"] = Relationship(
         back_populates="host",
         sa_relationship_kwargs={"uselist": False, "single_parent": True},
     )
@@ -74,24 +73,23 @@ class OAuthAccount(SQLModel, table=True):
         ),
     )
 
-    id: int = Field(default=None, primary_key=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
 
     provider: str = Field(max_length=10, description="OAuth 제공자")
     provider_account_id: str = Field(max_length=128, description="OAuth 제공자 계정 ID")
 
     user_id: UUID = Field(foreign_key="users.id", sa_type=PGUUID(as_uuid=True))
-    user: User = Relationship(back_populates="oauth_accounts")
 
-    created_at: AwareDatetime = Field(
+    user: "User" = Relationship(back_populates="oauth_accounts")
+
+    created_at: Optional[AwareDatetime] = Field(
         default=None,
         nullable=False,
         sa_type=UtcDateTime,
-        sa_column_kwargs={
-            "server_default": func.now(),
-        },
+        sa_column_kwargs={"server_default": func.now()},
     )
 
-    updated_at: AwareDatetime = Field(
+    updated_at: Optional[AwareDatetime] = Field(
         default=None,
         nullable=False,
         sa_type=UtcDateTime,
