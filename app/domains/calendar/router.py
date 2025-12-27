@@ -48,6 +48,30 @@ async def _get_calendar_id_by_host(session: AsyncSession, host_id: UUID) -> int:
         raise HTTPException(status_code=404, detail="Calendar not found")
     return cal_id
 
+# NEW: 409(예약 충돌) 응답을 운영용으로 통일 (프론트가 파싱하기 쉬움)
+def _booking_conflict_detail(*, time_slot_id: int, when: date, error: str) -> dict:
+    return {
+        "error": error,  # e.g. SLOT_ALREADY_BOOKED / BOOKING_CONFLICT
+        "message": "이미 예약된 시간대입니다. 최신 일정으로 갱신 후 다시 선택해주세요."
+        if error == "SLOT_ALREADY_BOOKED"
+        else "예약 충돌이 발생했습니다. 최신 일정으로 갱신 후 다시 시도해주세요.",
+        "hint": "REFETCH_AVAILABILITY",  # 프론트: availability 재조회 트리거
+        "time_slot_id": time_slot_id,
+        "when": when.isoformat(),
+    }
+
+def _raise_slot_already_booked(*, time_slot_id: int, when: date) -> None:
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail=_booking_conflict_detail(time_slot_id=time_slot_id, when=when, error="SLOT_ALREADY_BOOKED"),
+    )
+
+def _raise_booking_conflict(*, time_slot_id: int, when: date) -> None:
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail=_booking_conflict_detail(time_slot_id=time_slot_id, when=when, error="BOOKING_CONFLICT"),
+    )
+
 
 # Host: My Calendar
 @cal_router.post(
@@ -326,10 +350,22 @@ async def create_booking(
     if data.when.weekday() not in (ts.weekdays or []):
         raise HTTPException(status_code=400, detail="Selected date is not available for this time slot")
 
+    # "취소가 아닌" 예약만 중복으로 막는다
+    existing = await session.execute(
+        select(Booking.id).where(
+            Booking.time_slot_id == data.time_slot_id,
+            Booking.when == data.when,
+            Booking.status != "CANCELLED",
+        )
+    )
+    if existing.scalar_one_or_none():
+        # 운영 친화적 409 (프론트가 이걸 보고 안내+재조회)
+        _raise_slot_already_booked(time_slot_id=data.time_slot_id, when=data.when)
+
     booking = Booking(
         when=data.when,
         topic=data.topic,
-        description=data.description,  # ✅ nullable 허용(스키마/DB 일치)
+        description=data.description,
         time_slot_id=data.time_slot_id,
         guest_id=guest_id,
         status="CONFIRMED",
@@ -340,10 +376,24 @@ async def create_booking(
         await session.commit()
         await session.refresh(booking)
         return booking
+
     except IntegrityError:
+        # 레이스 컨디션(동시 예약) 최종 방어
         await session.rollback()
-        # unique(when, time_slot_id) 충돌일 가능성이 큼
-        raise HTTPException(status_code=409, detail="This slot is already booked for the selected date")
+
+        # 커밋 실패 후 DB를 다시 확인해서 "진짜 이미 예약"인지 판단
+        again = await session.execute(
+            select(Booking.id).where(
+                Booking.time_slot_id == data.time_slot_id,
+                Booking.when == data.when,
+                Booking.status != "CANCELLED",
+            )
+        )
+        if again.scalar_one_or_none():
+            _raise_slot_already_booked(time_slot_id=data.time_slot_id, when=data.when)
+
+        # active booking이 없으면 정책/인덱스 불일치 등 "충돌"로 처리
+        _raise_booking_conflict(time_slot_id=data.time_slot_id, when=data.when)
 
 
 @bk_router.get("/me", response_model=list[BookingRead])

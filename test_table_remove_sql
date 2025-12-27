@@ -1,0 +1,64 @@
+------- ✅ 삭제 전 미리보기 (지우지 않음) -------
+
+with target_users as (
+  select id, email, username
+  from public.users
+  where email in ('host@test.com', 'guest@test.com')
+     or username in ('host', 'guest')
+),
+target_calendars as (
+  select c.*
+  from public.calendars c
+  join target_users u on u.id = c.host_id
+),
+target_time_slots as (
+  select ts.*
+  from public.time_slots ts
+  join target_calendars c on c.id = ts.calendar_id
+),
+target_bookings as (
+  select b.*
+  from public.bookings b
+  where b.guest_id in (select id from target_users)
+     or b.time_slot_id in (select id from target_time_slots)
+)
+select
+  (select count(*) from target_users)     as users,
+  (select count(*) from target_calendars) as calendars,
+  (select count(*) from target_time_slots)as time_slots,
+  (select count(*) from target_bookings)  as bookings;
+
+------- ✅ 테스트 예약/슬롯만 정리 (유저는 남김) -------
+
+begin;
+
+-- 1) bookings 삭제 (게스트가 테스트유저이거나, 테스트 호스트 캘린더 슬롯에 걸린 예약)
+delete from public.bookings b
+where b.guest_id in (
+  select id from public.users
+  where email in ('host@test.com', 'guest@test.com')
+     or username in ('host', 'guest')
+)
+or b.time_slot_id in (
+  select ts.id
+  from public.time_slots ts
+  join public.calendars c on c.id = ts.calendar_id
+  join public.users u on u.id = c.host_id
+  where u.email in ('host@test.com')
+     or u.username in ('host')
+);
+
+-- 2) time_slots 삭제 (테스트 호스트 캘린더 소속)
+delete from public.time_slots ts
+using public.calendars c, public.users u
+where ts.calendar_id = c.id
+  and c.host_id = u.id
+  and (u.email in ('host@test.com') or u.username in ('host'));
+
+-- 3) calendars 삭제 (테스트 호스트 소속)
+delete from public.calendars c
+using public.users u
+where c.host_id = u.id
+  and (u.email in ('host@test.com') or u.username in ('host'));
+
+commit;

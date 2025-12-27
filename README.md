@@ -11,3 +11,8 @@
 
 # 서버 구동 확인
 # poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# 테스트 토큰 실행 코드
+# source scripts/dev_tokens.sh
+# source scripts/load_tokens.sh << 토큰 만료시 실행
+# ./scripts/run_flow.sh

@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Optional, List
 from uuid import UUID
 
 from pydantic import AwareDatetime
-from sqlalchemy import Text, UniqueConstraint
+from sqlalchemy import Index, text, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy_utc import UtcDateTime
 from sqlmodel import Field, Relationship, SQLModel, func
@@ -79,8 +79,14 @@ class TimeSlot(SQLModel, table=True):
 class Booking(SQLModel, table=True):
     __tablename__ = "bookings"
     __table_args__ = (
-        UniqueConstraint("when", "time_slot_id", name="uq_booking_slot_date"),
-    )
+    Index(
+        "uq_booking_active_slot_date",
+        "when",
+        "time_slot_id",
+        unique=True,
+        postgresql_where=text("status <> 'CANCELLED'"),
+    ),
+)
 
     id: Optional[int] = Field(default=None, primary_key=True)
 
