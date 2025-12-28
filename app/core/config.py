@@ -68,12 +68,23 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> List[str]:
         v = self.CORS_ALLOW_ORIGINS
+
         if isinstance(v, list):
             return v
+
+        s = str(v).strip()
+        if not s:
+            return []
+
         try:
-            return json.loads(v)
+            parsed = json.loads(s)
+            if isinstance(parsed, list):
+                return parsed
         except Exception:
-            return ["*"]
+            pass
+
+        parts = [o.strip() for o in s.split(",") if o.strip()]
+        return parts
 
     @property
     def SUPABASE_ISSUER(self) -> str:

@@ -23,6 +23,7 @@ email-validator = "^2.3.0"
 python-jose = "^3.5.0"
 requests = "^2.32.5"
 certifi = "^2025.11.12"
+alembic = "^1.17.2"
 
 
 [build-system]

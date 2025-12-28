@@ -10,18 +10,23 @@ from app.db import get_session
 
 from app.domains.account.router import router as account_router
 from app.domains.calendar.router import router as calendar_router
+from app.core.exceptions import register_exception_handlers
+from app.core.middleware import RequestLoggingMiddleware
 
 app = FastAPI()
+
+app.add_middleware(RequestLoggingMiddleware)
 
 # CORS (운영에서는 허용 도메인만 넣는 방식으로 좁히는 게 정석)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,  # 예: ["http://localhost:3000", "http://localhost:8000"]
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],    # allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["*"],    # allow_headers=["Authorization", "Content-Type"],
 )
 
+register_exception_handlers(app)
 
 @app.get("/")
 async def root():
