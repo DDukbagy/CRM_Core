@@ -10,9 +10,13 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 import app.db.models  # noqa: F401
+from app.db.base import Base
+
 
 # alembic.ini 읽기
 config = context.config
+
+target_metadata = Base.metadata
 
 # 로깅 설정
 if config.config_file_name is not None:
