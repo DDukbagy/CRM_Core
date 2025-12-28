@@ -12,7 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.db import get_session
+from app.db.session import get_session
 
 security = HTTPBearer(auto_error=False)
 

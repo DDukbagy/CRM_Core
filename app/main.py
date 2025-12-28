@@ -6,7 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.db import get_session
+from app.db.session import get_session
 
 from app.domains.account.router import router as account_router
 from app.domains.calendar.router import router as calendar_router

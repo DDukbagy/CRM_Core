@@ -9,6 +9,8 @@ from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+import app.db.models  # noqa: F401
+
 # alembic.ini 읽기
 config = context.config
 
