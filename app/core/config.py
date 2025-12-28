@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import List, Union
+from typing import List, Union, Any
 
+from pydantic import field_validator, Field, AliasChoices
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -24,7 +25,28 @@ class Settings(BaseSettings):
     SUPABASE_JWT_SECRET: str
     SUPABASE_JWT_AUDIENCE: str = "authenticated"
 
-    CORS_ALLOW_ORIGINS: Union[str, List[str]] = '["*"]'
+    CORS_ALLOW_ORIGINS: Union[str, List[str]] = Field(
+        default='["http://localhost:3000","http://localhost:5173","http://127.0.0.1:3000","http://127.0.0.1:5173"]',
+        validation_alias=AliasChoices("CORS_ALLOW_ORIGINS", "CORS_ORIGINS"),
+    )
+
+    @field_validator("CORS_ALLOW_ORIGINS", mode="before")
+    def _parse_cors_allow_origins(cls, v: Any) -> List[str]:
+        if isinstance(v, list):
+            return v
+        if v is None:
+            return []
+        s = str(v).strip()
+        if not s:
+            return []
+        if s.startswith("["):
+            try:
+                parsed = json.loads(s)
+                if isinstance(parsed, list):
+                    return parsed
+            except Exception:
+                return []
+        return [o.strip() for o in s.split(",") if o.strip()]
 
     @property
     def ASYNC_DATABASE_URL(self) -> str:
