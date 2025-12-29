@@ -18,6 +18,13 @@ config = context.config
 
 target_metadata = Base.metadata
 
+def include_object(object_, name, type_, reflected, compare_to):
+    # DB에만 존재(reflected=True)하고, 코드(metadata)에는 없는(compare_to is None) 객체는 제외
+    # => autogenerate가 drop_table/drop_column 같은 파괴적 변경을 만들지 못하게 막음
+    if reflected and compare_to is None:
+        return False
+    return True
+
 # 로깅 설정
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -49,6 +56,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        include_object=include_object,
     )
 
     with context.begin_transaction():
@@ -60,6 +68,7 @@ def do_run_migrations(connection) -> None:
         connection=connection,
         target_metadata=target_metadata,
         compare_type=True,
+        include_object=include_object,
     )
 
     with context.begin_transaction():

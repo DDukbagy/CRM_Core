@@ -16,3 +16,10 @@
 # source scripts/dev_tokens.sh
 # source scripts/load_tokens.sh << 토큰 만료시 실행
 # ./scripts/run_flow.sh
+
+# autogenerate로 new migration만들기
+# poetry run alembic revision --autogenerate -m "..."
+# poetry run alembic upgrade head
+# 버전 일치하는지 확인하기
+# poetry run alembic current
+# poetry run alembic heads
