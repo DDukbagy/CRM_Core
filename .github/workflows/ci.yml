@@ -41,18 +41,28 @@ jobs:
 
       - name: Create tables for tests
         env:
+          PYTHONPATH: .
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres
           SUPABASE_URL: https://example.supabase.co
           SUPABASE_ANON_KEY: dummy
           SUPABASE_JWT_SECRET: dummy
         run: |
           poetry run python - <<'PY'
-          import os, asyncio
+          import os, asyncio, importlib, pkgutil
           from sqlalchemy.ext.asyncio import create_async_engine
           from sqlmodel import SQLModel
 
-          # ⚠️ 중요: 모델 모듈을 import해야 metadata에 테이블이 등록됨
-          import app.models  # 너희 프로젝트에서 "모든 모델을 import하는 모듈"로 맞춰
+          # app 패키지 아래에서 "model"/"models" 이름이 들어간 모듈만 최대한 import
+          import app
+
+          for m in pkgutil.walk_packages(app.__path__, app.__name__ + "."):
+              name = m.name
+              if ".model" in name or ".models" in name:
+                  try:
+                      importlib.import_module(name)
+                  except Exception:
+                      # 모델과 무관하거나 환경변수/외부 의존 때문에 깨지는 모듈은 무시
+                      pass
 
           async def main():
               engine = create_async_engine(os.environ["DATABASE_URL"])
