@@ -1,20 +1,26 @@
-name: CI
-
-on:
-  push:
-    branches: ["main", "master"]
-  pull_request:
-
 jobs:
   test:
     runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -27,20 +33,9 @@ jobs:
       - name: Run tests
         env:
           PYTHONPATH: .
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres
+          # 아래 3개는 "테스트에서 실제로 Supabase 호출을 안 한다면" 더미값이어도 OK
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_ANON_KEY: dummy
+          SUPABASE_JWT_SECRET: dummy
         run: poetry run pytest -q
-
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_USER: postgres
-          POSTGRES_DB: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready -U postgres"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
-
