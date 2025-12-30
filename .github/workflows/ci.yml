@@ -37,6 +37,14 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction
 
+      - name: Run migrations
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_ANON_KEY: dummy
+          SUPABASE_JWT_SECRET: dummy
+        run: poetry run alembic upgrade head
+
       - name: Run tests
         env:
           PYTHONPATH: .
