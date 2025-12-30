@@ -25,9 +25,11 @@ jobs:
           --health-retries=5
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -37,19 +39,25 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction
 
-      - name: Run migrations
+      # ✅ 핵심: pytest 전에 스키마 준비(알렘빅 있으면 upgrade)
+      - name: Prepare DB schema (Alembic if available)
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres
           SUPABASE_URL: https://example.supabase.co
           SUPABASE_ANON_KEY: dummy
           SUPABASE_JWT_SECRET: dummy
-        run: poetry run alembic upgrade head
+        run: |
+          if [ -f alembic.ini ]; then
+            echo "alembic.ini found -> running migrations"
+            poetry run alembic upgrade head
+          else
+            echo "alembic.ini not found -> skipping migrations"
+          fi
 
       - name: Run tests
         env:
           PYTHONPATH: .
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres
-          # 아래 3개는 "테스트에서 실제로 Supabase 호출을 안 한다면" 더미값이어도 OK
           SUPABASE_URL: https://example.supabase.co
           SUPABASE_ANON_KEY: dummy
           SUPABASE_JWT_SECRET: dummy
