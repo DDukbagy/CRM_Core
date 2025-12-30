@@ -39,6 +39,29 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction
 
+      - name: Create tables for tests
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_ANON_KEY: dummy
+          SUPABASE_JWT_SECRET: dummy
+        run: |
+          poetry run python - <<'PY'
+          import os, asyncio
+          from sqlalchemy.ext.asyncio import create_async_engine
+          from sqlmodel import SQLModel
+
+          # ⚠️ 중요: 모델 모듈을 import해야 metadata에 테이블이 등록됨
+          import app.models  # 너희 프로젝트에서 "모든 모델을 import하는 모듈"로 맞춰
+
+          async def main():
+              engine = create_async_engine(os.environ["DATABASE_URL"])
+              async with engine.begin() as conn:
+                  await conn.run_sync(SQLModel.metadata.create_all)
+
+          asyncio.run(main())
+          PY
+
       # ✅ 핵심: pytest 전에 스키마 준비(알렘빅 있으면 upgrade)
       - name: Prepare DB schema (Alembic if available)
         env:
