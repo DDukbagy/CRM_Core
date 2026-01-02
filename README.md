@@ -23,3 +23,11 @@
 # 버전 일치하는지 확인하기
 # poetry run alembic current
 # poetry run alembic heads
+
+# 수정없이 CI돌리는법
+# git commit --allow-empty -m "chore: trigger ci"
+# git push
+
+
+# 문자열 찾기
+# grep -R "찾을문자열" . 
