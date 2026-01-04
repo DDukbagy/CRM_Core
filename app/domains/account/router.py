@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from app.auth.dependencies import get_current_host, get_current_user
+from app.core.auth.deps import get_current_host, get_current_user
 from app.db.session import get_session
 from app.domains.account.models import User
 from app.domains.account.schemas import (

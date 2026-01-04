@@ -12,6 +12,7 @@ from app.domains.account.router import router as account_router
 from app.domains.calendar.router import router as calendar_router
 from app.core.exceptions import register_exception_handlers
 from app.core.middleware import RequestLoggingMiddleware
+from app.domains.auth.router import router as auth_router
 
 app = FastAPI()
 
@@ -36,8 +37,13 @@ async def root():
 @app.get("/health/db")
 async def health_db(session: AsyncSession = Depends(get_session)):
     result = await session.execute(text("SELECT 1"))
-    return {"ok"}
+    return {"status": "ok"}
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 
+app.include_router(auth_router)
 app.include_router(account_router)
 app.include_router(calendar_router)
