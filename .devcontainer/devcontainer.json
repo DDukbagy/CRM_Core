@@ -3,8 +3,12 @@
   "build": {
     "dockerfile": "Dockerfile"
   },
-  "postCreateCommand": "poetry install --no-root",
-  "postStartCommand": "test -x .venv/bin/python || poetry install --no-root",
+  "containerEnv": {
+    "POETRY_VIRTUALENVS_IN_PROJECT": "1",
+    "POETRY_VIRTUALENVS_CREATE": "1"
+  },
+  "postCreateCommand": "bash -lc \"poetry config virtualenvs.in-project true --local && poetry install --no-root\"",
+  "postStartCommand": "bash -lc \"poetry config virtualenvs.in-project true --local && (test -f .venv/pyvenv.cfg && .venv/bin/python -c 'import fastapi' >/dev/null 2>&1 || poetry install --no-root)\"",
   "customizations": {
     "vscode": {
       "extensions": [
