@@ -24,7 +24,7 @@ RUN git lfs install
 RUN pip install --no-cache-dir poetry
 
 # 작업 디렉토리
-WORKDIR /workspace
+WORKDIR /workspaces
 
 # 의존성 파일 복사 (캐시 최적화)
 COPY pyproject.toml poetry.lock* ./
