@@ -14,9 +14,12 @@
 
 # 테스트 토큰 실행 코드
 # source scripts/dev_tokens.sh
-# source scripts/load_tokens.sh
-#  ㄴ 토큰 만료시 실행
+# source scripts/load_tokens.sh << 토큰 만료시 실행
 # ./scripts/run_flow.sh
+
+# 원클릭 테스트
+# chmod +x scripts/verify.sh << 최초 1회 권한 실행
+# ./scripts/verify.sh
 
 # autogenerate로 new migration만들기
 # poetry run alembic revision --autogenerate -m "..."
