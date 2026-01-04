@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from app.core.auth.deps import get_current_host, get_current_user
+from app.core.auth.deps import require_host, get_current_user, CurrentUser
 from app.db.session import get_session
 from app.domains.calendar.models import Booking, Calendar, TimeSlot
 from app.domains.calendar.schemas import (
@@ -82,9 +82,9 @@ def _raise_booking_conflict(*, time_slot_id: int, when: date) -> None:
 async def create_my_calendar(
     data: CalendarCreate,
     session: AsyncSession = Depends(get_session),
-    host: dict = Depends(get_current_host),
+    host: CurrentUser = Depends(require_host),
 ):
-    host_id = UUID(str(host["id"]))
+    host_id = UUID(str(host.id))
 
     # 호스트당 1개만(UNIQUE)
     exists = await session.execute(select(Calendar).where(Calendar.host_id == host_id))
@@ -105,9 +105,9 @@ async def create_my_calendar(
 @cal_router.get("/me", response_model=CalendarRead)
 async def get_my_calendar(
     session: AsyncSession = Depends(get_session),
-    host: dict = Depends(get_current_host),
+    host: CurrentUser = Depends(require_host),
 ):
-    host_id = UUID(str(host["id"]))
+    host_id = UUID(str(host.id))
 
     result = await session.execute(select(Calendar).where(Calendar.host_id == host_id))
     calendar = result.scalar_one_or_none()
@@ -120,9 +120,9 @@ async def get_my_calendar(
 async def update_my_calendar(
     data: CalendarUpdate,
     session: AsyncSession = Depends(get_session),
-    host: dict = Depends(get_current_host),
+    host: CurrentUser = Depends(require_host),
 ):
-    host_id = UUID(str(host["id"]))
+    host_id = UUID(str(host.id))
 
     result = await session.execute(select(Calendar).where(Calendar.host_id == host_id))
     calendar = result.scalar_one_or_none()
@@ -150,7 +150,7 @@ async def update_my_calendar(
 async def add_time_slot(
     data: TimeSlotCreate,
     session: AsyncSession = Depends(get_session),
-    host: dict = Depends(get_current_host),
+    host: CurrentUser = Depends(require_host),
 ):
     if data.end_time <= data.start_time:
         raise HTTPException(status_code=400, detail="end_time must be after start_time")
@@ -158,7 +158,7 @@ async def add_time_slot(
     if any((w < 0 or w > 6) for w in data.weekdays):
         raise HTTPException(status_code=400, detail="weekdays must be within 0..6")
 
-    host_id = UUID(str(host["id"]))
+    host_id = UUID(str(host.id))
     calendar_id = await _get_calendar_id_by_host(session, host_id)
 
     ts = TimeSlot(
@@ -176,9 +176,9 @@ async def add_time_slot(
 @cal_router.get("/me/time-slots", response_model=list[TimeSlotRead])
 async def list_my_time_slots(
     session: AsyncSession = Depends(get_session),
-    host: dict = Depends(get_current_host),
+    host: CurrentUser = Depends(require_host),
 ):
-    host_id = UUID(str(host["id"]))
+    host_id = UUID(str(host.id))
     calendar_id = await _get_calendar_id_by_host(session, host_id)
 
     result = await session.execute(
@@ -194,9 +194,9 @@ async def update_time_slot(
     slot_id: int,
     data: TimeSlotUpdate,
     session: AsyncSession = Depends(get_session),
-    host: dict = Depends(get_current_host),
+    host: CurrentUser = Depends(require_host),
 ):
-    host_id = UUID(str(host["id"]))
+    host_id = UUID(str(host.id))
     calendar_id = await _get_calendar_id_by_host(session, host_id)
 
     result = await session.execute(
@@ -230,13 +230,13 @@ async def update_time_slot(
 async def delete_time_slot(
     slot_id: int,
     session: AsyncSession = Depends(get_session),
-    host: dict = Depends(get_current_host),
+    host: CurrentUser = Depends(require_host),
 ):
     """
     TimeSlot 삭제는 '예약이 하나도 없을 때만' 허용
     - FK가 NO ACTION이어도, 더 친절한 409를 주기 위해 선제 체크
     """
-    host_id = UUID(str(host["id"]))
+    host_id = UUID(str(host.id))
     calendar_id = await _get_calendar_id_by_host(session, host_id)
 
     result = await session.execute(
@@ -413,12 +413,12 @@ async def list_my_calendar_bookings(
     start: date = Query(..., description="조회 시작일 (YYYY-MM-DD)"),
     end: date = Query(..., description="조회 종료일 (YYYY-MM-DD)"),
     session: AsyncSession = Depends(get_session),
-    host: dict = Depends(get_current_host),
+    host: CurrentUser = Depends(require_host),
 ):
     if end < start:
         raise HTTPException(status_code=400, detail="end must be >= start")
 
-    host_id = UUID(str(host["id"]))
+    host_id = UUID(str(host.id))
     calendar_id = await _get_calendar_id_by_host(session, host_id)
 
     stmt = (
@@ -469,13 +469,13 @@ async def cancel_booking_as_guest(
 async def cancel_booking_as_host(
     booking_id: int,
     session: AsyncSession = Depends(get_session),
-    host: dict = Depends(get_current_host),
+    host: CurrentUser = Depends(require_host),
 ):
     """
     호스트(코치) 취소
     - 본인 캘린더의 예약만 취소 가능
     """
-    host_id = UUID(str(host["id"]))
+    host_id = UUID(str(host.id))
     calendar_id = await _get_calendar_id_by_host(session, host_id)
 
     res = await session.execute(select(Booking).where(Booking.id == booking_id))

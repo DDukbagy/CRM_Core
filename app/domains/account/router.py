@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from app.core.auth.deps import get_current_host, get_current_user
+from app.core.auth.deps import require_host, get_current_user, CurrentUser
 from app.db.session import get_session
 from app.domains.account.models import User
 from app.domains.account.schemas import (
@@ -151,7 +151,7 @@ async def update_my_account(
 @router.get("/{user_id}", response_model=UserRead)
 async def get_account_by_id(
     user_id: UUID,
-    current_host: dict = Depends(get_current_host),
+    current_host: CurrentUser = Depends(require_host),
     session: AsyncSession = Depends(get_session),
 ):
     """
@@ -172,7 +172,7 @@ async def get_account_by_id(
 
 @router.get("", response_model=UsersListResponse)
 async def list_accounts(
-    current_host: dict = Depends(get_current_host),
+    current_host: CurrentUser = Depends(require_host),
     session: AsyncSession = Depends(get_session),
     limit: int = 50,
     offset: int = 0,
