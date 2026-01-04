@@ -14,7 +14,8 @@
 
 # 테스트 토큰 실행 코드
 # source scripts/dev_tokens.sh
-# source scripts/load_tokens.sh << 토큰 만료시 실행
+# source scripts/load_tokens.sh
+#  ㄴ 토큰 만료시 실행
 # ./scripts/run_flow.sh
 
 # autogenerate로 new migration만들기
