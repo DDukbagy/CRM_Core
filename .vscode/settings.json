@@ -8,7 +8,7 @@
       "path": "bash",
       "args": [
         "-lc",
-        "export VIRTUAL_ENV_DISABLE_PROMPT=1; source /workspace/.venv/bin/activate; exec bash -l"
+        "export VIRTUAL_ENV_DISABLE_PROMPT=1; source ${workspaceFolder}/.venv/bin/activate; exec bash -l"
       ]
     }
   },
