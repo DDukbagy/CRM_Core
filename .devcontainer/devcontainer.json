@@ -1,7 +1,8 @@
 {
   "name": "crm_backend-devcontainer",
   "build": {
-    "dockerfile": "Dockerfile"
+    "dockerfile": "Dockerfile",
+    "context": ".."
   },
   "containerEnv": {
     "POETRY_VIRTUALENVS_IN_PROJECT": "1",
