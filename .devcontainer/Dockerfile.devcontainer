@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 # 기본 환경 변수(로그/버퍼)
 ENV PYTHONDONTWRITEBYTECODE=1
