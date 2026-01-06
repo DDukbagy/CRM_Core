@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     git-lfs \
     curl \
+    unzip \
     ca-certificates \
   && update-ca-certificates \
   && rm -rf /var/lib/apt/lists/*
