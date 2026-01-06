@@ -34,5 +34,6 @@ htmlcov/
 .vscode/
 .idea/
 
-# --- txt ---
-/test_table_remove_sql.txt
+# --- zip --- #
+awscliv2.zip
+awscliv2.zip
