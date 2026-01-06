@@ -2,10 +2,9 @@ name: CI
 
 on:
   workflow_dispatch:
-  push:
-    branches: ["main", "master"]
   pull_request:
-
+  push:
+    branches: ["main"]
 
 jobs:
   test:
@@ -24,7 +23,7 @@ jobs:
           --health-cmd="pg_isready -U postgres"
           --health-interval=10s
           --health-timeout=5s
-          --health-retries=5
+          --health-retries=10
 
     steps:
       - name: Checkout
@@ -41,53 +40,15 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction
 
-      - name: Create tables for tests
-        env:
-          PYTHONPATH: .
-          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres
-          SUPABASE_URL: https://example.supabase.co
-          SUPABASE_ANON_KEY: dummy
-          SUPABASE_JWT_SECRET: dummy
-        run: |
-          poetry run python - <<'PY'
-          import os, asyncio, importlib, pkgutil
-          from sqlalchemy.ext.asyncio import create_async_engine
-          from sqlmodel import SQLModel
-
-          # app 패키지 아래에서 "model"/"models" 이름이 들어간 모듈만 최대한 import
-          import app
-
-          for m in pkgutil.walk_packages(app.__path__, app.__name__ + "."):
-              name = m.name
-              if ".model" in name or ".models" in name:
-                  try:
-                      importlib.import_module(name)
-                  except Exception:
-                      # 모델과 무관하거나 환경변수/외부 의존 때문에 깨지는 모듈은 무시
-                      pass
-
-          async def main():
-              engine = create_async_engine(os.environ["DATABASE_URL"])
-              async with engine.begin() as conn:
-                  await conn.run_sync(SQLModel.metadata.create_all)
-
-          asyncio.run(main())
-          PY
-
-      # ✅ 핵심: pytest 전에 스키마 준비(알렘빅 있으면 upgrade)
-      - name: Prepare DB schema (Alembic if available)
+      - name: Prepare DB schema (Alembic)
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres
           SUPABASE_URL: https://example.supabase.co
           SUPABASE_ANON_KEY: dummy
           SUPABASE_JWT_SECRET: dummy
         run: |
-          if [ -f alembic.ini ]; then
-            echo "alembic.ini found -> running migrations"
-            poetry run alembic upgrade head
-          else
-            echo "alembic.ini not found -> skipping migrations"
-          fi
+          set -euo pipefail
+          poetry run alembic upgrade head
 
       - name: Run tests
         env:

@@ -1,46 +1,44 @@
-# ---------- Builder: 의존성 설치 ----------
+# ---------- Builder ----------
 FROM python:3.11-slim AS builder
 
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-ENV POETRY_NO_INTERACTION=1
-ENV POETRY_VIRTUALENVS_IN_PROJECT=true
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    POETRY_NO_INTERACTION=1 \
+    POETRY_VIRTUALENVS_IN_PROJECT=true
 
 WORKDIR /app
 
-# (HTTPS 다운로드용)
+# (필요 시) 빌드에만 필요한 도구들: 일부 패키지(cryptography, lxml 등)가 소스빌드 필요할 때 대비
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    build-essential \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir poetry
+
+COPY pyproject.toml poetry.lock* ./
+RUN poetry install --only main --no-root
+
+COPY . .
+
+
+# ---------- Runtime ----------
+FROM python:3.11-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# 런타임에 필요한 인증서만(HTTPS 호출 등)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-# Poetry 설치(빌드 단계에서만)
-RUN pip install --no-cache-dir poetry
-
-# 의존성 파일만 복사(캐시 최적화)
-COPY pyproject.toml poetry.lock* ./
-
-# 운영용 의존성만 설치(dev group 제외)
-RUN poetry install --only main --no-root
-
-# 소스 복사
-COPY . .
-
-
-# ---------- Runtime: 실행만 담당(경량) ----------
-FROM python:3.11-slim AS runtime
-
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-WORKDIR /app
-
-# builder에서 만든 .venv + 앱 코드 복사
 COPY --from=builder /app /app
-
-# venv 우선
 ENV PATH="/app/.venv/bin:$PATH"
 
+# ECS/ALB에서 컨테이너 포트는 보통 고정 운영 (기본 8000)
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
