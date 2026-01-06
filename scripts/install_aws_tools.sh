@@ -1,5 +1,3 @@
-mkdir -p scripts
-cat > scripts/install_aws_tools.sh <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -105,6 +103,3 @@ echo "==> Done."
 echo "    Verify:"
 echo "      aws --version"
 echo "      copilot --version"
-EOF
-
-chmod +x scripts/install_aws_tools.sh
