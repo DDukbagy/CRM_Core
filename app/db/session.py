@@ -11,20 +11,9 @@ from sqlalchemy.engine.url import make_url
 
 from app.core.config import settings
 
-connect_args = {}
-
-SUPABASE_CA = Path(__file__).resolve().parent.parent / "certs" / "prod-ca-2021.crt"
-
-if not SUPABASE_CA.exists():
-    raise FileNotFoundError(f"Supabase CA not found: {SUPABASE_CA}")
-
-ssl_ctx = ssl.create_default_context(cafile=certifi.where())
-ssl_ctx.load_verify_locations(cafile=str(SUPABASE_CA))
-
-if os.getenv("DB_SSL_DISABLE") == "1" or "@crm-pg:" in settings.DATABASE_URL:
-    connect_args["ssl"] = None
 
 def get_async_db_url() -> str:
+    # ASYNC_DATABASE_URL이 있으면 그대로 사용
     async_url = getattr(settings, "ASYNC_DATABASE_URL", None)
     if async_url:
         return async_url
@@ -33,29 +22,58 @@ def get_async_db_url() -> str:
     if not db_url:
         raise RuntimeError("DATABASE_URL 또는 ASYNC_DATABASE_URL이 필요합니다.")
 
-    # DATABASE_URL(postgresql://...) -> postgresql+asyncpg://... 로 변환
-    return str(make_url(db_url).set(drivername="postgresql+asyncpg"))
+    # postgresql:// -> postgresql+asyncpg:// 로 변환 (이미 asyncpg면 그대로)
+    url = make_url(db_url)
+    if url.drivername != "postgresql+asyncpg":
+        url = url.set(drivername="postgresql+asyncpg")
+    return str(url)
+
+
+def build_ssl_context():
+    """
+    기본: SSL 검증 ON
+    DB_SSL_DISABLE=1 이면 ssl=None 으로 강제 비활성화 (운영에서는 비권장)
+    DB_SSL_CA_PATH 가 있고 파일이 존재하면 추가 로드
+    """
+    if os.getenv("DB_SSL_DISABLE") == "1":
+        return None
+
+    ctx = ssl.create_default_context(cafile=certifi.where())
+
+    ca_path = os.getenv("DB_SSL_CA_PATH")
+    if ca_path and os.path.exists(ca_path):
+        ctx.load_verify_locations(cafile=ca_path)
+
+    return ctx
+
 
 def make_engine():
-    ssl_ctx = ssl.create_default_context()
+    db_url = get_async_db_url()
+    url = make_url(db_url)
+
+    # pooler 판별 (Supabase pooler는 보통 6543 / host에 pooler 포함)
+    is_pooler = (url.port == 6543) or ("pooler" in (url.host or ""))
+
+    ssl_ctx = build_ssl_context()
+
+    connect_args = {}
+    if ssl_ctx is None:
+        connect_args["ssl"] = None
+    else:
+        connect_args["ssl"] = ssl_ctx
+
+    # pgbouncer(pooler)면 statement cache 끄는 게 안전
+    if is_pooler:
+        connect_args["statement_cache_size"] = 0
 
     common = dict(
         echo=settings.DB_ECHO,
         pool_pre_ping=True,
-        connect_args={"ssl": ssl_ctx, "statement_cache_size": 0},
+        connect_args=connect_args,
     )
 
-    db_url = get_async_db_url()
-    url = make_url(db_url)
-
-    is_pooler = (url.port == 6543) or ("pooler" in (url.host or ""))
-
     if is_pooler:
-        return create_async_engine(
-            db_url,
-            poolclass=NullPool,
-            **common,
-        )
+        return create_async_engine(db_url, poolclass=NullPool, **common)
 
     return create_async_engine(
         db_url,
@@ -64,6 +82,7 @@ def make_engine():
         pool_timeout=30,
         **common,
     )
+
 
 engine = make_engine()
 
