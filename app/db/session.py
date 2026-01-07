@@ -24,6 +24,18 @@ ssl_ctx.load_verify_locations(cafile=str(SUPABASE_CA))
 if os.getenv("DB_SSL_DISABLE") == "1" or "@crm-pg:" in settings.DATABASE_URL:
     connect_args["ssl"] = None
 
+def get_async_db_url() -> str:
+    async_url = getattr(settings, "ASYNC_DATABASE_URL", None)
+    if async_url:
+        return async_url
+
+    db_url = getattr(settings, "DATABASE_URL", None)
+    if not db_url:
+        raise RuntimeError("DATABASE_URL 또는 ASYNC_DATABASE_URL이 필요합니다.")
+
+    # DATABASE_URL(postgresql://...) -> postgresql+asyncpg://... 로 변환
+    return str(make_url(db_url).set(drivername="postgresql+asyncpg"))
+
 def make_engine():
     ssl_ctx = ssl.create_default_context()
 
@@ -33,20 +45,20 @@ def make_engine():
         connect_args={"ssl": ssl_ctx, "statement_cache_size": 0},
     )
 
-    url = make_url(settings.ASYNC_DATABASE_URL)
+    db_url = get_async_db_url()
+    url = make_url(db_url)
 
-    # 보통 Supabase pooler는 6543이거나 host에 'pooler'가 포함됨
     is_pooler = (url.port == 6543) or ("pooler" in (url.host or ""))
 
     if is_pooler:
         return create_async_engine(
-            settings.ASYNC_DATABASE_URL,
+            db_url,
             poolclass=NullPool,
             **common,
         )
 
     return create_async_engine(
-        settings.ASYNC_DATABASE_URL,
+        db_url,
         pool_size=5,
         max_overflow=10,
         pool_timeout=30,

@@ -45,3 +45,8 @@
 # export PATH="$HOME/.local/bin:$PATH"
 # aws --version
 # copilot --version
+
+# 실행 중인 포트 이름 확인
+# docker ps -a --filter name=crm-backend
+# 포트 종료
+# docker stop "포트 이름"
