@@ -49,38 +49,24 @@ def build_ssl_context():
 
 def make_engine():
     db_url = get_async_db_url()
-    url = make_url(db_url)
-
-    # pooler 판별 (Supabase pooler는 보통 6543 / host에 pooler 포함)
-    is_pooler = (url.port == 6543) or ("pooler" in (url.host or ""))
-
-    ssl_ctx = build_ssl_context()
 
     connect_args = {}
-    if ssl_ctx is None:
+
+    # 기본: SSL 검증 ON (Supabase CA로 검증)
+    # 단, 로컬 테스트에서만 끄고 싶으면 DB_SSL_DISABLE=1 로 실행
+    if os.getenv("DB_SSL_DISABLE") == "1":
         connect_args["ssl"] = None
     else:
+        SUPABASE_CA = Path(__file__).resolve().parent.parent / "certs" / "prod-ca-2021.crt"
+        ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+        ssl_ctx.load_verify_locations(cafile=str(SUPABASE_CA))
         connect_args["ssl"] = ssl_ctx
-
-    # pgbouncer(pooler)면 statement cache 끄는 게 안전
-    if is_pooler:
-        connect_args["statement_cache_size"] = 0
-
-    common = dict(
-        echo=settings.DB_ECHO,
-        pool_pre_ping=True,
-        connect_args=connect_args,
-    )
-
-    if is_pooler:
-        return create_async_engine(db_url, poolclass=NullPool, **common)
 
     return create_async_engine(
         db_url,
-        pool_size=5,
-        max_overflow=10,
-        pool_timeout=30,
-        **common,
+        echo=settings.DB_ECHO,
+        pool_pre_ping=True,
+        connect_args=connect_args,
     )
 
 
