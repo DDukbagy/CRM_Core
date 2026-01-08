@@ -39,6 +39,15 @@ network:
 #secrets:                      # Pass secrets from AWS Systems Manager (SSM) Parameter Store.
 #  GITHUB_TOKEN: GITHUB_TOKEN  # The key is the name of the environment variable, the value is the name of the SSM parameter.
 
+variables:
+  SUPABASE_URL: "https://xkyklpdjfjveacqldiug.supabase.co"
+
+secrets:
+  DATABASE_URL: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/DATABASE_URL
+  SUPABASE_JWT_SECRET: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/SUPABASE_JWT_SECRET
+  SUPABASE_ANON_KEY: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/SUPABASE_ANON_KEY
+
+
 # You can override any of the values defined above by environment.
 #environments:
 #  test:
