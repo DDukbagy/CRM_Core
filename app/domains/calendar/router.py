@@ -82,7 +82,7 @@ def _raise_booking_conflict(*, time_slot_id: int, when: date) -> None:
 async def create_my_calendar(
     data: CalendarCreate,
     session: AsyncSession = Depends(get_session),
-    host: CurrentUser = Depends(require_role({"INSTRUCTOR", "MANAGER", "ADMIN"})),
+    host: CurrentUser = Depends(require_role({"INSTRUCTOR", "CONTENT_MANAGER", "ADMIN"})),
 ):
     host_id = UUID(str(host.id))
 
@@ -105,7 +105,7 @@ async def create_my_calendar(
 @cal_router.get("/me", response_model=CalendarRead)
 async def get_my_calendar(
     session: AsyncSession = Depends(get_session),
-    host: CurrentUser = Depends(require_role({"INSTRUCTOR", "MANAGER", "ADMIN"})),
+    host: CurrentUser = Depends(require_role({"INSTRUCTOR", "CONTENT_MANAGER", "ADMIN"})),
 ):
     host_id = UUID(str(host.id))
 
@@ -120,7 +120,7 @@ async def get_my_calendar(
 async def update_my_calendar(
     data: CalendarUpdate,
     session: AsyncSession = Depends(get_session),
-    host: CurrentUser = Depends(require_role({"INSTRUCTOR", "MANAGER", "ADMIN"})),
+    host: CurrentUser = Depends(require_role({"INSTRUCTOR", "CONTENT_MANAGER", "ADMIN"})),
 ):
     host_id = UUID(str(host.id))
 
@@ -150,7 +150,7 @@ async def update_my_calendar(
 async def add_time_slot(
     data: TimeSlotCreate,
     session: AsyncSession = Depends(get_session),
-    host: CurrentUser = Depends(require_role({"INSTRUCTOR", "MANAGER", "ADMIN"})),
+    host: CurrentUser = Depends(require_role({"INSTRUCTOR", "CONTENT_MANAGER", "ADMIN"})),
 ):
     if data.end_time <= data.start_time:
         raise HTTPException(status_code=400, detail="end_time must be after start_time")
@@ -176,7 +176,7 @@ async def add_time_slot(
 @cal_router.get("/me/time-slots", response_model=list[TimeSlotRead])
 async def list_my_time_slots(
     session: AsyncSession = Depends(get_session),
-    host: CurrentUser = Depends(require_role({"INSTRUCTOR", "MANAGER", "ADMIN"})),
+    host: CurrentUser = Depends(require_role({"INSTRUCTOR", "CONTENT_MANAGER", "ADMIN"})),
 ):
     host_id = UUID(str(host.id))
     calendar_id = await _get_calendar_id_by_host(session, host_id)
@@ -194,7 +194,7 @@ async def update_time_slot(
     slot_id: int,
     data: TimeSlotUpdate,
     session: AsyncSession = Depends(get_session),
-    host: CurrentUser = Depends(require_role({"INSTRUCTOR", "MANAGER", "ADMIN"})),
+    host: CurrentUser = Depends(require_role({"INSTRUCTOR", "CONTENT_MANAGER", "ADMIN"})),
 ):
     host_id = UUID(str(host.id))
     calendar_id = await _get_calendar_id_by_host(session, host_id)
@@ -230,7 +230,7 @@ async def update_time_slot(
 async def delete_time_slot(
     slot_id: int,
     session: AsyncSession = Depends(get_session),
-    host: CurrentUser = Depends(require_role({"INSTRUCTOR", "MANAGER", "ADMIN"})),
+    host: CurrentUser = Depends(require_role({"INSTRUCTOR", "CONTENT_MANAGER", "ADMIN"})),
 ):
     """
     TimeSlot 삭제는 '예약이 하나도 없을 때만' 허용
@@ -413,7 +413,7 @@ async def list_my_calendar_bookings(
     start: date = Query(..., description="조회 시작일 (YYYY-MM-DD)"),
     end: date = Query(..., description="조회 종료일 (YYYY-MM-DD)"),
     session: AsyncSession = Depends(get_session),
-    host: CurrentUser = Depends(require_role({"INSTRUCTOR", "MANAGER", "ADMIN"})),
+    host: CurrentUser = Depends(require_role({"INSTRUCTOR", "CONTENT_MANAGER", "ADMIN"})),
 ):
     if end < start:
         raise HTTPException(status_code=400, detail="end must be >= start")
@@ -469,7 +469,7 @@ async def cancel_booking_as_guest(
 async def cancel_booking_as_host(
     booking_id: int,
     session: AsyncSession = Depends(get_session),
-    host: CurrentUser = Depends(require_role({"INSTRUCTOR", "MANAGER", "ADMIN"})),
+    host: CurrentUser = Depends(require_role({"INSTRUCTOR", "CONTENT_MANAGER", "ADMIN"})),
 ):
     """
     호스트(코치) 취소

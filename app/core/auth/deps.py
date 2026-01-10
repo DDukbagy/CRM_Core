@@ -115,8 +115,59 @@ async def get_current_user(
     )
 
 def require_role(allowed_roles: set[str]):
+    allowed = {r.upper() for r in allowed_roles}
+
     def _guard(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
-        if (user.role or "").upper() not in allowed_roles:
+        if (user.role or "").upper() not in allowed:
             raise HTTPException(status_code=403, detail="Insufficient role")
         return user
+
+    return _guard
+
+async def _is_staff_of_instructor(
+    session: AsyncSession,
+    *,
+    instructor_id: str,
+    staff_user_id: str,
+) -> bool:
+    res = await session.execute(
+        text(
+            """
+            select 1
+            from public.instructor_staff
+            where instructor_id = :instructor_id
+              and staff_user_id = :staff_user_id
+            limit 1
+            """
+        ),
+        {"instructor_id": instructor_id, "staff_user_id": staff_user_id},
+    )
+    return res.first() is not None
+
+def require_instructor_or_staff(instructor_id: str):
+    async def _guard(
+        user: CurrentUser = Depends(get_current_user),
+        session: AsyncSession = Depends(get_session),
+    ) -> CurrentUser:
+        role = (user.role or "").upper()
+
+        # ADMIN은 항상 허용
+        if role == "ADMIN":
+            return user
+
+        # 강사 본인 허용
+        if role == "INSTRUCTOR" and str(user.id) == str(instructor_id):
+            return user
+
+        # 콘텐츠 매니저는 위임관계 있을 때만 허용
+        if role == "CONTENT_MANAGER":
+            ok = await _is_staff_of_instructor(
+                session,
+                instructor_id=str(instructor_id),
+                staff_user_id=str(user.id),
+            )
+            if ok:
+                return user
+
+        raise HTTPException(status_code=403, detail="Insufficient role")
     return _guard

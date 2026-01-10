@@ -36,7 +36,7 @@ class User(SQLModel, table=True):
     role: str = Field(
         sa_type=String(20),
         nullable=False,
-        description="사용자 역할 (CUSTOMER, INSTRUCTOR, MANAGER, ADMIN)",
+        description="사용자 역할 (CUSTOMER, INSTRUCTOR, CONTENT_MANAGER, ADMIN)",
     )
 
     password: Optional[str] = Field(default=None, max_length=128, description="사용자 비밀번호")

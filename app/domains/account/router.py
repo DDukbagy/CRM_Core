@@ -151,7 +151,7 @@ async def update_my_account(
 @router.get("/{user_id}", response_model=UserRead)
 async def get_account_by_id(
     user_id: UUID,
-    current_host: CurrentUser = Depends(require_role({"INSTRUCTOR", "MANAGER", "ADMIN"})),
+    current_host: CurrentUser = Depends(require_role({"INSTRUCTOR", "CONTENT_MANAGER", "ADMIN"})),
     session: AsyncSession = Depends(get_session),
 ):
     """
@@ -172,7 +172,7 @@ async def get_account_by_id(
 
 @router.get("", response_model=UsersListResponse)
 async def list_accounts(
-    current_host: CurrentUser = Depends(require_role({"INSTRUCTOR", "MANAGER", "ADMIN"})),
+    current_host: CurrentUser = Depends(require_role({"INSTRUCTOR", "CONTENT_MANAGER", "ADMIN"})),
     session: AsyncSession = Depends(get_session),
     limit: int = 50,
     offset: int = 0,
