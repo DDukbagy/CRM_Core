@@ -13,8 +13,12 @@ from app.domains.calendar.router import router as calendar_router
 from app.core.exceptions import register_exception_handlers
 from app.core.middleware import RequestLoggingMiddleware
 from app.domains.auth.router import router as auth_router
+from app.domains.instructor.router import router as instructor_router
+
 
 app = FastAPI()
+
+app.include_router(instructor_router)
 
 app.add_middleware(RequestLoggingMiddleware)
 
