@@ -15,7 +15,7 @@ class UserRead(BaseModel):
     username: str
     email: EmailStr | None = None
     display_name: str
-    is_host: bool
+    role: str
     created_at: datetime
     updated_at: datetime
 
@@ -54,7 +54,7 @@ class UserCreateFromAuth(BaseModel):
     username: str
     email: EmailStr | None = None
     display_name: str
-    is_host: bool = False
+    role: str = "CUSTOMER"
 
     model_config = {"extra": "forbid"}
     
