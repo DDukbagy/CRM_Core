@@ -35,6 +35,8 @@
 
 # 문자열 찾기
 # grep -R "찾을문자열" . 
+# grep -RIn --exclude-dir=.venv --exclude-dir=.git "찾을문자열" .
+
 
 # awscliv2.zip 사라졌을때 살리는 법(스크립트 실행 명령어)
 # ./scripts/install_aws_tools.sh
