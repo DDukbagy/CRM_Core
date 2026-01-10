@@ -1,54 +1,27 @@
 # crm_backend
-# uvicorn app.main:app --roload
 
-# 개발용
-# docker build -f Dockerfile.dev -t crm-dev .
-# docker run --rm -p 8000:8000 --env-file .env crm-dev
+## Quick Start
 
-# 배포용
-# docker build -t crm-prod .
-# docker run --rm -p 8000:8000 --env-file .env crm-prod
+```bash
+# 최초 1회
+authmod +x scripts/verify.sh
+make verify
+```
 
-# 서버 구동 확인
-# poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+* 서버가 꺼져 있으면 자동 실행
+* 토큰 발급 → 플로우 실행까지 원클릭
 
-# 테스트 토큰 실행 코드
-# source scripts/dev_tokens.sh
-# source scripts/load_tokens.sh << 토큰 만료시 실행
-# ./scripts/run_flow.sh
+## Common Commands
 
-# 원클릭 테스트
-# chmod +x scripts/verify.sh << 최초 1회 권한 실행
-# ./scripts/verify.sh
+```bash
+make server        # 개발 서버 실행
+make verify        # 원클릭 검증
+make tokens        # 테스트 토큰 발급
+make flow          # 플로우 실행
+make test          # 테스트 실행
+```
 
-# autogenerate로 new migration만들기
-# poetry run alembic revision --autogenerate -m "..."
-# poetry run alembic upgrade head
-# 버전 일치하는지 확인하기
-# poetry run alembic current
-# poetry run alembic heads
+자세한 내용은 아래 문서를 참고하세요.
 
-# 수정없이 CI돌리는법
-# git commit --allow-empty -m "chore: trigger ci"
-# git push
-
-
-# 문자열 찾기
-# grep -R "찾을문자열" . 
-# grep -RIn --exclude-dir=.venv --exclude-dir=.git "찾을문자열" .
-
-
-# awscliv2.zip 사라졌을때 살리는 법(스크립트 실행 명령어)
-# ./scripts/install_aws_tools.sh
-# 설치 후 확인
-# aws --version
-# copilot --version
-# aws: command not found가 뜰 경우
-# export PATH="$HOME/.local/bin:$PATH"
-# aws --version
-# copilot --version
-
-# 실행 중인 포트 이름 확인
-# docker ps -a --filter name=crm-backend
-# 포트 종료
-# docker stop "포트 이름"
+* 개발 명령어 모음: `docs/dev-runbook.md`
+* 문제 해결 모음: `docs/troubleshooting.md`
