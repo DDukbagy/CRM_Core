@@ -138,16 +138,29 @@ grep: ## Search string (usage: make grep Q="text")
 # Supabase access token (password grant)
 # -----------------------------
 .PHONY: supabase-token
-supabase-token: ## Get Supabase access token (requires SUPABASE_URL SUPABASE_ANON_KEY EMAIL PASSWORD)
-	@$(call require_var,SUPABASE_URL)
-	@$(call require_var,SUPABASE_ANON_KEY)
-	@$(call require_var,EMAIL)
-	@$(call require_var,PASSWORD)
-	curl -sS "$(SUPABASE_URL)/auth/v1/token?grant_type=password" \
-	  -H "apikey: $(SUPABASE_ANON_KEY)" \
-	  -H "Authorization: Bearer $(SUPABASE_ANON_KEY)" \
+supabase-token: ## Prompt for SUPABASE_URL/ANON_KEY/EMAIL/PASSWORD then fetch token
+	@set -euo pipefail; \
+	if [ -z "$${SUPABASE_URL:-}" ]; then \
+	  read -r -p "SUPABASE_URL (e.g. https://xxxx.supabase.co): " SUPABASE_URL; \
+	fi; \
+	if [ -z "$${SUPABASE_ANON_KEY:-}" ]; then \
+	  read -r -s -p "SUPABASE_ANON_KEY: " SUPABASE_ANON_KEY; echo; \
+	fi; \
+	if [ -z "$${EMAIL:-}" ]; then \
+	  read -r -p "EMAIL: " EMAIL; \
+	fi; \
+	if [ -z "$${PASSWORD:-}" ]; then \
+	  read -r -s -p "PASSWORD: " PASSWORD; echo; \
+	fi; \
+	\
+	# basic guard against placeholders \
+	case "$$SUPABASE_URL" in *"..."*|*"<"*">"*) echo "❌ SUPABASE_URL looks like a placeholder. Use a real https://<ref>.supabase.co"; exit 1;; esac; \
+	\
+	curl -sS "$$SUPABASE_URL/auth/v1/token?grant_type=password" \
+	  -H "apikey: $$SUPABASE_ANON_KEY" \
+	  -H "Authorization: Bearer $$SUPABASE_ANON_KEY" \
 	  -H "Content-Type: application/json" \
-	  -d "{\"email\":\"$(EMAIL)\",\"password\":\"$(PASSWORD)\"}" | python -m json.tool
+	  -d "{\"email\":\"$$EMAIL\",\"password\":\"$$PASSWORD\"}" | python -m json.tool
 
 # -----------------------------
 # AWS tools install/check

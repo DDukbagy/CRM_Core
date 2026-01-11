@@ -106,7 +106,7 @@ make grep Q="검색어"
 ## 9. Supabase access_token 발급
 
 ```bash
-make supabase-token SUPABASE_URL=... SUPABASE_ANON_KEY=... EMAIL=... PASSWORD=...
+make supabase-token
 ```
 
 ---
