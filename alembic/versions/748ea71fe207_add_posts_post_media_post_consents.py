@@ -1,7 +1,7 @@
 """add posts post_media post_consents
 
 Revision ID: 748ea71fe207
-Revises: 9594d6202a67
+Revises: bbcea793ca6d
 Create Date: 2026-01-11 02:27:10.194650
 
 """
@@ -14,7 +14,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = '748ea71fe207'
-down_revision: Union[str, Sequence[str], None] = '9594d6202a67'
+down_revision: Union[str, Sequence[str], None] = 'bbcea793ca6d'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
