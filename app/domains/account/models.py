@@ -33,8 +33,13 @@ class User(SQLModel, table=True):
 
     display_name: str = Field(max_length=40, description="사용자 표시 이름")
 
+    role: str = Field(
+        sa_type=String(20),
+        nullable=False,
+        description="사용자 역할 (CUSTOMER, INSTRUCTOR, CONTENT_MANAGER, ADMIN)",
+    )
+
     password: Optional[str] = Field(default=None, max_length=128, description="사용자 비밀번호")
-    is_host: bool = Field(default=False, description="사용자가 호스트인지 여부")
 
     created_at: Optional[AwareDatetime] = Field(
         default=None,

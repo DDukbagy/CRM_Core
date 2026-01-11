@@ -26,7 +26,7 @@ class CurrentUser:
     phone: Optional[str]
     username: str
     display_name: str
-    is_host: bool
+    role: str
 
 
 async def get_access_token(
@@ -71,7 +71,7 @@ async def get_current_user(
     result = await session.execute(
         text(
             """
-            select id, email, username, display_name, is_host
+            select id, email, username, display_name, role
             from public.users
             where id = :id
             """
@@ -88,8 +88,8 @@ async def get_current_user(
         await session.execute(
             text(
                 """
-                insert into public.users (id, username, email, display_name, is_host)
-                values (:id, :username, :email, :display_name, false)
+                insert into public.users (id, username, email, display_name, role)
+                values (:id, :username, :email, :display_name, 'CUSTOMER')
                 """
             ),
             {"id": user_id, "username": username, "email": email, "display_name": display_name},
@@ -102,7 +102,7 @@ async def get_current_user(
             phone=phone,
             username=username,
             display_name=display_name,
-            is_host=False,
+            role="CUSTOMER",
         )
 
     return CurrentUser(
@@ -111,11 +111,63 @@ async def get_current_user(
         phone=phone,
         username=row[2],
         display_name=row[3],
-        is_host=bool(row[4]),
+        role=str(row[4]) if row[4] is not None else "CUSTOMER",
     )
 
+def require_role(allowed_roles: set[str]):
+    allowed = {r.upper() for r in allowed_roles}
 
-def require_host(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
-    if not user.is_host:
-        raise HTTPException(status_code=403, detail="Host role required")
-    return user
+    def _guard(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
+        if (user.role or "").upper() not in allowed:
+            raise HTTPException(status_code=403, detail="Insufficient role")
+        return user
+
+    return _guard
+
+async def _is_staff_of_instructor(
+    session: AsyncSession,
+    *,
+    instructor_id: str,
+    staff_user_id: str,
+) -> bool:
+    res = await session.execute(
+        text(
+            """
+            select 1
+            from public.instructor_staff
+            where instructor_id = :instructor_id
+              and staff_user_id = :staff_user_id
+            limit 1
+            """
+        ),
+        {"instructor_id": instructor_id, "staff_user_id": staff_user_id},
+    )
+    return res.first() is not None
+
+def require_instructor_or_staff(instructor_id: str):
+    async def _guard(
+        user: CurrentUser = Depends(get_current_user),
+        session: AsyncSession = Depends(get_session),
+    ) -> CurrentUser:
+        role = (user.role or "").upper()
+
+        # ADMIN은 항상 허용
+        if role == "ADMIN":
+            return user
+
+        # 강사 본인 허용
+        if role == "INSTRUCTOR" and str(user.id) == str(instructor_id):
+            return user
+
+        # 콘텐츠 매니저는 위임관계 있을 때만 허용
+        if role == "CONTENT_MANAGER":
+            ok = await _is_staff_of_instructor(
+                session,
+                instructor_id=str(instructor_id),
+                staff_user_id=str(user.id),
+            )
+            if ok:
+                return user
+
+        raise HTTPException(status_code=403, detail="Insufficient role")
+    return _guard

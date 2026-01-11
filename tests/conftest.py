@@ -38,15 +38,15 @@ async def _ensure_test_user_id(session: AsyncSession) -> uuid.UUID:
     await session.execute(
         text(
             """
-            insert into public.users (id, username, email, display_name, is_host)
-            values (:id, :username, :email, :display_name, false)
+            insert into public.users (id, username, email, display_name, role)
+            values (:id, :username, :email, :display_name, 'CUSTOMER')
             """
         ),
         {
             "id": str(user_id),
             "username": f"test-{user_id.hex[:8]}",
             "email": f"test-{user_id.hex[:8]}@example.com",
-            "display_name": f"test-{user_id.hex[:8]}",  # ✅ 추가
+            "display_name": f"test-{user_id.hex[:8]}",
         },
     )
     await session.commit()

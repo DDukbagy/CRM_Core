@@ -1,14 +1,14 @@
 {
   "name": "crm_backend-devcontainer",
   "build": {
-    "dockerfile": "Dockerfile",
+    "dockerfile": "Dockerfile.devcontainer",
     "context": ".."
   },
   "containerEnv": {
     "POETRY_VIRTUALENVS_IN_PROJECT": "1",
     "POETRY_VIRTUALENVS_CREATE": "1"
   },
-  "postCreateCommand": "bash -lc \"poetry config virtualenvs.in-project true --local && poetry install --no-root\"",
+  "postCreateCommand": "bash -lc \"poetry config virtualenvs.in-project true --local && bash -lc './scripts/install_aws_tools.sh' && poetry install --no-root\"",
   "postStartCommand": "bash -lc \"poetry config virtualenvs.in-project true --local && (test -f .venv/pyvenv.cfg && .venv/bin/python -c 'import fastapi' >/dev/null 2>&1 || poetry install --no-root)\"",
   "customizations": {
     "vscode": {
@@ -25,5 +25,8 @@
         "workbench.colorTheme": "Default Dark+"
       }
     }
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   }
 }

@@ -1,7 +1,7 @@
 """booking unique index active only
 
 Revision ID: bbcea793ca6d
-Revises: 
+Revises: 9594d6202a67
 Create Date: 2025-12-28 10:39:47.428854
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'bbcea793ca6d'
-down_revision: Union[str, Sequence[str], None] = None
+down_revision: Union[str, Sequence[str], None] = '9594d6202a67'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -25,6 +25,11 @@ def upgrade() -> None:
         DO $$
         DECLARE r record;
         BEGIN
+          -- ✅ bookings 테이블이 없으면 아무 것도 하지 않고 종료 (CI 빈 DB 대응)
+          IF to_regclass('public.bookings') IS NULL THEN
+            RETURN;
+          END IF;
+
           FOR r IN
             SELECT c.conname
             FROM pg_constraint c
@@ -44,13 +49,18 @@ def upgrade() -> None:
         """
     )
 
-    # partial unique index 생성 (이미 있으면 스킵)
     op.execute(
-        """
-        CREATE UNIQUE INDEX IF NOT EXISTS uq_booking_active_slot_date
-        ON public.bookings ("when", time_slot_id)
-        WHERE status <> 'CANCELLED';
-        """
+      """
+      DO $$
+      BEGIN
+        IF to_regclass('public.bookings') IS NOT NULL THEN
+          CREATE UNIQUE INDEX IF NOT EXISTS uq_booking_active_slot_date
+          ON public.bookings ("when", time_slot_id)
+          WHERE status <> 'CANCELLED';
+        END IF;
+      END
+      $$;
+      """
     )
 
 

@@ -14,5 +14,5 @@ async def me(user: CurrentUser = Depends(get_current_user)):
         "phone": user.phone,
         "username": user.username,
         "display_name": user.display_name,
-        "is_host": user.is_host,
+        "role": user.role,
     }
