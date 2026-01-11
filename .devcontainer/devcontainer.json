@@ -8,8 +8,8 @@
     "POETRY_VIRTUALENVS_IN_PROJECT": "1",
     "POETRY_VIRTUALENVS_CREATE": "1"
   },
-  "postCreateCommand": "bash -lc \"poetry config virtualenvs.in-project true --local && bash -lc './scripts/install_aws_tools.sh' && poetry install --no-root\"",
-  "postStartCommand": "bash -lc \"poetry config virtualenvs.in-project true --local && (test -f .venv/pyvenv.cfg && .venv/bin/python -c 'import fastapi' >/dev/null 2>&1 || poetry install --no-root)\"",
+  "postCreateCommand": "bash -lc \"git config --global --add safe.directory /workspaces/crm_backend && poetry config virtualenvs.in-project true --local && bash -lc './scripts/install_aws_tools.sh' && poetry install --no-root\"",
+  "postStartCommand": "bash -lc \"git config --global --add safe.directory /workspaces/crm_backend && poetry config virtualenvs.in-project true --local && (test -f .venv/pyvenv.cfg && .venv/bin/python -c 'import fastapi' >/dev/null 2>&1 || poetry install --no-root)\"",
   "customizations": {
     "vscode": {
       "extensions": [
