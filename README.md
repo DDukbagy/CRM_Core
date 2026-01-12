@@ -19,6 +19,7 @@ make verify        # 원클릭 검증
 make tokens        # 테스트 토큰 발급
 make flow          # 플로우 실행
 make test          # 테스트 실행
+make release       # release 배포 실행
 ```
 
 
@@ -39,7 +40,7 @@ make test          # 테스트 실행
 3. CI 통과 후 main merge
 4. main merge → **staging 자동 배포**
 5. staging 환경 확인
-6. 승인
+6. 승인 → **tag 형식**
 7. **prod 배포**
 
 ---
