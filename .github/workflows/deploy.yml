@@ -2,7 +2,7 @@ name: deploy
 
 on:
   workflow_run:
-    workflows: ["ci"]  # <- 너의 CI 워크플로우 name: 값과 동일해야 함
+    workflows: ["ci"]  # CI 워크플로우 name: 값과 동일해야 함
     types: [completed]
 
 permissions:
