@@ -1,8 +1,8 @@
-name: deploy
+name: Deploy
 
 on:
   workflow_run:
-    workflows: ["ci"]  # CI 워크플로우 name: 값과 동일해야 함
+    workflows: ["CI"]
     types: [completed]
 
 permissions:
@@ -23,4 +23,22 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Install AWS Copilot
+        run: |
+          curl -sSL https://github.com/aws/copilot-cli/releases/latest/download/copilot-linux -o copilot
+          chmod +x copilot
+          sudo mv copilot /usr/local/bin/copilot
+          copilot --version
+
+      - name: Deploy (prod)
+        run: copilot deploy --name api --env prod
