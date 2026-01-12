@@ -35,10 +35,10 @@ jobs:
 
       - name: Install AWS Copilot
         run: |
-          curl -Lo copilot https://github.com/aws/copilot-cli/releases/latest/download/copilot-linux
-          chmod +x copilot
+          curl -Lo copilot-cli https://github.com/aws/copilot-cli/releases/latest/download/copilot-linux
+          chmod +x copilot-cli
           mkdir -p ~/.local/bin
-          mv copilot ~/.local/bin/copilot
+          mv copilot-cli ~/.local/bin/copilot
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           copilot --version
 
