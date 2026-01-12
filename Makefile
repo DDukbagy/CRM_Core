@@ -186,3 +186,44 @@ docker-ps: ## List containers filtered by name (usage: make docker-ps NAME=crm-b
 docker-stop: ## Stop container by ID or name (usage: make docker-stop ID=<container_id_or_name>)
 	@$(call require_var,ID)
 	docker stop "$(ID)"
+
+# =============================
+# 기존 Makefile 내용은 절대 수정하지 말 것
+# 아래는 AWS / Copilot 운영 편의용 추가 타겟
+# =============================
+
+.PHONY: aws-whoami
+aws-whoami: ## Check current AWS identity
+	aws sts get-caller-identity
+
+.PHONY: copilot-envs
+copilot-envs: ## List copilot environments
+	copilot env ls
+
+.PHONY: copilot-status-staging
+copilot-status-staging: ## Show staging service status
+	copilot svc status --name api --env staging
+
+.PHONY: copilot-status-prod
+copilot-status-prod: ## Show prod service status
+	copilot svc status --name api --env prod
+
+.PHONY: copilot-deploy-staging
+copilot-deploy-staging: ## Manually deploy to staging
+	copilot svc deploy --name api --env staging
+
+.PHONY: copilot-deploy-prod
+copilot-deploy-prod: ## Manually deploy to prod (use with caution)
+	copilot svc deploy --name api --env prod
+
+.PHONY: copilot-logs-staging
+copilot-logs-staging: ## Follow staging logs
+	copilot svc logs --name api --env staging --follow
+
+.PHONY: copilot-logs-prod
+copilot-logs-prod: ## Follow prod logs
+	copilot svc logs --name api --env prod --follow
+
+.PHONY: copilot-exec-staging
+copilot-exec-staging: ## Exec into staging task
+	copilot svc exec --name api --env staging
