@@ -5,6 +5,7 @@ on:
   workflow_run:
     workflows: ["CI"]     # CI workflow 이름과 동일
     types: [completed]
+    branches: [main]
 
   # 2) 태그(v*)를 푸시하면 prod 배포 (승인 대체)
   push:
@@ -52,6 +53,60 @@ jobs:
 
       - name: Deploy (staging)
         run: copilot svc deploy --name api --env staging
+
+      - name: Install jq (for parsing copilot json)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Resolve staging URL
+        id: staging_url
+        run: |
+          # copilot svc show --json에서 첫 번째 route url을 가져온다.
+          STAGING_URL=$(copilot svc show --name api --env staging --json | jq -r '.routes[0].url')
+          if [ -z "$STAGING_URL" ] || [ "$STAGING_URL" = "null" ]; then
+            echo "ERROR: Failed to resolve staging URL from copilot svc show"
+            exit 1
+          fi
+          echo "STAGING_URL=$STAGING_URL" >> "$GITHUB_OUTPUT"
+          echo "Staging URL: $STAGING_URL"
+
+      - name: Wait for service to be ready
+        run: |
+          # 배포 직후 ALB/타겟그룹 안정화 시간 약간 기다림
+          sleep 10
+
+      - name: Smoke test (staging) - /health must be 200
+        run: |
+          set -euo pipefail
+          URL="${{ steps.staging_url.outputs.STAGING_URL }}"
+          echo "GET $URL/health"
+          # -f: 4xx/5xx면 실패 처리
+          curl -fS "$URL/health"
+
+      - name: Rehearsal check (staging) - /docs reachable (FastAPI)
+        run: |
+          set -euo pipefail
+          URL="${{ steps.staging_url.outputs.STAGING_URL }}"
+          echo "GET $URL/docs"
+          curl -fS "$URL/docs" > /dev/null
+
+      # (선택) DB/외부 연결까지 확인하는 readiness 엔드포인트가 있다면 여기서 켜기
+      # - name: Rehearsal check (staging) - /health/ready (DB + deps)
+      #   run: |
+      #     set -euo pipefail
+      #     URL="${{ steps.staging_url.outputs.STAGING_URL }}"
+      #     echo "GET $URL/health/ready"
+      #     curl -fS "$URL/health/ready"
+
+      # (선택) 너의 핵심 기능 API 1개를 호출해서 리허설 수준 확인
+      # 예: 인증/프로필/간단 조회 등 (토큰 필요하면 github secrets에서 토큰 받아서 헤더 붙이기)
+      # - name: Rehearsal check (staging) - core API call
+      #   run: |
+      #     set -euo pipefail
+      #     URL="${{ steps.staging_url.outputs.STAGING_URL }}"
+      #     curl -fS "$URL/api/v1/some-endpoint"
+
 
   deploy-prod:
     name: Deploy (prod)
