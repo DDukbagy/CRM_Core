@@ -15,12 +15,14 @@ from app.core.middleware import RequestLoggingMiddleware
 from app.domains.auth.router import router as auth_router
 from app.domains.instructor.router import router as instructor_router
 from app.domains.posts.router import router as posts_router
+from app.api.health import router as health_router
 
 
 app = FastAPI()
 
 app.include_router(instructor_router)
 app.include_router(posts_router)
+app.include_router(health_router)
 
 app.add_middleware(RequestLoggingMiddleware)
 
@@ -37,16 +39,6 @@ register_exception_handlers(app)
 
 @app.get("/")
 async def root():
-    return {"status": "ok"}
-
-
-@app.get("/health/db")
-async def health_db(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(text("SELECT 1"))
-    return {"status": "ok"}
-
-@app.get("/health")
-async def health():
     return {"status": "ok"}
 
 

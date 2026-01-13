@@ -228,13 +228,6 @@ copilot-logs-prod: ## Follow prod logs
 copilot-exec-staging: ## Exec into staging task
 	copilot svc exec --name api --env staging
 
-# =============================
-# Release helpers (tag -> prod deploy trigger)
-# =============================
-
-# =============================
-# Release helpers (tag -> prod deploy trigger)
-# =============================
 
 # =============================
 # Release helpers (tag -> prod deploy trigger)
