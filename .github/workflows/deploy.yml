@@ -62,12 +62,24 @@ jobs:
       - name: Resolve staging URL
         id: staging_url
         run: |
-          # copilot svc show --json에서 첫 번째 route url을 가져온다.
-          STAGING_URL=$(copilot svc show --name api --env staging --json | jq -r '.routes[0].url')
+          set -euo pipefail
+
+          ENV_NAME="staging"
+
+          # svc show는 --env가 없음. routes에서 environment=staging인 것만 골라서 url 뽑아야 함.
+          STAGING_URL=$(
+            copilot svc show --name api --json \
+            | jq -r --arg env "$ENV_NAME" '.routes[] | select(.environment==$env) | .url' \
+            | head -n 1
+          )
+
           if [ -z "$STAGING_URL" ] || [ "$STAGING_URL" = "null" ]; then
             echo "ERROR: Failed to resolve staging URL from copilot svc show"
+            echo "DEBUG: copilot svc show output:"
+            copilot svc show --name api --json | jq .
             exit 1
           fi
+
           echo "STAGING_URL=$STAGING_URL" >> "$GITHUB_OUTPUT"
           echo "Staging URL: $STAGING_URL"
 
@@ -76,13 +88,12 @@ jobs:
           # 배포 직후 ALB/타겟그룹 안정화 시간 약간 기다림
           sleep 10
 
-      - name: Smoke test (staging) - /health must be 200
+      - name: Smoke test (staging) - /health/ready must be 200
         run: |
           set -euo pipefail
           URL="${{ steps.staging_url.outputs.STAGING_URL }}"
-          echo "GET $URL/health"
-          # -f: 4xx/5xx면 실패 처리
-          curl -fS "$URL/health"
+          echo "GET $URL/health/ready"
+          curl -fS "$URL/health/ready"
 
       - name: Rehearsal check (staging) - /docs reachable (FastAPI)
         run: |
