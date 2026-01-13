@@ -186,3 +186,87 @@ docker-ps: ## List containers filtered by name (usage: make docker-ps NAME=crm-b
 docker-stop: ## Stop container by ID or name (usage: make docker-stop ID=<container_id_or_name>)
 	@$(call require_var,ID)
 	docker stop "$(ID)"
+
+# =============================
+# 기존 Makefile 내용은 절대 수정하지 말 것
+# 아래는 AWS / Copilot 운영 편의용 추가 타겟
+# =============================
+
+.PHONY: aws-whoami
+aws-whoami: ## Check current AWS identity
+	aws sts get-caller-identity
+
+.PHONY: copilot-envs
+copilot-envs: ## List copilot environments
+	copilot env ls
+
+.PHONY: copilot-status-staging
+copilot-status-staging: ## Show staging service status
+	copilot svc status --name api --env staging
+
+.PHONY: copilot-status-prod
+copilot-status-prod: ## Show prod service status
+	copilot svc status --name api --env prod
+
+.PHONY: copilot-deploy-staging
+copilot-deploy-staging: ## Manually deploy to staging
+	copilot svc deploy --name api --env staging
+
+.PHONY: copilot-deploy-prod
+copilot-deploy-prod: ## Manually deploy to prod (use with caution)
+	copilot svc deploy --name api --env prod
+
+.PHONY: copilot-logs-staging
+copilot-logs-staging: ## Follow staging logs
+	copilot svc logs --name api --env staging --follow
+
+.PHONY: copilot-logs-prod
+copilot-logs-prod: ## Follow prod logs
+	copilot svc logs --name api --env prod --follow
+
+.PHONY: copilot-exec-staging
+copilot-exec-staging: ## Exec into staging task
+	copilot svc exec --name api --env staging
+
+# =============================
+# Release helpers (tag -> prod deploy trigger)
+# =============================
+
+# =============================
+# Release helpers (tag -> prod deploy trigger)
+# =============================
+
+# =============================
+# Release helpers (tag -> prod deploy trigger)
+# =============================
+
+.PHONY: release
+release: ## Interactive: show latest tag, ask version, tag & push (triggers prod deploy)
+	@set -e; \
+	# 작업트리 깨끗한지 확인 \
+	if [ -n "$$(git status --porcelain)" ]; then \
+		echo "ERROR: Working tree is not clean. Commit/stash first."; \
+		git status --porcelain; \
+		exit 1; \
+	fi; \
+	echo "==> Switching to main & pulling latest..."; \
+	git switch main >/dev/null; \
+	git pull origin main; \
+	LATEST_TAG="$$(git tag -l 'v*' --sort=-v:refname | head -n 1)"; \
+	if [ -z "$$LATEST_TAG" ]; then LATEST_TAG="(none)"; fi; \
+	echo "Latest tag: $$LATEST_TAG"; \
+	read -p "Enter version tag (e.g. v0.1.1): " VERSION; \
+	if [ -z "$$VERSION" ]; then \
+		echo "ERROR: version is required."; \
+		exit 1; \
+	fi; \
+	case "$$VERSION" in v*) ;; *) echo "ERROR: tag must start with 'v' (e.g. v0.1.1)"; exit 1;; esac; \
+	if git rev-parse "$$VERSION" >/dev/null 2>&1; then \
+		echo "ERROR: tag '$$VERSION' already exists (local). Choose a new version."; \
+		exit 1; \
+	fi; \
+	echo "==> Creating annotated tag $$VERSION (message: Release $$VERSION)"; \
+	git tag -a "$$VERSION" -m "Release $$VERSION"; \
+	echo "==> Pushing tag $$VERSION to origin (this triggers prod deploy)..."; \
+	git push origin "$$VERSION"; \
+	echo "✅ Done. Pushed tag $$VERSION."

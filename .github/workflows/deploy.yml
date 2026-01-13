@@ -1,21 +1,29 @@
 name: Deploy
 
 on:
+  # 1) CI가 성공하면(=main push에 대한 CI 완료) staging 자동배포
   workflow_run:
-    workflows: ["CI"]     # CI workflow 이름과 동일하게 설정
+    workflows: ["CI"]     # CI workflow 이름과 동일
     types: [completed]
+
+  # 2) 태그(v*)를 푸시하면 prod 배포 (승인 대체)
+  push:
+    tags:
+      - "v*"
 
 permissions:
   id-token: write
   contents: read
 
 concurrency:
-  group: deploy-prod
+  group: deploy-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  deploy-staging:
+    name: Deploy (staging)
     if: >
+      github.event_name == 'workflow_run' &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'main'
@@ -42,5 +50,53 @@ jobs:
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           copilot --version
 
+      - name: Deploy (staging)
+        run: copilot svc deploy --name api --env staging
+
+  deploy-prod:
+    name: Deploy (prod)
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    # environment: prod   # (선택) environment secrets/vars 쓸 때만 켜. 켜면 prod env에서 tags(v*) 허용 필요.
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure tag commit is contained in main
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Make sure we have enough history for ancestry checks.
+          git fetch --no-tags origin main
+
+          TAG_SHA="$(git rev-list -n 1 "${GITHUB_REF}")"
+          echo "Tag points to: $TAG_SHA"
+
+          if git merge-base --is-ancestor "$TAG_SHA" "origin/main"; then
+            echo "OK: tag commit is contained in origin/main"
+          else
+            echo "ERROR: tag commit is NOT contained in origin/main"
+            exit 1
+          fi
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Install AWS Copilot
+        run: |
+          curl -Lo copilot-cli https://github.com/aws/copilot-cli/releases/latest/download/copilot-linux
+          chmod +x copilot-cli
+          mkdir -p ~/.local/bin
+          mv copilot-cli ~/.local/bin/copilot
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          copilot --version
+
       - name: Deploy (prod)
-        run: copilot deploy --name api --env prod
+        run: copilot svc deploy --name api --env prod
