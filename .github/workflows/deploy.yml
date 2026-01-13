@@ -1,13 +1,14 @@
 name: Deploy
+run-name: >
+  Deploy | ${{ github.event_name }} |
+  ${{ startsWith(github.ref, 'refs/tags/v') && format('prod {0}', github.ref_name) || format('staging {0}', github.event.workflow_run.head_sha) }}
 
 on:
-  # 1) CI가 성공하면(=main push에 대한 CI 완료) staging 자동배포
   workflow_run:
     workflows: ["CI"]     # CI workflow 이름과 동일
     types: [completed]
     branches: [main]
 
-  # 2) 태그(v*)를 푸시하면 prod 배포 (승인 대체)
   push:
     tags:
       - "v*"
@@ -109,13 +110,11 @@ jobs:
           echo "GET $URL/health/ready"
           curl -fS "$URL/health/ready"
 
-      # (선택) 너의 핵심 기능 API 1개를 호출해서 리허설 수준 확인
-      # 예: 인증/프로필/간단 조회 등 (토큰 필요하면 github secrets에서 토큰 받아서 헤더 붙이기)
-      # - name: Rehearsal check (staging) - core API call
-      #   run: |
-      #     set -euo pipefail
-      #     URL="${{ steps.staging_url.outputs.STAGING_URL }}"
-      #     curl -fS "$URL/api/v1/some-endpoint"
+      - name: Rehearsal check (staging) - openapi
+        run: |
+          set -euo pipefail
+          URL="${{ steps.staging_url.outputs.STAGING_URL }}"
+          curl -fS "$URL/openapi.json" > /dev/null
 
 
   deploy-prod:
@@ -187,3 +186,9 @@ jobs:
           fi
           echo "PROD_URL=$PROD_URL" >> "$GITHUB_OUTPUT"
           echo "Prod URL: $PROD_URL"
+
+      - name: Rehearsal check (prod) - openapi
+        run: |
+          set -euo pipefail
+          URL="${{ steps.prod_url.outputs.PROD_URL }}"
+          curl -fS "$URL/openapi.json" > /dev/null
