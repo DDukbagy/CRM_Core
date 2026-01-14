@@ -265,11 +265,15 @@ release: ## Interactive: show latest tag, ask version, tag & push (triggers prod
 	echo "✅ Done. Pushed tag $$VERSION."
 
 .PHONY: branch-reset
-branch-reset: ## Delete a local+remote branch, then create a new branch (interactive)
+branch-reset: ## Switch to main, pull latest, delete local+remote branch, create new branch (interactive)
 	@bash -eu -o pipefail -c '\
 		echo "==> Current branch:"; \
 		current="$$(git rev-parse --abbrev-ref HEAD)"; \
 		echo "    $$current"; \
+		echo ""; \
+		echo "==> Switching to main & pulling latest..."; \
+		git switch main >/dev/null; \
+		git pull origin main; \
 		echo ""; \
 		echo "==> Local branches:"; \
 		git branch --format="%(refname:short)" | sed "s/^/  - /"; \
@@ -282,9 +286,12 @@ branch-reset: ## Delete a local+remote branch, then create a new branch (interac
 			echo "Cancelled."; \
 			exit 0; \
 		fi; \
-		if [ "$$del" = "$$current" ]; then \
-			echo "ERROR: You are currently on '\''$$current'\''; switch to another branch first (e.g. main)."; \
+		if [ "$$del" = "main" ]; then \
+			echo "ERROR: refusing to delete '\''main'\''."; \
 			exit 1; \
+		fi; \
+		if [ "$$del" = "$$current" ]; then \
+			echo "NOTE: you were on '\''$$current'\''; already switched to main."; \
 		fi; \
 		read -r -p "New branch to CREATE (e.g. feature/posts): " new; \
 		if [ -z "$$new" ]; then \
@@ -297,7 +304,7 @@ branch-reset: ## Delete a local+remote branch, then create a new branch (interac
 		echo "==> Deleting remote branch (if exists): origin/$$del"; \
 		git push origin --delete "$$del" 2>/dev/null || echo "  (remote branch not found)"; \
 		echo ""; \
-		echo "==> Creating and switching to: $$new"; \
+		echo "==> Creating and switching to: $$new (from updated main)"; \
 		git switch -c "$$new"; \
 		echo ""; \
 		echo "Done. Now on branch: $$(git rev-parse --abbrev-ref HEAD)"; \

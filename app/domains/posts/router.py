@@ -156,9 +156,10 @@ async def grant_public_consent(
         raise HTTPException(status_code=403, detail="Only owner can grant public consent")
 
     # 상태 변경
+    now = datetime.now(timezone.utc)
     post.status = "PUBLIC"
-    post.published_at = datetime.now(timezone.utc)
-    post.updated_at = datetime.now(timezone.utc)
+    post.published_at = now
+    post.updated_at = now
     session.add(post)
 
     # 로그 남기기
@@ -241,9 +242,10 @@ async def revoke_public_consent(
     if post.owner_user_id != me:
         raise HTTPException(status_code=403, detail="Only owner can revoke public consent")
 
-    post.status = "PRIVATE"
-    post.published_at = None
-    post.updated_at = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
+    post.status = "PUBLIC"
+    post.published_at = now
+    post.updated_at = now
     session.add(post)
 
     await session.execute(
