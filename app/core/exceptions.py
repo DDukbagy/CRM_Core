@@ -68,8 +68,18 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):
-        # 예상 못한 에러는 로그 남기고 500 포맷 통일
-        logger.exception("Unhandled exception: %s", exc)
+        # 예상 못한 에러는 반드시 로그에 남기기 (uvicorn.error로도 찍어서 Copilot logs에서 보이게)
+        uvicorn_logger = logging.getLogger("uvicorn.error")
+
+        # request context도 같이 남기면 장애 재현이 훨씬 쉬움
+        uvicorn_logger.exception(
+            "Unhandled exception path=%s method=%s",
+            getattr(request.url, "path", None),
+            getattr(request, "method", None),
+            exc_info=exc,
+        )
+        logger.exception("Unhandled exception", exc_info=exc)
+
         return JSONResponse(
             status_code=500,
             content=_error(code="INTERNAL_SERVER_ERROR", message="Unexpected server error."),
