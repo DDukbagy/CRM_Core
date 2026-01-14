@@ -263,3 +263,42 @@ release: ## Interactive: show latest tag, ask version, tag & push (triggers prod
 	echo "==> Pushing tag $$VERSION to origin (this triggers prod deploy)..."; \
 	git push origin "$$VERSION"; \
 	echo "✅ Done. Pushed tag $$VERSION."
+
+.PHONY: branch-reset
+branch-reset: ## Delete a local+remote branch, then create a new branch (interactive)
+	@bash -eu -o pipefail -c '\
+		echo "==> Current branch:"; \
+		current="$$(git rev-parse --abbrev-ref HEAD)"; \
+		echo "    $$current"; \
+		echo ""; \
+		echo "==> Local branches:"; \
+		git branch --format="%(refname:short)" | sed "s/^/  - /"; \
+		echo ""; \
+		echo "==> Remote branches (origin):"; \
+		git branch -r --format="%(refname:short)" | sed "s/^/  - /"; \
+		echo ""; \
+		read -r -p "Branch to DELETE (name only, e.g. feature/posts). Leave empty to cancel: " del; \
+		if [ -z "$$del" ]; then \
+			echo "Cancelled."; \
+			exit 0; \
+		fi; \
+		if [ "$$del" = "$$current" ]; then \
+			echo "ERROR: You are currently on '\''$$current'\''; switch to another branch first (e.g. main)."; \
+			exit 1; \
+		fi; \
+		read -r -p "New branch to CREATE (e.g. feature/posts): " new; \
+		if [ -z "$$new" ]; then \
+			echo "ERROR: new branch name is required."; \
+			exit 1; \
+		fi; \
+		echo ""; \
+		echo "==> Deleting local branch (if exists): $$del"; \
+		git branch -D "$$del" 2>/dev/null || echo "  (local branch not found)"; \
+		echo "==> Deleting remote branch (if exists): origin/$$del"; \
+		git push origin --delete "$$del" 2>/dev/null || echo "  (remote branch not found)"; \
+		echo ""; \
+		echo "==> Creating and switching to: $$new"; \
+		git switch -c "$$new"; \
+		echo ""; \
+		echo "Done. Now on branch: $$(git rev-parse --abbrev-ref HEAD)"; \
+	'
