@@ -14,12 +14,13 @@ make verify
 ## Common Commands
 
 ```bash
-make server        # 개발 서버 실행
-make verify        # 원클릭 검증
-make tokens        # 테스트 토큰 발급
-make flow          # 플로우 실행
-make test          # 테스트 실행
-make release       # release 배포 실행
+make server         # 개발 서버 실행
+make verify         # 원클릭 검증
+make tokens         # 테스트 토큰 발급
+make flow           # 플로우 실행
+make test           # 테스트 실행
+make release        # release 배포 실행
+make branch-reset   # branch 리셋
 ```
 
 

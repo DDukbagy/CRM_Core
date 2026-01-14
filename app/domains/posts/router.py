@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import text, update
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -176,6 +176,55 @@ async def grant_public_consent(
     await session.refresh(post)
     return {"ok": True, "post_id": str(post.id), "status": post.status}
 
+@router.get(
+    "/posts/{post_id}",
+    response_model=PostRead,
+)
+async def get_post(
+    post_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser | None = Depends(get_current_user),
+):
+    # 1) post 조회
+    res = await session.execute(select(Post).where(Post.id == post_id))
+    post = res.scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    # 2) PUBLIC이면 누구나 조회 가능
+    if post.status == "PUBLIC":
+        return post
+
+    # 3) PRIVATE면 로그인 필수
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    me = UUID(str(user.id))
+    role = (user.role or "").upper()
+
+    # 4) owner면 OK
+    if post.owner_user_id == me:
+        return post
+
+    # 5) ADMIN은 OK
+    if role == "ADMIN":
+        return post
+
+    # 6) 강사 스코프: instructor_id가 있고, 내가 그 instructor면 OK
+    if post.instructor_id is not None and str(post.instructor_id) == str(me):
+        return post
+
+    # 7) CONTENT_MANAGER는 해당 instructor에 위임되어 있으면 OK
+    if role == "CONTENT_MANAGER" and post.instructor_id is not None:
+        ok = await _is_staff_of_instructor(
+            session,
+            instructor_id=str(post.instructor_id),
+            staff_user_id=str(me),
+        )
+        if ok:
+            return post
+
+    raise HTTPException(status_code=403, detail="Not allowed to view this post")
 
 @router.post("/posts/{post_id}/consent/revoke")
 async def revoke_public_consent(
