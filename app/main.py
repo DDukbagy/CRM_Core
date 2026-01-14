@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import logging
+import sys
+
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -17,6 +20,15 @@ from app.domains.instructor.router import router as instructor_router
 from app.domains.posts.router import router as posts_router
 from app.api.health import router as health_router
 
+# ---- Logging: always emit app logs to stdout (works well in ECS/Copilot) ----
+logging.basicConfig(
+    level=logging.INFO,
+    stream=sys.stdout,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+# Make sure our app logger isn't silenced
+logging.getLogger("app").setLevel(logging.INFO)
+logging.getLogger(__name__).setLevel(logging.INFO)
 
 app = FastAPI()
 
