@@ -18,12 +18,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 
 from app.core.config import settings
 from app.main import app
-
-# 너가 리팩토링한 경로 기준
 from app.db.session import get_session
+from app.core.auth.deps import CurrentUser
 
-# booking 라우터가 있는 모듈 (너가 보여준 create_booking이 있는 곳)
-import app.domains.calendar.router as calendar_router  # 여기서 get_current_user를 override 할 거임
+import app.domains.calendar.router as calendar_router
 
 
 async def _ensure_test_user_id(session: AsyncSession) -> uuid.UUID:
@@ -143,7 +141,14 @@ async def client(db_conn_and_sessionmaker: async_sessionmaker[AsyncSession]) -> 
             yield session
 
     async def override_get_current_user():
-        return {"id": str(user_id)}  # create_booking에서 user["id"]만 씀
+        return CurrentUser(
+            id=str(user_id),
+            email=None,
+            phone=None,
+            username="test-user",
+            display_name="Test User",
+            role="CUSTOMER",
+        )
 
     app.dependency_overrides[get_session] = override_get_session
     app.dependency_overrides[calendar_router.get_current_user] = override_get_current_user
