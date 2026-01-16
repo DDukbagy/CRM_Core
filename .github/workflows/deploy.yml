@@ -84,17 +84,31 @@ jobs:
           echo "STAGING_URL=$STAGING_URL" >> "$GITHUB_OUTPUT"
           echo "Staging URL: $STAGING_URL"
 
-      - name: Wait for service to be ready
+      - name: Wait for service to be ready (retry /health/ready)
         run: |
-          # 배포 직후 ALB/타겟그룹 안정화 시간 약간 기다림
-          sleep 10
+          set -euo pipefail
+          URL="${{ steps.staging_url.outputs.STAGING_URL }}"
+          echo "Waiting for $URL/health/ready ..."
+
+          # Max ~180s (36 * 5s)
+          for i in {1..36}; do
+            if curl -fsS "$URL/health/ready" > /dev/null; then
+              echo "OK: /health/ready is ready"
+              exit 0
+            fi
+            echo "Not ready yet... ($i/36)"
+            sleep 5
+          done
+
+          echo "ERROR: service did not become ready in time"
+          exit 1
 
       - name: Smoke test (staging) - /health/ready must be 200
         run: |
           set -euo pipefail
           URL="${{ steps.staging_url.outputs.STAGING_URL }}"
           echo "GET $URL/health/ready"
-          curl -fS "$URL/health/ready"
+          curl -fS "$URL/health/ready" > /dev/null
 
       - name: Rehearsal check (staging) - /docs reachable (FastAPI)
         run: |
@@ -103,17 +117,11 @@ jobs:
           echo "GET $URL/docs"
           curl -fS "$URL/docs" > /dev/null
 
-      - name: Rehearsal check (staging) - /health/ready (DB + deps)
-        run: |
-          set -euo pipefail
-          URL="${{ steps.staging_url.outputs.STAGING_URL }}"
-          echo "GET $URL/health/ready"
-          curl -fS "$URL/health/ready"
-
       - name: Rehearsal check (staging) - openapi
         run: |
           set -euo pipefail
           URL="${{ steps.staging_url.outputs.STAGING_URL }}"
+          echo "GET $URL/openapi.json"
           curl -fS "$URL/openapi.json" > /dev/null
 
 
@@ -187,8 +195,16 @@ jobs:
           echo "PROD_URL=$PROD_URL" >> "$GITHUB_OUTPUT"
           echo "Prod URL: $PROD_URL"
 
+      - name: Smoke test (prod) - /health/ready must be 200
+        run: |
+          set -euo pipefail
+          URL="${{ steps.prod_url.outputs.PROD_URL }}"
+          echo "GET $URL/health/ready"
+          curl -fS "$URL/health/ready" > /dev/null
+
       - name: Rehearsal check (prod) - openapi
         run: |
           set -euo pipefail
           URL="${{ steps.prod_url.outputs.PROD_URL }}"
+          echo "GET $URL/openapi.json"
           curl -fS "$URL/openapi.json" > /dev/null
