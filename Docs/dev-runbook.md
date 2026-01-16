@@ -117,3 +117,36 @@ make supabase-token
 make aws-tools
 make aws-check
 ```
+---
+
+# 운영 알람 / 롤백 런북
+
+## A) CloudWatch 알람(이메일) 구성
+
+### A-1. SNS 토픽/구독 정보
+- SNS Topic Name: `crm-prod-alarms`
+- SNS Topic ARN: `<TOPIC_ARN>`
+- 이메일 구독: `<ALERT_EMAIL>`
+
+> 변경/추가 가능:
+> - 이메일 변경: 기존 구독 unsubscribe 후 새 이메일 subscribe
+> - 동시에 여러 이메일/채널 구독 가능
+> - SMS 등 다른 프로토콜도 추가 가능(추후)
+
+### A-2. ALB / TargetGroup Dimension 값(고정해두기)
+CloudWatch 메트릭은 아래 suffix 값이 필요함.
+- PROD_LB_SUFFIX = `app/<lb-name>/<lb-id>`
+- PROD_TG_SUFFIX = `<tg-name>/<tg-id>`
+
+- STG_LB_SUFFIX = `app/<lb-name>/<lb-id>`
+- STG_TG_SUFFIX = `<tg-name>/<tg-id>`
+
+#### suffix 추출(태그 기반 리소스 찾기)
+```bash
+APP="crm"
+ENV="prod"
+SVC="api"
+
+aws resourcegroupstaggingapi get-resources \
+  --tag-filters "Key=copilot-application,Values=$APP" "Key=copilot-environment,Values=$ENV" "Key=copilot-service,Values=$SVC" \
+  --resource-type-filters "elasticloadbalancing:loadbalancer" "elasticloadbalancing:targetgroup"

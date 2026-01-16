@@ -309,3 +309,107 @@ branch-reset: ## Switch to main, pull latest, delete local+remote branch, create
 		echo ""; \
 		echo "Done. Now on branch: $$(git rev-parse --abbrev-ref HEAD)"; \
 	'
+
+.PHONY: rollback-dry
+rollback-dry: ## Interactive: show what rollback would do (NO tag created, NO push)
+	@set -e; \
+	# 작업트리 깨끗한지 확인 \
+	if [ -n "$$(git status --porcelain)" ]; then \
+		echo "ERROR: Working tree is not clean. Commit/stash first."; \
+		git status --porcelain; \
+		exit 1; \
+	fi; \
+	echo "==> Switching to main & pulling latest..."; \
+	git switch main >/dev/null; \
+	git pull origin main; \
+	echo "==> Fetching tags..."; \
+	git fetch --tags; \
+	echo "Recent tags:"; \
+	git tag -l 'v*' --sort=-v:refname | head -n 10; \
+	read -p "Enter FROM tag to rollback to (e.g. v0.1.3): " FROM; \
+	if [ -z "$$FROM" ]; then \
+		echo "ERROR: FROM tag is required."; \
+		exit 1; \
+	fi; \
+	case "$$FROM" in v*) ;; *) echo "ERROR: FROM tag must start with 'v' (e.g. v0.1.3)"; exit 1;; esac; \
+	if ! git rev-parse "$$FROM" >/dev/null 2>&1; then \
+		echo "ERROR: FROM tag '$$FROM' does not exist (local). Did you fetch tags?"; \
+		exit 1; \
+	fi; \
+	read -p "Enter NEW tag to create for rollback (e.g. v0.1.4): " TO; \
+	if [ -z "$$TO" ]; then \
+		echo "ERROR: TO tag is required."; \
+		exit 1; \
+	fi; \
+	case "$$TO" in v*) ;; *) echo "ERROR: TO tag must start with 'v' (e.g. v0.1.4)"; exit 1;; esac; \
+	if git rev-parse "$$TO" >/dev/null 2>&1; then \
+		echo "ERROR: tag '$$TO' already exists (local). Choose a new version."; \
+		exit 1; \
+	fi; \
+	FROM_SHA="$$(git rev-list -n 1 "$$FROM")"; \
+	echo ""; \
+	echo "=== DRY RUN (no changes will be made) ==="; \
+	echo "Would create annotated tag: $$TO"; \
+	echo "  points to tag: $$FROM"; \
+	echo "  FROM sha: $$FROM_SHA"; \
+	echo "  message : rollback: $$FROM -> $$TO"; \
+	echo "Would push: git push origin $$TO"; \
+	echo "========================================"; \
+	echo ""; \
+	echo "✅ Dry run complete. To execute for real: make rollback"
+
+
+.PHONY: rollback
+rollback-safe:
+	@set -e; \
+	# 작업트리 깨끗한지 확인(운영 사고 시 실수 방지) \
+	if [ -n "$$(git status --porcelain)" ]; then \
+		echo "ERROR: Working tree is not clean. Commit/stash first."; \
+		git status --porcelain; \
+		exit 1; \
+	fi; \
+	echo "==> Switching to main & pulling latest..."; \
+	git switch main >/dev/null; \
+	git pull origin main; \
+	echo "==> Fetching tags..."; \
+	git fetch --tags; \
+	echo "Recent tags:"; \
+	git tag -l 'v*' --sort=-v:refname | head -n 10; \
+	read -p "Enter FROM tag to rollback to (e.g. v0.1.3): " FROM; \
+	if [ -z "$$FROM" ]; then \
+		echo "ERROR: FROM tag is required."; \
+		exit 1; \
+	fi; \
+	case "$$FROM" in v*) ;; *) echo "ERROR: FROM tag must start with 'v' (e.g. v0.1.3)"; exit 1;; esac; \
+	if ! git rev-parse "$$FROM" >/dev/null 2>&1; then \
+		echo "ERROR: FROM tag '$$FROM' does not exist (local). Did you fetch tags?"; \
+		exit 1; \
+	fi; \
+	read -p "Enter NEW tag to create for rollback (e.g. v0.1.4): " TO; \
+	if [ -z "$$TO" ]; then \
+		echo "ERROR: TO tag is required."; \
+		exit 1; \
+	fi; \
+	case "$$TO" in v*) ;; *) echo "ERROR: TO tag must start with 'v' (e.g. v0.1.4)"; exit 1;; esac; \
+	if git rev-parse "$$TO" >/dev/null 2>&1; then \
+		echo "ERROR: tag '$$TO' already exists (local). Choose a new version."; \
+		exit 1; \
+	fi; \
+	FROM_SHA="$$(git rev-list -n 1 "$$FROM")"; \
+	echo ""; \
+	echo "=== FINAL CONFIRMATION REQUIRED ==="; \
+	echo "You are about to ROLLBACK prod by pushing a NEW tag:"; \
+	echo "  FROM tag : $$FROM (sha: $$FROM_SHA)"; \
+	echo "  NEW  tag : $$TO"; \
+	echo "This will trigger prod deploy via deploy.yml"; \
+	echo ""; \
+	read -p "Type YES to continue: " CONFIRM; \
+	if [ "$$CONFIRM" != "YES" ]; then \
+		echo "Aborted. (You did not type YES)"; \
+		exit 1; \
+	fi; \
+	echo "==> Creating annotated tag $$TO pointing to $$FROM (message: rollback: $$FROM -> $$TO)"; \
+	git tag -a "$$TO" "$$FROM" -m "rollback: $$FROM -> $$TO"; \
+	echo "==> Pushing tag $$TO to origin (this triggers prod deploy)..."; \
+	git push origin "$$TO"; \
+	echo "✅ Done. Rolled back by pushing tag $$TO (points to $$FROM)."
