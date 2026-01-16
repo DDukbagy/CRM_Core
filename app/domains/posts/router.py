@@ -8,7 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from app.core.auth.deps import CurrentUser, get_current_user, require_role
+from app.core.auth.deps import CurrentUser, get_current_user, require_role, get_current_user_optional
 from app.db.session import get_session
 from app.domains.posts.models import Post
 from app.domains.posts.schemas import PostCreateAdmin, PostRead
@@ -139,6 +139,7 @@ async def public_feed(
     res = await session.execute(stmt)
     return res.scalars().all()
 
+
 @router.post("/posts/{post_id}/consent/grant")
 async def grant_public_consent(
     post_id: UUID,
@@ -177,6 +178,7 @@ async def grant_public_consent(
     await session.refresh(post)
     return {"ok": True, "post_id": str(post.id), "status": post.status}
 
+
 @router.get(
     "/posts/{post_id}",
     response_model=PostRead,
@@ -184,7 +186,7 @@ async def grant_public_consent(
 async def get_post(
     post_id: UUID,
     session: AsyncSession = Depends(get_session),
-    user: CurrentUser | None = Depends(get_current_user),
+    user: CurrentUser | None = Depends(get_current_user_optional),  # PUBLIC은 토큰 없이도 통과
 ):
     # 1) post 조회
     res = await session.execute(select(Post).where(Post.id == post_id))
@@ -227,6 +229,7 @@ async def get_post(
 
     raise HTTPException(status_code=403, detail="Not allowed to view this post")
 
+
 @router.post("/posts/{post_id}/consent/revoke")
 async def revoke_public_consent(
     post_id: UUID,
@@ -242,9 +245,10 @@ async def revoke_public_consent(
     if post.owner_user_id != me:
         raise HTTPException(status_code=403, detail="Only owner can revoke public consent")
 
+    # 운영 정책: revoke는 PRIVATE로 되돌린다
     now = datetime.now(timezone.utc)
-    post.status = "PUBLIC"
-    post.published_at = now
+    post.status = "PRIVATE"
+    post.published_at = None
     post.updated_at = now
     session.add(post)
 

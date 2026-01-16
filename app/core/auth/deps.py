@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer, OAuth2PasswordBearer
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,15 +29,22 @@ class CurrentUser:
     role: str
 
 
-async def get_access_token(
-    cred: HTTPAuthorizationCredentials | None = Depends(bearer),
-) -> str:
+bearer_optional = HTTPBearer(auto_error=False)
+
+
+async def get_access_token_optional(
+    cred: HTTPAuthorizationCredentials | None = Depends(bearer_optional),
+) -> Optional[str]:
     if not cred or cred.scheme.lower() != "bearer":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
+        return None
     return cred.credentials
 
 
-async def get_claims(token: str = Depends(get_access_token)) -> dict:
+async def get_claims_optional(
+    token: Optional[str] = Depends(get_access_token_optional),
+) -> Optional[dict]:
+    if not token:
+        return None
     try:
         return await verify_supabase_access_token(
             token=token,
@@ -47,19 +54,19 @@ async def get_claims(token: str = Depends(get_access_token)) -> dict:
             audience=getattr(settings, "SUPABASE_JWT_AUD", "authenticated"),
         )
     except SupabaseJWTExpired:
+        # optional이라도 "잘못된 토큰"은 401로 막는 게 운영상 안전
         raise HTTPException(status_code=401, detail="Token expired")
     except SupabaseJWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
-async def get_current_user(
-    claims: dict = Depends(get_claims),
-    session: AsyncSession = Depends(get_session),
+async def _get_or_create_user_from_claims(
+    claims: dict,
+    session: AsyncSession,
 ) -> CurrentUser:
     """
-    운영형 JIT 프로비저닝:
-    - Supabase sub(UUID)를 우리 public.users.id로 사용
-    - 없으면 자동 생성 (display_name NOT NULL 대응)
+    claims -> CurrentUser (JIT 포함)
+    get_current_user / get_current_user_optional이 동일 로직을 공유한다.
     """
     user_id = claims.get("sub")
     email = claims.get("email")
@@ -114,6 +121,53 @@ async def get_current_user(
         role=str(row[4]) if row[4] is not None else "CUSTOMER",
     )
 
+
+async def get_current_user_optional(
+    claims: Optional[dict] = Depends(get_claims_optional),
+    session: AsyncSession = Depends(get_session),
+) -> Optional[CurrentUser]:
+    if claims is None:
+        return None
+    return await _get_or_create_user_from_claims(claims, session)
+
+
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
+
+async def get_access_token(
+    cred: HTTPAuthorizationCredentials | None = Depends(bearer),
+) -> str:
+    if not cred or cred.scheme.lower() != "bearer":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
+    return cred.credentials
+
+
+async def get_claims(token: str = Depends(get_access_token)) -> dict:
+    try:
+        return await verify_supabase_access_token(
+            token=token,
+            supabase_url=settings.SUPABASE_URL,
+            jwt_secret=getattr(settings, "SUPABASE_JWT_SECRET", None),
+            issuer_override=getattr(settings, "SUPABASE_JWT_ISSUER", None),
+            audience=getattr(settings, "SUPABASE_JWT_AUD", "authenticated"),
+        )
+    except SupabaseJWTExpired:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except SupabaseJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+async def get_current_user(
+    claims: dict = Depends(get_claims),
+    session: AsyncSession = Depends(get_session),
+) -> CurrentUser:
+    """
+    운영형 JIT 프로비저닝:
+    - Supabase sub(UUID)를 우리 public.users.id로 사용
+    - 없으면 자동 생성 (display_name NOT NULL 대응)
+    """
+    return await _get_or_create_user_from_claims(claims, session)
+
+
 def require_role(allowed_roles: set[str]):
     allowed = {r.upper() for r in allowed_roles}
 
@@ -123,6 +177,7 @@ def require_role(allowed_roles: set[str]):
         return user
 
     return _guard
+
 
 async def _is_staff_of_instructor(
     session: AsyncSession,
@@ -143,6 +198,7 @@ async def _is_staff_of_instructor(
         {"instructor_id": instructor_id, "staff_user_id": staff_user_id},
     )
     return res.first() is not None
+
 
 def require_instructor_or_staff(instructor_id: str):
     async def _guard(
@@ -170,4 +226,5 @@ def require_instructor_or_staff(instructor_id: str):
                 return user
 
         raise HTTPException(status_code=403, detail="Insufficient role")
+
     return _guard

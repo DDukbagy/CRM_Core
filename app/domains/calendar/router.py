@@ -337,7 +337,7 @@ async def get_availability(
 async def create_booking(
     data: BookingCreate,
     session: AsyncSession = Depends(get_session),
-    user: dict = Depends(get_current_user),
+    user: CurrentUser = Depends(get_current_user),
 ):
     guest_id = UUID(str(user.id))
 
@@ -399,7 +399,7 @@ async def create_booking(
 @bk_router.get("/me", response_model=list[BookingRead])
 async def list_my_bookings(
     session: AsyncSession = Depends(get_session),
-    user: dict = Depends(get_current_user),
+    user: CurrentUser = Depends(get_current_user),
 ):
     guest_id = UUID(str(user.id))
     result = await session.execute(
@@ -439,7 +439,7 @@ async def list_my_calendar_bookings(
 async def cancel_booking_as_guest(
     booking_id: int,
     session: AsyncSession = Depends(get_session),
-    user: dict = Depends(get_current_user),
+    user: CurrentUser = Depends(get_current_user),
 ):
     """
     게스트(예약자) 취소
