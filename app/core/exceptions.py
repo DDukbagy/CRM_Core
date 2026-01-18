@@ -68,19 +68,40 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):
-        # 예상 못한 에러는 반드시 로그에 남기기 (uvicorn.error로도 찍어서 Copilot logs에서 보이게)
-        uvicorn_logger = logging.getLogger("uvicorn.error")
+        request_id = getattr(request.state, "request_id", None)
+        path_params = dict(getattr(request, "path_params", {}) or {})
 
-        # request context도 같이 남기면 장애 재현이 훨씬 쉬움
+        # 가능한 경우 user_id를 추출 (Authorization이 optional인 경우도 많아서 "best-effort")
+        user_id = None
+        try:
+            # 토큰 기반이면 보통 request.state.user / request.state.claims 같은 게 있을 수 있음
+            user = getattr(request.state, "user", None)
+            if user and getattr(user, "id", None):
+                user_id = str(user.id)
+        except Exception:
+            user_id = None
+
+        uvicorn_logger = logging.getLogger("uvicorn.error")
         uvicorn_logger.exception(
-            "Unhandled exception path=%s method=%s",
-            getattr(request.url, "path", None),
-            getattr(request, "method", None),
+            "Unhandled exception request_id=%s method=%s path=%s path_params=%s user_id=%s",
+            request_id,
+            request.method,
+            request.url.path,
+            path_params,
+            user_id,
+        )
+
+        logger.exception(
+            "Unhandled exception request_id=%s method=%s path=%s path_params=%s user_id=%s",
+            request_id,
+            request.method,
+            request.url.path,
+            path_params,
+            user_id,
             exc_info=exc,
         )
-        logger.exception("Unhandled exception", exc_info=exc)
 
         return JSONResponse(
             status_code=500,
-            content=_error(code="INTERNAL_SERVER_ERROR", message="Unexpected server error."),
+            content={"error": {"code": "INTERNAL_SERVER_ERROR", "message": "Unexpected server error."}},
         )
