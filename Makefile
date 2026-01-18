@@ -187,11 +187,6 @@ docker-stop: ## Stop container by ID or name (usage: make docker-stop ID=<contai
 	@$(call require_var,ID)
 	docker stop "$(ID)"
 
-# =============================
-# 기존 Makefile 내용은 절대 수정하지 말 것
-# 아래는 AWS / Copilot 운영 편의용 추가 타겟
-# =============================
-
 .PHONY: aws-whoami
 aws-whoami: ## Check current AWS identity
 	aws sts get-caller-identity
@@ -228,10 +223,6 @@ copilot-logs-prod: ## Follow prod logs
 copilot-exec-staging: ## Exec into staging task
 	copilot svc exec --name api --env staging
 
-
-# =============================
-# Release helpers (tag -> prod deploy trigger)
-# =============================
 
 .PHONY: release
 release: ## Interactive: show latest tag, ask version, tag & push (triggers prod deploy)
@@ -306,6 +297,8 @@ branch-reset: ## Switch to main, pull latest, delete local+remote branch, create
 		echo ""; \
 		echo "==> Creating and switching to: $$new (from updated main)"; \
 		git switch -c "$$new"; \
+		echo "==> Creating remote branch + setting upstream: origin/$$new"; \
+		git push -u origin "$$new"; \
 		echo ""; \
 		echo "Done. Now on branch: $$(git rev-parse --abbrev-ref HEAD)"; \
 	'
@@ -413,3 +406,51 @@ rollback-safe:
 	echo "==> Pushing tag $$TO to origin (this triggers prod deploy)..."; \
 	git push origin "$$TO"; \
 	echo "✅ Done. Rolled back by pushing tag $$TO (points to $$FROM)."
+
+.PHONY: alarms-prod-dim
+alarms-prod-dim: ## Print PROD ALB/TG suffix (for CloudWatch dimensions)
+	@bash -eu -o pipefail -c '\
+		STACK_NAME="$$(aws cloudformation list-stacks \
+		  --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE UPDATE_ROLLBACK_COMPLETE \
+		  --query "StackSummaries[?contains(StackName, \`crm-prod-api\`) == \`true\`].StackName" \
+		  --output text | tr "\t" "\n" | grep -v AddonsStack | head -n 1)"; \
+		if [ -z "$$STACK_NAME" ]; then echo "ERROR: prod stack not found (crm-prod-api)"; exit 1; fi; \
+		echo "==> Stack: $$STACK_NAME"; \
+		echo "==> TargetGroups:"; \
+		aws cloudformation describe-stack-resources \
+		  --stack-name "$$STACK_NAME" \
+		  --query "StackResources[?ResourceType==\`AWS::ElasticLoadBalancingV2::TargetGroup\`].[LogicalResourceId,PhysicalResourceId]" \
+		  --output table; \
+		echo ""; \
+		read -r -p "Enter TG_ARN from table: " TG_ARN; \
+		if [ -z "$$TG_ARN" ]; then echo "ERROR: TG_ARN is required."; exit 1; fi; \
+		LB_ARN="$$(aws elbv2 describe-target-groups --target-group-arns "$$TG_ARN" --query "TargetGroups[0].LoadBalancerArns[0]" --output text)"; \
+		PROD_TG_SUFFIX="$$(echo "$$TG_ARN" | sed "s#^.*targetgroup/##")"; \
+		PROD_LB_SUFFIX="$$(echo "$$LB_ARN" | sed "s#^.*loadbalancer/##")"; \
+		echo "PROD_LB_SUFFIX=$$PROD_LB_SUFFIX"; \
+		echo "PROD_TG_SUFFIX=$$PROD_TG_SUFFIX"; \
+	'
+
+.PHONY: alarms-stg-dim
+alarms-stg-dim: ## Print STAGING ALB/TG suffix (for CloudWatch dimensions)
+	@bash -eu -o pipefail -c '\
+		STACK_NAME="$$(aws cloudformation list-stacks \
+		  --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE UPDATE_ROLLBACK_COMPLETE \
+		  --query "StackSummaries[?contains(StackName, \`crm-staging-api\`) == \`true\`].StackName" \
+		  --output text | tr "\t" "\n" | grep -v AddonsStack | head -n 1)"; \
+		if [ -z "$$STACK_NAME" ]; then echo "ERROR: staging stack not found (crm-staging-api)"; exit 1; fi; \
+		echo "==> Stack: $$STACK_NAME"; \
+		echo "==> TargetGroups:"; \
+		aws cloudformation describe-stack-resources \
+		  --stack-name "$$STACK_NAME" \
+		  --query "StackResources[?ResourceType==\`AWS::ElasticLoadBalancingV2::TargetGroup\`].[LogicalResourceId,PhysicalResourceId]" \
+		  --output table; \
+		echo ""; \
+		read -r -p "Enter TG_ARN from table: " TG_ARN; \
+		if [ -z "$$TG_ARN" ]; then echo "ERROR: TG_ARN is required."; exit 1; fi; \
+		LB_ARN="$$(aws elbv2 describe-target-groups --target-group-arns "$$TG_ARN" --query "TargetGroups[0].LoadBalancerArns[0]" --output text)"; \
+		STG_TG_SUFFIX="$$(echo "$$TG_ARN" | sed "s#^.*targetgroup/##")"; \
+		STG_LB_SUFFIX="$$(echo "$$LB_ARN" | sed "s#^.*loadbalancer/##")"; \
+		echo "STG_LB_SUFFIX=$$STG_LB_SUFFIX"; \
+		echo "STG_TG_SUFFIX=$$STG_TG_SUFFIX"; \
+	'
