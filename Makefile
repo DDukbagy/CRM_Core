@@ -187,11 +187,6 @@ docker-stop: ## Stop container by ID or name (usage: make docker-stop ID=<contai
 	@$(call require_var,ID)
 	docker stop "$(ID)"
 
-# =============================
-# 기존 Makefile 내용은 절대 수정하지 말 것
-# 아래는 AWS / Copilot 운영 편의용 추가 타겟
-# =============================
-
 .PHONY: aws-whoami
 aws-whoami: ## Check current AWS identity
 	aws sts get-caller-identity
@@ -228,10 +223,6 @@ copilot-logs-prod: ## Follow prod logs
 copilot-exec-staging: ## Exec into staging task
 	copilot svc exec --name api --env staging
 
-
-# =============================
-# Release helpers (tag -> prod deploy trigger)
-# =============================
 
 .PHONY: release
 release: ## Interactive: show latest tag, ask version, tag & push (triggers prod deploy)
@@ -306,6 +297,160 @@ branch-reset: ## Switch to main, pull latest, delete local+remote branch, create
 		echo ""; \
 		echo "==> Creating and switching to: $$new (from updated main)"; \
 		git switch -c "$$new"; \
+		echo "==> Creating remote branch + setting upstream: origin/$$new"; \
+		git push -u origin "$$new"; \
 		echo ""; \
 		echo "Done. Now on branch: $$(git rev-parse --abbrev-ref HEAD)"; \
+	'
+
+.PHONY: rollback-dry
+rollback-dry: ## Interactive: show what rollback would do (NO tag created, NO push)
+	@set -e; \
+	# 작업트리 깨끗한지 확인 \
+	if [ -n "$$(git status --porcelain)" ]; then \
+		echo "ERROR: Working tree is not clean. Commit/stash first."; \
+		git status --porcelain; \
+		exit 1; \
+	fi; \
+	echo "==> Switching to main & pulling latest..."; \
+	git switch main >/dev/null; \
+	git pull origin main; \
+	echo "==> Fetching tags..."; \
+	git fetch --tags; \
+	echo "Recent tags:"; \
+	git tag -l 'v*' --sort=-v:refname | head -n 10; \
+	read -p "Enter FROM tag to rollback to (e.g. v0.1.3): " FROM; \
+	if [ -z "$$FROM" ]; then \
+		echo "ERROR: FROM tag is required."; \
+		exit 1; \
+	fi; \
+	case "$$FROM" in v*) ;; *) echo "ERROR: FROM tag must start with 'v' (e.g. v0.1.3)"; exit 1;; esac; \
+	if ! git rev-parse "$$FROM" >/dev/null 2>&1; then \
+		echo "ERROR: FROM tag '$$FROM' does not exist (local). Did you fetch tags?"; \
+		exit 1; \
+	fi; \
+	read -p "Enter NEW tag to create for rollback (e.g. v0.1.4): " TO; \
+	if [ -z "$$TO" ]; then \
+		echo "ERROR: TO tag is required."; \
+		exit 1; \
+	fi; \
+	case "$$TO" in v*) ;; *) echo "ERROR: TO tag must start with 'v' (e.g. v0.1.4)"; exit 1;; esac; \
+	if git rev-parse "$$TO" >/dev/null 2>&1; then \
+		echo "ERROR: tag '$$TO' already exists (local). Choose a new version."; \
+		exit 1; \
+	fi; \
+	FROM_SHA="$$(git rev-list -n 1 "$$FROM")"; \
+	echo ""; \
+	echo "=== DRY RUN (no changes will be made) ==="; \
+	echo "Would create annotated tag: $$TO"; \
+	echo "  points to tag: $$FROM"; \
+	echo "  FROM sha: $$FROM_SHA"; \
+	echo "  message : rollback: $$FROM -> $$TO"; \
+	echo "Would push: git push origin $$TO"; \
+	echo "========================================"; \
+	echo ""; \
+	echo "✅ Dry run complete. To execute for real: make rollback"
+
+
+.PHONY: rollback
+rollback-safe:
+	@set -e; \
+	# 작업트리 깨끗한지 확인(운영 사고 시 실수 방지) \
+	if [ -n "$$(git status --porcelain)" ]; then \
+		echo "ERROR: Working tree is not clean. Commit/stash first."; \
+		git status --porcelain; \
+		exit 1; \
+	fi; \
+	echo "==> Switching to main & pulling latest..."; \
+	git switch main >/dev/null; \
+	git pull origin main; \
+	echo "==> Fetching tags..."; \
+	git fetch --tags; \
+	echo "Recent tags:"; \
+	git tag -l 'v*' --sort=-v:refname | head -n 10; \
+	read -p "Enter FROM tag to rollback to (e.g. v0.1.3): " FROM; \
+	if [ -z "$$FROM" ]; then \
+		echo "ERROR: FROM tag is required."; \
+		exit 1; \
+	fi; \
+	case "$$FROM" in v*) ;; *) echo "ERROR: FROM tag must start with 'v' (e.g. v0.1.3)"; exit 1;; esac; \
+	if ! git rev-parse "$$FROM" >/dev/null 2>&1; then \
+		echo "ERROR: FROM tag '$$FROM' does not exist (local). Did you fetch tags?"; \
+		exit 1; \
+	fi; \
+	read -p "Enter NEW tag to create for rollback (e.g. v0.1.4): " TO; \
+	if [ -z "$$TO" ]; then \
+		echo "ERROR: TO tag is required."; \
+		exit 1; \
+	fi; \
+	case "$$TO" in v*) ;; *) echo "ERROR: TO tag must start with 'v' (e.g. v0.1.4)"; exit 1;; esac; \
+	if git rev-parse "$$TO" >/dev/null 2>&1; then \
+		echo "ERROR: tag '$$TO' already exists (local). Choose a new version."; \
+		exit 1; \
+	fi; \
+	FROM_SHA="$$(git rev-list -n 1 "$$FROM")"; \
+	echo ""; \
+	echo "=== FINAL CONFIRMATION REQUIRED ==="; \
+	echo "You are about to ROLLBACK prod by pushing a NEW tag:"; \
+	echo "  FROM tag : $$FROM (sha: $$FROM_SHA)"; \
+	echo "  NEW  tag : $$TO"; \
+	echo "This will trigger prod deploy via deploy.yml"; \
+	echo ""; \
+	read -p "Type YES to continue: " CONFIRM; \
+	if [ "$$CONFIRM" != "YES" ]; then \
+		echo "Aborted. (You did not type YES)"; \
+		exit 1; \
+	fi; \
+	echo "==> Creating annotated tag $$TO pointing to $$FROM (message: rollback: $$FROM -> $$TO)"; \
+	git tag -a "$$TO" "$$FROM" -m "rollback: $$FROM -> $$TO"; \
+	echo "==> Pushing tag $$TO to origin (this triggers prod deploy)..."; \
+	git push origin "$$TO"; \
+	echo "✅ Done. Rolled back by pushing tag $$TO (points to $$FROM)."
+
+.PHONY: alarms-prod-dim
+alarms-prod-dim: ## Print PROD ALB/TG suffix (for CloudWatch dimensions)
+	@bash -eu -o pipefail -c '\
+		STACK_NAME="$$(aws cloudformation list-stacks \
+		  --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE UPDATE_ROLLBACK_COMPLETE \
+		  --query "StackSummaries[?contains(StackName, \`crm-prod-api\`) == \`true\`].StackName" \
+		  --output text | tr "\t" "\n" | grep -v AddonsStack | head -n 1)"; \
+		if [ -z "$$STACK_NAME" ]; then echo "ERROR: prod stack not found (crm-prod-api)"; exit 1; fi; \
+		echo "==> Stack: $$STACK_NAME"; \
+		echo "==> TargetGroups:"; \
+		aws cloudformation describe-stack-resources \
+		  --stack-name "$$STACK_NAME" \
+		  --query "StackResources[?ResourceType==\`AWS::ElasticLoadBalancingV2::TargetGroup\`].[LogicalResourceId,PhysicalResourceId]" \
+		  --output table; \
+		echo ""; \
+		read -r -p "Enter TG_ARN from table: " TG_ARN; \
+		if [ -z "$$TG_ARN" ]; then echo "ERROR: TG_ARN is required."; exit 1; fi; \
+		LB_ARN="$$(aws elbv2 describe-target-groups --target-group-arns "$$TG_ARN" --query "TargetGroups[0].LoadBalancerArns[0]" --output text)"; \
+		PROD_TG_SUFFIX="$$(echo "$$TG_ARN" | sed "s#^.*targetgroup/##")"; \
+		PROD_LB_SUFFIX="$$(echo "$$LB_ARN" | sed "s#^.*loadbalancer/##")"; \
+		echo "PROD_LB_SUFFIX=$$PROD_LB_SUFFIX"; \
+		echo "PROD_TG_SUFFIX=$$PROD_TG_SUFFIX"; \
+	'
+
+.PHONY: alarms-stg-dim
+alarms-stg-dim: ## Print STAGING ALB/TG suffix (for CloudWatch dimensions)
+	@bash -eu -o pipefail -c '\
+		STACK_NAME="$$(aws cloudformation list-stacks \
+		  --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE UPDATE_ROLLBACK_COMPLETE \
+		  --query "StackSummaries[?contains(StackName, \`crm-staging-api\`) == \`true\`].StackName" \
+		  --output text | tr "\t" "\n" | grep -v AddonsStack | head -n 1)"; \
+		if [ -z "$$STACK_NAME" ]; then echo "ERROR: staging stack not found (crm-staging-api)"; exit 1; fi; \
+		echo "==> Stack: $$STACK_NAME"; \
+		echo "==> TargetGroups:"; \
+		aws cloudformation describe-stack-resources \
+		  --stack-name "$$STACK_NAME" \
+		  --query "StackResources[?ResourceType==\`AWS::ElasticLoadBalancingV2::TargetGroup\`].[LogicalResourceId,PhysicalResourceId]" \
+		  --output table; \
+		echo ""; \
+		read -r -p "Enter TG_ARN from table: " TG_ARN; \
+		if [ -z "$$TG_ARN" ]; then echo "ERROR: TG_ARN is required."; exit 1; fi; \
+		LB_ARN="$$(aws elbv2 describe-target-groups --target-group-arns "$$TG_ARN" --query "TargetGroups[0].LoadBalancerArns[0]" --output text)"; \
+		STG_TG_SUFFIX="$$(echo "$$TG_ARN" | sed "s#^.*targetgroup/##")"; \
+		STG_LB_SUFFIX="$$(echo "$$LB_ARN" | sed "s#^.*loadbalancer/##")"; \
+		echo "STG_LB_SUFFIX=$$STG_LB_SUFFIX"; \
+		echo "STG_TG_SUFFIX=$$STG_TG_SUFFIX"; \
 	'

@@ -117,3 +117,9 @@ make supabase-token
 make aws-tools
 make aws-check
 ```
+
+## 11. 운영 알람 확인/복구
+```bash
+make alarms-prod-dim
+make alarms-stg-dim     # rehearsal 알람은 선택
+```

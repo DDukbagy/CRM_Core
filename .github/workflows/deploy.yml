@@ -208,3 +208,130 @@ jobs:
           URL="${{ steps.prod_url.outputs.PROD_URL }}"
           echo "GET $URL/openapi.json"
           curl -fS "$URL/openapi.json" > /dev/null
+
+      - name: Resolve prod ALB/TG suffix (for CloudWatch alarms)
+        id: prod_alarm_dims
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # 1) prod 스택 찾기 (AddonsStack 제외)
+          STACK_NAME="$(aws cloudformation list-stacks \
+            --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE UPDATE_ROLLBACK_COMPLETE \
+            --query "StackSummaries[?contains(StackName, \`crm-prod-api\`) == \`true\`].StackName" \
+            --output text | tr '\t' '\n' | grep -v AddonsStack | head -n 1)"
+
+          if [ -z "$STACK_NAME" ]; then
+            echo "ERROR: prod stack not found (expected contains: crm-prod-api)"
+            exit 1
+          fi
+          echo "Stack: $STACK_NAME"
+
+          # 2) TG ARN 추출 (TargetGroup 리소스 중 첫 번째 사용)
+          TG_ARN="$(aws cloudformation describe-stack-resources \
+            --stack-name "$STACK_NAME" \
+            --query "StackResources[?ResourceType==\`AWS::ElasticLoadBalancingV2::TargetGroup\`].PhysicalResourceId | [0]" \
+            --output text)"
+
+          if [ -z "$TG_ARN" ] || [ "$TG_ARN" = "None" ]; then
+            echo "ERROR: target group ARN not found in stack resources"
+            exit 1
+          fi
+          echo "TG_ARN: $TG_ARN"
+
+          # 3) TG -> LB ARN 역추적
+          LB_ARN="$(aws elbv2 describe-target-groups \
+            --target-group-arns "$TG_ARN" \
+            --query "TargetGroups[0].LoadBalancerArns[0]" \
+            --output text)"
+
+          if [ -z "$LB_ARN" ] || [ "$LB_ARN" = "None" ]; then
+            echo "ERROR: load balancer ARN not found from target group"
+            exit 1
+          fi
+          echo "LB_ARN: $LB_ARN"
+
+          # 4) CloudWatch Dimension suffix 생성
+          # - LoadBalancer: app/<lb-name>/<lb-id>
+          # - TargetGroup : <tg-name>/<tg-id>
+          PROD_LB_SUFFIX="$(echo "$LB_ARN" | sed 's#^.*loadbalancer/##')"
+          PROD_TG_SUFFIX="$(echo "$TG_ARN" | sed 's#^.*targetgroup/##')"
+
+          if [ -z "$PROD_LB_SUFFIX" ] || [ -z "$PROD_TG_SUFFIX" ]; then
+            echo "ERROR: failed to parse suffix"
+            exit 1
+          fi
+
+          echo "PROD_LB_SUFFIX=$PROD_LB_SUFFIX" >> "$GITHUB_OUTPUT"
+          echo "PROD_TG_SUFFIX=$PROD_TG_SUFFIX" >> "$GITHUB_OUTPUT"
+          echo "Resolved: PROD_LB_SUFFIX=$PROD_LB_SUFFIX"
+          echo "Resolved: PROD_TG_SUFFIX=$PROD_TG_SUFFIX"
+
+      - name: Resolve SNS Topic ARN (crm-prod-alarms)
+        id: prod_alarm_topic
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TOPIC_NAME="crm-prod-alarms"
+          TOPIC_ARN="$(aws sns list-topics --query "Topics[].TopicArn" --output text | tr '\t' '\n' | grep ":${TOPIC_NAME}$" | head -n 1)"
+
+          if [ -z "$TOPIC_ARN" ]; then
+            echo "ERROR: SNS topic not found: $TOPIC_NAME"
+            echo "Hint: create topic first or ensure name matches"
+            exit 1
+          fi
+
+          echo "TOPIC_ARN=$TOPIC_ARN" >> "$GITHUB_OUTPUT"
+          echo "SNS Topic ARN: $TOPIC_ARN"
+
+      - name: Apply baseline CloudWatch alarms (prod) - idempotent
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          LB_SUFFIX="${{ steps.prod_alarm_dims.outputs.PROD_LB_SUFFIX }}"
+          TG_SUFFIX="${{ steps.prod_alarm_dims.outputs.PROD_TG_SUFFIX }}"
+          TOPIC_ARN="${{ steps.prod_alarm_topic.outputs.TOPIC_ARN }}"
+
+          echo "Using dimensions:"
+          echo "  LoadBalancer=$LB_SUFFIX"
+          echo "  TargetGroup=$TG_SUFFIX"
+          echo "Alarm actions -> $TOPIC_ARN"
+
+          # (1) Target 5XX 급증 알람
+          aws cloudwatch put-metric-alarm \
+            --alarm-name "crm-prod-api-Target5XX" \
+            --alarm-description "prod api target 5xx count high (ALB->TargetGroup)" \
+            --namespace "AWS/ApplicationELB" \
+            --metric-name "HTTPCode_Target_5XX_Count" \
+            --dimensions Name=LoadBalancer,Value="$LB_SUFFIX" Name=TargetGroup,Value="$TG_SUFFIX" \
+            --statistic Sum \
+            --period 60 \
+            --evaluation-periods 5 \
+            --datapoints-to-alarm 3 \
+            --threshold 10 \
+            --comparison-operator GreaterThanOrEqualToThreshold \
+            --treat-missing-data notBreaching \
+            --alarm-actions "$TOPIC_ARN" \
+            --ok-actions "$TOPIC_ARN"
+
+          # (2) UnhealthyHostCount 알람
+          aws cloudwatch put-metric-alarm \
+            --alarm-name "crm-prod-api-UnhealthyHostCount" \
+            --alarm-description "prod api unhealthy targets detected (TargetGroup health)" \
+            --namespace "AWS/ApplicationELB" \
+            --metric-name "UnHealthyHostCount" \
+            --dimensions Name=LoadBalancer,Value="$LB_SUFFIX" Name=TargetGroup,Value="$TG_SUFFIX" \
+            --statistic Maximum \
+            --period 60 \
+            --evaluation-periods 3 \
+            --datapoints-to-alarm 2 \
+            --threshold 1 \
+            --comparison-operator GreaterThanOrEqualToThreshold \
+            --treat-missing-data notBreaching \
+            --alarm-actions "$TOPIC_ARN" \
+            --ok-actions "$TOPIC_ARN"
+
+          echo "OK: baseline alarms applied/updated"
+        
