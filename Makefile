@@ -59,17 +59,11 @@ verify-setup: ## chmod +x scripts/verify.sh (first time only)
 	chmod +x scripts/verify.sh
 
 # -----------------------------
-# Tokens / Flow
+# Supabase access token (password grant) / Flow
 # -----------------------------
-.PHONY: tokens
-tokens: ## Issue dev tokens (source scripts/dev_tokens.sh + load_tokens.sh)
-	@set -euo pipefail; \
-	source scripts/dev_tokens.sh; \
-	source scripts/load_tokens.sh; \
-	echo "BASE_URL=$${BASE_URL:-$(BASE_URL)}"; \
-	echo "HOST_TOKEN length=$${#HOST_TOKEN}"; \
-	echo "GUEST_TOKEN length=$${#GUEST_TOKEN}"; \
-	echo "HOST_ID=$${HOST_ID}"
+.PHONY: token
+token: ## Issue access token interactively (loads URL/Key from .env)
+	@bash scripts/get_token.sh
 
 .PHONY: flow
 flow: ## Run flow (assumes server is running and tokens are available inside scripts)
@@ -133,34 +127,6 @@ grep: ## Search string (usage: make grep Q="text")
 	else \
 		grep -RIn "$(Q)" . ; \
 	fi
-
-# -----------------------------
-# Supabase access token (password grant)
-# -----------------------------
-.PHONY: supabase-token
-supabase-token: ## Prompt for SUPABASE_URL/ANON_KEY/EMAIL/PASSWORD then fetch token
-	@set -euo pipefail; \
-	if [ -z "$${SUPABASE_URL:-}" ]; then \
-	  read -r -p "SUPABASE_URL (e.g. https://xxxx.supabase.co): " SUPABASE_URL; \
-	fi; \
-	if [ -z "$${SUPABASE_ANON_KEY:-}" ]; then \
-	  read -r -s -p "SUPABASE_ANON_KEY: " SUPABASE_ANON_KEY; echo; \
-	fi; \
-	if [ -z "$${EMAIL:-}" ]; then \
-	  read -r -p "EMAIL: " EMAIL; \
-	fi; \
-	if [ -z "$${PASSWORD:-}" ]; then \
-	  read -r -s -p "PASSWORD: " PASSWORD; echo; \
-	fi; \
-	\
-	# basic guard against placeholders \
-	case "$$SUPABASE_URL" in *"..."*|*"<"*">"*) echo "❌ SUPABASE_URL looks like a placeholder. Use a real https://<ref>.supabase.co"; exit 1;; esac; \
-	\
-	curl -sS "$$SUPABASE_URL/auth/v1/token?grant_type=password" \
-	  -H "apikey: $$SUPABASE_ANON_KEY" \
-	  -H "Authorization: Bearer $$SUPABASE_ANON_KEY" \
-	  -H "Content-Type: application/json" \
-	  -d "{\"email\":\"$$EMAIL\",\"password\":\"$$PASSWORD\"}" | python -m json.tool
 
 # -----------------------------
 # AWS tools install/check
