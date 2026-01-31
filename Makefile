@@ -223,6 +223,14 @@ copilot-logs-prod: ## Follow prod logs
 copilot-exec-staging: ## Exec into staging task
 	copilot svc exec --name api --env staging
 
+.PHONY: check-db
+check-db: ## Check database connection status
+	PYTHONPATH=. python app/scripts/check_db_connection.py
+
+.PHONY: check-schema
+check-schema: ## Verify if database tables and columns are created correctly
+	PYTHONPATH=. python app/scripts/check_schema.py
+
 .PHONY: release
 release: ## Interactive: switch to main, pull, tag & push; then return to previous ref
 	@set -e; \
