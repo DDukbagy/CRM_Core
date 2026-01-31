@@ -25,6 +25,7 @@ requests = "^2.32.5"
 certifi = "^2025.11.12"
 alembic = "^1.17.2"
 httpx = "^0.28.1"
+pyjwt = "^2.11.0"
 
 
 [build-system]

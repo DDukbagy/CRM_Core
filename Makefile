@@ -59,17 +59,11 @@ verify-setup: ## chmod +x scripts/verify.sh (first time only)
 	chmod +x scripts/verify.sh
 
 # -----------------------------
-# Tokens / Flow
+# Supabase access token (password grant) / Flow
 # -----------------------------
-.PHONY: tokens
-tokens: ## Issue dev tokens (source scripts/dev_tokens.sh + load_tokens.sh)
-	@set -euo pipefail; \
-	source scripts/dev_tokens.sh; \
-	source scripts/load_tokens.sh; \
-	echo "BASE_URL=$${BASE_URL:-$(BASE_URL)}"; \
-	echo "HOST_TOKEN length=$${#HOST_TOKEN}"; \
-	echo "GUEST_TOKEN length=$${#GUEST_TOKEN}"; \
-	echo "HOST_ID=$${HOST_ID}"
+.PHONY: token
+token: ## Issue access token interactively (loads URL/Key from .env)
+	@bash scripts/get_token.sh
 
 .PHONY: flow
 flow: ## Run flow (assumes server is running and tokens are available inside scripts)
@@ -135,34 +129,6 @@ grep: ## Search string (usage: make grep Q="text")
 	fi
 
 # -----------------------------
-# Supabase access token (password grant)
-# -----------------------------
-.PHONY: supabase-token
-supabase-token: ## Prompt for SUPABASE_URL/ANON_KEY/EMAIL/PASSWORD then fetch token
-	@set -euo pipefail; \
-	if [ -z "$${SUPABASE_URL:-}" ]; then \
-	  read -r -p "SUPABASE_URL (e.g. https://xxxx.supabase.co): " SUPABASE_URL; \
-	fi; \
-	if [ -z "$${SUPABASE_ANON_KEY:-}" ]; then \
-	  read -r -s -p "SUPABASE_ANON_KEY: " SUPABASE_ANON_KEY; echo; \
-	fi; \
-	if [ -z "$${EMAIL:-}" ]; then \
-	  read -r -p "EMAIL: " EMAIL; \
-	fi; \
-	if [ -z "$${PASSWORD:-}" ]; then \
-	  read -r -s -p "PASSWORD: " PASSWORD; echo; \
-	fi; \
-	\
-	# basic guard against placeholders \
-	case "$$SUPABASE_URL" in *"..."*|*"<"*">"*) echo "❌ SUPABASE_URL looks like a placeholder. Use a real https://<ref>.supabase.co"; exit 1;; esac; \
-	\
-	curl -sS "$$SUPABASE_URL/auth/v1/token?grant_type=password" \
-	  -H "apikey: $$SUPABASE_ANON_KEY" \
-	  -H "Authorization: Bearer $$SUPABASE_ANON_KEY" \
-	  -H "Content-Type: application/json" \
-	  -d "{\"email\":\"$$EMAIL\",\"password\":\"$$PASSWORD\"}" | python -m json.tool
-
-# -----------------------------
 # AWS tools install/check
 # -----------------------------
 .PHONY: aws-tools
@@ -223,37 +189,82 @@ copilot-logs-prod: ## Follow prod logs
 copilot-exec-staging: ## Exec into staging task
 	copilot svc exec --name api --env staging
 
+.PHONY: check-db
+check-db: ## Check database connection status
+	PYTHONPATH=. python app/scripts/check_db_connection.py
+
+.PHONY: check-schema
+check-schema: ## Verify if database tables and columns are created correctly
+	PYTHONPATH=. python app/scripts/check_schema.py
 
 .PHONY: release
-release: ## Interactive: show latest tag, ask version, tag & push (triggers prod deploy)
+release: ## Interactive: switch to main, pull, tag & push; then return to previous ref
 	@set -e; \
-	# 작업트리 깨끗한지 확인 \
+	# remember current ref (branch or detached) \
+	ORIG_BRANCH="$$(git symbolic-ref --short -q HEAD || true)"; \
+	ORIG_COMMIT="$$(git rev-parse --verify HEAD)"; \
+	RETURNED=0; \
+	restore() { \
+		if [ "$$RETURNED" = "1" ]; then exit 0; fi; \
+		RETURNED=1; \
+		echo "==> Restoring previous state..."; \
+		if [ -n "$$ORIG_BRANCH" ]; then \
+			git switch "$$ORIG_BRANCH" >/dev/null 2>&1 || true; \
+		else \
+			git switch --detach "$$ORIG_COMMIT" >/dev/null 2>&1 || true; \
+		fi; \
+	}; \
+	trap 'restore' EXIT INT TERM; \
+	\
+	# working tree must be clean \
 	if [ -n "$$(git status --porcelain)" ]; then \
 		echo "ERROR: Working tree is not clean. Commit/stash first."; \
 		git status --porcelain; \
 		exit 1; \
 	fi; \
+	\
 	echo "==> Switching to main & pulling latest..."; \
 	git switch main >/dev/null; \
 	git pull origin main; \
+	\
 	LATEST_TAG="$$(git tag -l 'v*' --sort=-v:refname | head -n 1)"; \
 	if [ -z "$$LATEST_TAG" ]; then LATEST_TAG="(none)"; fi; \
 	echo "Latest tag: $$LATEST_TAG"; \
-	read -p "Enter version tag (e.g. v0.1.1): " VERSION; \
+	\
+	read -p "Enter version tag (e.g. v0.1.1 or 0.1.1): " VERSION; \
+	# trim spaces \
+	VERSION="$$(printf "%s" "$$VERSION" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$$//')"; \
 	if [ -z "$$VERSION" ]; then \
 		echo "ERROR: version is required."; \
 		exit 1; \
 	fi; \
-	case "$$VERSION" in v*) ;; *) echo "ERROR: tag must start with 'v' (e.g. v0.1.1)"; exit 1;; esac; \
+	# auto-prefix v \
+	case "$$VERSION" in v*) ;; *) VERSION="v$$VERSION";; esac; \
+	echo "==> Using tag: $$VERSION"; \
+	\
+	# local tag exists? \
 	if git rev-parse "$$VERSION" >/dev/null 2>&1; then \
 		echo "ERROR: tag '$$VERSION' already exists (local). Choose a new version."; \
 		exit 1; \
 	fi; \
+	# remote tag exists? (covers 'exists on origin but not locally') \
+	if git ls-remote --tags origin "$$VERSION" | grep -q "$$VERSION"; then \
+		echo "ERROR: tag '$$VERSION' already exists on origin. Choose a new version."; \
+		exit 1; \
+	fi; \
+	\
 	echo "==> Creating annotated tag $$VERSION (message: Release $$VERSION)"; \
 	git tag -a "$$VERSION" -m "Release $$VERSION"; \
 	echo "==> Pushing tag $$VERSION to origin (this triggers prod deploy)..."; \
 	git push origin "$$VERSION"; \
-	echo "✅ Done. Pushed tag $$VERSION."
+	echo "✅ Done. Pushed tag $$VERSION."; \
+	\
+	# (optional) show where we will return \
+	if [ -n "$$ORIG_BRANCH" ]; then \
+		echo "==> Will return to branch: $$ORIG_BRANCH"; \
+	else \
+		echo "==> Will return to detached commit: $$ORIG_COMMIT"; \
+	fi
 
 .PHONY: branch-reset
 branch-reset: ## Switch to main, pull latest, delete local+remote branch, create new branch (interactive)

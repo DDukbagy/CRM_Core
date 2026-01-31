@@ -11,7 +11,9 @@ from sqlmodel import select
 from app.core.auth.deps import CurrentUser, get_current_user, require_role, get_current_user_optional
 from app.db.session import get_session
 from app.domains.posts.models import Post
-from app.domains.posts.schemas import PostCreateAdmin, PostRead
+# [변경] 새로 만든 schemas와 repository import
+from app.domains.posts.schemas import PostCreate, PostResponse
+from app.domains.posts.repository import PostRepository
 
 router = APIRouter(tags=["Posts"])
 admin_router = APIRouter(prefix="/admin", tags=["Admin Posts"])
@@ -35,58 +37,55 @@ async def _is_staff_of_instructor(session: AsyncSession, *, instructor_id: str, 
 
 
 # -------------------------------------------------------------------
-# 1) 운영/강사용: 회원 저장소에 게시물 생성
+# 1) 운영/강사용: 회원 저장소에 게시물 생성 (Repository 패턴 적용)
 # POST /admin/posts
 # -------------------------------------------------------------------
 @admin_router.post(
     "/posts",
-    response_model=PostRead,
+    response_model=PostResponse, # [변경] 응답 스키마 PostResponse 사용
     status_code=status.HTTP_201_CREATED,
 )
 async def create_post_admin(
-    payload: PostCreateAdmin,
+    payload: PostCreate, # [변경] 요청 스키마 PostCreate 사용
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(require_role({"INSTRUCTOR", "CONTENT_MANAGER", "ADMIN"})),
 ):
+    """
+    게시글을 생성합니다. 
+    Repository를 통해 DB에 저장하며, title, post_type 등의 새 필드를 지원합니다.
+    """
     role = (user.role or "").upper()
-    creator_id = UUID(str(user.id))
+    
+    # payload에서 instructor_id 가져오기
+    target_instructor_id: UUID | None = payload.instructor_id
 
-    instructor_id: UUID | None = payload.instructor_id
-
-    # 권한 규칙:
-    # - ADMIN: instructor_id 없어도 되고 아무 값도 가능
-    # - INSTRUCTOR: instructor_id 없으면 본인으로 고정, 있으면 본인과 같아야 함
-    # - CONTENT_MANAGER: instructor_id 필수 + 위임관계 있어야 함
+    # [권한 검증 로직]
     if role == "INSTRUCTOR":
-        if instructor_id is None:
-            instructor_id = UUID(str(user.id))
-        elif str(instructor_id) != str(user.id):
+        # 강사는 본인 ID로만 생성 가능
+        if target_instructor_id is None:
+            # 입력 안 했으면 본인 ID로 강제 할당 (Pydantic 모델 수정)
+            payload.instructor_id = UUID(str(user.id))
+        elif str(target_instructor_id) != str(user.id):
             raise HTTPException(status_code=403, detail="Instructor can create posts only in own scope")
 
     if role == "CONTENT_MANAGER":
-        if instructor_id is None:
+        # 매니저는 instructor_id 필수 + 위임 관계 확인
+        if target_instructor_id is None:
             raise HTTPException(status_code=400, detail="instructor_id is required for CONTENT_MANAGER")
+        
         ok = await _is_staff_of_instructor(
             session,
-            instructor_id=str(instructor_id),
+            instructor_id=str(target_instructor_id),
             staff_user_id=str(user.id),
         )
         if not ok:
             raise HTTPException(status_code=403, detail="Not assigned to this instructor")
 
-    post = Post(
-        owner_user_id=payload.owner_user_id,
-        created_by_user_id=creator_id,
-        instructor_id=instructor_id,
-        caption=payload.caption,
-        status="PRIVATE",
-        # updated_at은 DB default now()지만, 수정 시에는 코드에서 갱신해주면 더 좋음
-    )
-
-    session.add(post)
-    await session.commit()
-    await session.refresh(post)
-    return post
+    # [Repository 호출]
+    repo = PostRepository(session)
+    new_post = await repo.create(post_in=payload, created_by_user_id=UUID(str(user.id)))
+    
+    return new_post
 
 
 # -------------------------------------------------------------------
@@ -95,7 +94,7 @@ async def create_post_admin(
 # -------------------------------------------------------------------
 @router.get(
     "/posts/me",
-    response_model=list[PostRead],
+    response_model=list[PostResponse],
 )
 async def list_my_posts(
     session: AsyncSession = Depends(get_session),
@@ -121,7 +120,7 @@ async def list_my_posts(
 # -------------------------------------------------------------------
 @router.get(
     "/feed",
-    response_model=list[PostRead],
+    response_model=list[PostResponse],
 )
 async def public_feed(
     session: AsyncSession = Depends(get_session),
@@ -161,6 +160,9 @@ async def grant_public_consent(
     post.status = "PUBLIC"
     post.published_at = now
     post.updated_at = now
+    # 동의 여부도 True로 설정 (로직 추가)
+    post.is_consent_given = True 
+    
     session.add(post)
 
     # 로그 남기기
@@ -181,12 +183,12 @@ async def grant_public_consent(
 
 @router.get(
     "/posts/{post_id}",
-    response_model=PostRead,
+    response_model=PostResponse,
 )
 async def get_post(
     post_id: UUID,
     session: AsyncSession = Depends(get_session),
-    user: CurrentUser | None = Depends(get_current_user_optional),  # PUBLIC은 토큰 없이도 통과
+    user: CurrentUser | None = Depends(get_current_user_optional),
 ):
     # 1) post 조회
     res = await session.execute(select(Post).where(Post.id == post_id))
@@ -250,6 +252,8 @@ async def revoke_public_consent(
     post.status = "PRIVATE"
     post.published_at = None
     post.updated_at = now
+    post.is_consent_given = False # 동의 취소 시 False로 변경
+    
     session.add(post)
 
     await session.execute(

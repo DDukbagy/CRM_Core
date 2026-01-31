@@ -1,0 +1,121 @@
+name: Deploy Staging
+run-name: >
+  Deploy Staging | ${{ github.event_name }} |
+  staging ${{ github.event.workflow_run.head_sha }}
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-staging-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy (staging)
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Install AWS Copilot
+        run: |
+          curl -Lo copilot-cli https://github.com/aws/copilot-cli/releases/latest/download/copilot-linux
+          chmod +x copilot-cli
+          mkdir -p ~/.local/bin
+          mv copilot-cli ~/.local/bin/copilot
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          copilot --version
+
+      - name: Deploy (staging)
+        run: copilot svc deploy --name api --env staging
+
+      - name: Install jq (for parsing copilot json)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Resolve staging URL
+        id: staging_url
+        run: |
+          set -euo pipefail
+
+          ENV_NAME="staging"
+
+          # svc show는 --env가 없음. routes에서 environment=staging인 것만 골라서 url 뽑아야 함.
+          STAGING_URL=$(
+            copilot svc show --name api --json \
+            | jq -r --arg env "$ENV_NAME" '.routes[] | select(.environment==$env) | .url' \
+            | head -n 1
+          )
+
+          if [ -z "$STAGING_URL" ] || [ "$STAGING_URL" = "null" ]; then
+            echo "ERROR: Failed to resolve staging URL from copilot svc show"
+            echo "DEBUG: copilot svc show output:"
+            copilot svc show --name api --json | jq .
+            exit 1
+          fi
+
+          echo "STAGING_URL=$STAGING_URL" >> "$GITHUB_OUTPUT"
+          echo "Staging URL: $STAGING_URL"
+
+      - name: Wait for service to be ready (retry /health/ready)
+        run: |
+          set -euo pipefail
+          URL="${{ steps.staging_url.outputs.STAGING_URL }}"
+          echo "Waiting for $URL/health/ready ..."
+
+          # Max ~180s (36 * 5s)
+          for i in {1..36}; do
+            if curl -fsS "$URL/health/ready" > /dev/null; then
+              echo "OK: /health/ready is ready"
+              exit 0
+            fi
+            echo "Not ready yet... ($i/36)"
+            sleep 5
+          done
+
+          echo "ERROR: service did not become ready in time"
+          exit 1
+
+      - name: Smoke test (staging) - /health/ready must be 200
+        run: |
+          set -euo pipefail
+          URL="${{ steps.staging_url.outputs.STAGING_URL }}"
+          echo "GET $URL/health/ready"
+          curl -fS "$URL/health/ready" > /dev/null
+
+      - name: Rehearsal check (staging) - /docs reachable (FastAPI)
+        run: |
+          set -euo pipefail
+          URL="${{ steps.staging_url.outputs.STAGING_URL }}"
+          echo "GET $URL/docs"
+          curl -fS "$URL/docs" > /dev/null
+
+      - name: Rehearsal check (staging) - openapi
+        run: |
+          set -euo pipefail
+          URL="${{ steps.staging_url.outputs.STAGING_URL }}"
+          echo "GET $URL/openapi.json"
+          curl -fS "$URL/openapi.json" > /dev/null
