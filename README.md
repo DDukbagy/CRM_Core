@@ -28,6 +28,24 @@ make branch-reset   # branch 리셋
 
 # 운영 & 배포 가이드 
 
+## 배포 순서
+
+1. feature 브랜치 생성
+
+2. 작업 → commit → push
+
+3. PR 생성 → CI 실행
+
+4. CI 성공 → merge → main push
+
+5. CI(main) 성공 → staging 자동 deploy
+
+6. staging deploy 성공 → feature 브랜치 삭제
+
+7. main 기준 make release → prod 자동 deploy
+
+8. prod deploy 성공 → 배포 완료
+
 ## 운영 환경 구성
 
 * dev: 로컬 / Codespace 개발
