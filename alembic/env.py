@@ -2,51 +2,69 @@ from __future__ import annotations
 
 import asyncio
 from logging.config import fileConfig
-from pathlib import Path
+import os
 import sys
+from pathlib import Path
 
 from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
+from dotenv import load_dotenv
 
-import app.db.models  # noqa: F401
-from app.db.base import Base
+# ----------------------------------------------------------------------
+# 1. 경로 설정 및 .env 로딩
+# ----------------------------------------------------------------------
+current_file = Path(__file__).resolve()
+project_root = current_file.parents[1]
+sys.path.append(str(project_root))
 
+env_path = project_root / ".env"
+load_dotenv(dotenv_path=env_path)
 
-# alembic.ini 읽기
+# ----------------------------------------------------------------------
+# 2. 모델 등록 (가장 중요!)
+# ----------------------------------------------------------------------
+try:
+    from app.core.config import settings
+    
+    # [수정됨] 라이브러리에서 직접 SQLModel 가져오기
+    from sqlmodel import SQLModel
+    
+    # [핵심] 우리가 만든 모델 파일들을 여기서 import 해줘야 Alembic이 인식합니다.
+    # 여기에 User 등 다른 모델이 있다면 추가해야 합니다.
+    from app.domains.posts.models import Post 
+    # from app.domains.users.models import User  <-- (예시: 유저 모델이 있다면 주석 해제)
+
+    # 모든 모델이 로드된 후 metadata 연결
+    target_metadata = SQLModel.metadata
+
+except ImportError as e:
+    print(f"❌ Import Error: {e}")
+    print(f"🔍 Current sys.path: {sys.path}")
+    raise e
+
+# ----------------------------------------------------------------------
+# 3. DB URL 확인 (디버깅)
+# ----------------------------------------------------------------------
+db_url = settings.ASYNC_DATABASE_URL
+if db_url:
+    masked_url = str(db_url).replace(str(db_url).split(":")[2].split("@")[0], "****") if "@" in str(db_url) else db_url
+    print(f"✅ Alembic is using DB URL: {masked_url}")
+else:
+    print("❌ ERROR: settings.ASYNC_DATABASE_URL is empty!")
+
+# ----------------------------------------------------------------------
+# 4. Alembic 설정 (Standard)
+# ----------------------------------------------------------------------
 config = context.config
 
-target_metadata = Base.metadata
-
 def include_object(object_, name, type_, reflected, compare_to):
-    # DB에만 존재(reflected=True)하고, 코드(metadata)에는 없는(compare_to is None) 객체는 제외
-    # => autogenerate가 drop_table/drop_column 같은 파괴적 변경을 만들지 못하게 막음
     if reflected and compare_to is None:
         return False
     return True
 
-# 로깅 설정
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
-
-# app import 되게 경로 추가 (레포 루트)
-ROOT_DIR = Path(__file__).resolve().parents[1]
-sys.path.append(str(ROOT_DIR))
-
-from app.core.config import settings  # noqa: E402
-
-# ✅ 여기 target_metadata를 네 ORM 메타데이터로 연결해야 autogenerate 가능
-# 1) SQLAlchemy Declarative Base를 쓰면: from app.db.base import Base; target_metadata = Base.metadata
-# 2) SQLModel을 쓰면: from sqlmodel import SQLModel; target_metadata = SQLModel.metadata
-# ---- 너 프로젝트에 맞는 걸로 "하나만" 선택 ----
-
-try:
-    # 예시: SQLAlchemy Base를 쓰는 경우
-    from app.db.base import Base  # noqa: E402
-    target_metadata = Base.metadata
-except Exception:
-    target_metadata = None  # autogenerate 안 쓸 거면 None도 가능
-
 
 def run_migrations_offline() -> None:
     url = settings.ASYNC_DATABASE_URL
@@ -62,7 +80,6 @@ def run_migrations_offline() -> None:
     with context.begin_transaction():
         context.run_migrations()
 
-
 def do_run_migrations(connection) -> None:
     context.configure(
         connection=connection,
@@ -73,7 +90,6 @@ def do_run_migrations(connection) -> None:
 
     with context.begin_transaction():
         context.run_migrations()
-
 
 async def run_migrations_online() -> None:
     configuration = config.get_section(config.config_ini_section) or {}
@@ -90,12 +106,10 @@ async def run_migrations_online() -> None:
 
     await connectable.dispose()
 
-
 def run_migrations() -> None:
     if context.is_offline_mode():
         run_migrations_offline()
     else:
         asyncio.run(run_migrations_online())
-
 
 run_migrations()
