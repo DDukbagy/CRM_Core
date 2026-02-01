@@ -26,6 +26,8 @@ certifi = "^2025.11.12"
 alembic = "^1.17.2"
 httpx = "^0.28.1"
 pyjwt = "^2.11.0"
+python-multipart = "^0.0.22"
+pillow = "^12.1.0"
 
 
 [build-system]
