@@ -18,6 +18,8 @@ from app.core.middleware import RequestLoggingMiddleware
 from app.domains.auth.router import router as auth_router
 from app.domains.instructor.router import router as instructor_router
 from app.domains.posts.router import router as posts_router
+from app.domains.posts.router import router as posts_router
+from app.domains.users.router import router as users_router
 from app.api.health import router as health_router
 
 # ---- Logging: always emit app logs to stdout (works well in ECS/Copilot) ----
@@ -57,3 +59,5 @@ async def root():
 app.include_router(auth_router)
 app.include_router(account_router)
 app.include_router(calendar_router)
+app.include_router(posts_router)
+app.include_router(users_router)
