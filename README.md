@@ -24,7 +24,6 @@ make rollback       # rollback 실행
 make rollback-dry   # dry rollback 실행
 make branch-reset   # branch 리셋
 ```
-* test id : 9e5ef216-3546-4b8f-90c1-cc6237474a1b
 
 # 운영 & 배포 가이드 
 
