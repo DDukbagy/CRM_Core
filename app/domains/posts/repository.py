@@ -22,10 +22,11 @@ class PostRepository:
         
         self.session.add(db_obj)
         await self.session.commit()
-        await self.session.refresh(db_obj)
-        return db_obj
+        
+        # 저장 후 관계형 데이터(media) 로딩을 위해 안전하게 재조회하여 반환
+        return await self.get_by_id(db_obj.id)
 
-    # 게시물 수정 (선택적 업데이트)
+    # 게시물 수정
     async def update(self, post_obj: Post, payload: PostUpdate) -> Post:
         update_data = payload.model_dump(exclude_unset=True)
         for key, value in update_data.items():
@@ -34,8 +35,9 @@ class PostRepository:
         post_obj.updated_at = datetime.now(timezone.utc)
         self.session.add(post_obj)
         await self.session.commit()
-        await self.session.refresh(post_obj)
-        return post_obj
+        
+        # 수정 후 관계 데이터(media) 로딩을 위해 재조회하여 반환
+        return await self.get_by_id(post_obj.id)
 
     # 키워드 검색 및 타입 필터링
     async def search_posts(self, keyword: str = None, post_type: PostType = None, skip: int = 0, limit: int = 50) -> List[Post]:
