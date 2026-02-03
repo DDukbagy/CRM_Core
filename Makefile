@@ -191,11 +191,15 @@ copilot-exec-staging: ## Exec into staging task
 
 .PHONY: check-db
 check-db: ## Check database connection status
-	PYTHONPATH=. python app/scripts/check_db_connection.py
+	@poetry run python -m scripts.check_db_connection
 
 .PHONY: check-schema
 check-schema: ## Verify if database tables and columns are created correctly
-	PYTHONPATH=. python app/scripts/check_schema.py
+	@poetry run python -m scripts.check_schema
+
+.PHONY: reset-db
+reset-db: ## db reset
+	@poetry run python -m scripts.reset_db
 
 .PHONY: release
 release: ## Interactive: switch to main, pull, tag & push; then return to previous ref
