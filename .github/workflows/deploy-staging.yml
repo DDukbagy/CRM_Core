@@ -2,53 +2,38 @@ name: Deploy Staging
 
 on:
   push:
-    branches:
-      - "staging"
-  workflow_dispatch: # [수동 배포] 버튼 활성화
+    branches: ["staging"]
+  workflow_dispatch:
 
 permissions:
   id-token: write
-  contents: write # PR 생성을 위해 write 권한 필요
-  pull-requests: write
+  contents: read
 
 jobs:
   deploy:
-    name: Deploy to Staging
+    name: Deploy (staging)
     runs-on: ubuntu-latest
+    environment: staging
+
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
+      # AWS 인증 (Secrets에 저장된 Role ARN 사용)
+      - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ap-northeast-2
 
-      - name: Install AWS Copilot CLI
+      - name: Install AWS Copilot
         run: |
-          curl -Lo copilot-linux [https://github.com/aws/copilot-cli/releases/latest/download/copilot-linux](https://github.com/aws/copilot-cli/releases/latest/download/copilot-linux)
+          curl -Lo copilot-linux https://github.com/aws/copilot-cli/releases/latest/download/copilot-linux
           chmod +x copilot-linux
-          sudo mv copilot-linux /usr/local/bin/copilot
+          mkdir -p ~/.local/bin
+          mv copilot-linux ~/.local/bin/copilot
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      - name: Deploy to Staging
-        run: |
-          copilot svc deploy --name api --env staging --detach
-
-  create-pr-to-main:
-    needs: deploy
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Create Pull Request (Staging -> Main)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh pr create \
-            --base main \
-            --head staging \
-            --title "🚀 Release Candidate: Staging -> Main" \
-            --body "Staging 배포가 완료되었습니다. 운영 배포를 위해 Merge 해주세요." \
-            || echo "PR already exists, skipping."
+      # Staging 환경 배포
+      - name: Deploy (staging)
+        run: copilot svc deploy --name api --env staging --detach

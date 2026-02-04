@@ -2,11 +2,9 @@ name: CI (Tests)
 
 on:
   push:
-    branches:
-      - "main"
-      - "staging"
+    branches: ["**"]  # 모든 브랜치 푸시 시 테스트 실행 (작업 브랜치 포함)
   pull_request:
-    types: [opened, synchronize, reopened]
+    branches: ["main", "staging"]
 
 jobs:
   test:
@@ -43,10 +41,10 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction
 
+      # DB 마이그레이션 적용 (SSL 비활성화 환경변수 적용)
       - name: Initialize Database (Alembic)
         env:
           PYTHONPATH: .
-          # Alembic이 SSL을 무시하도록 설정
           PGSSLMODE: disable
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres?ssl=disable
           AWS_ACCESS_KEY_ID: testing
@@ -59,6 +57,7 @@ jobs:
           SUPABASE_JWT_SECRET: dummy
         run: poetry run alembic upgrade head
 
+      # 테스트 실행
       - name: Run tests
         env:
           PYTHONPATH: .

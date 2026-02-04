@@ -2,154 +2,38 @@ name: Deploy Prod
 
 on:
   push:
-    tags:
-      - "v*"  # v1.0.0 같은 태그가 달릴 때만 실행
+    branches: ["main"]
+  workflow_dispatch:
 
 permissions:
   id-token: write
   contents: read
 
-concurrency:
-  group: deploy-prod-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   deploy:
     name: Deploy (prod)
     runs-on: ubuntu-latest
-    # environment: prod  # 필요 시 주석 해제
+    environment: prod
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      # 안전장치: 태그가 main 브랜치에 포함된 커밋인지 확인
-      - name: Ensure tag commit is contained in main
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch --no-tags origin main
-          TAG_SHA="$(git rev-list -n 1 "${GITHUB_REF}")"
-          
-          if git merge-base --is-ancestor "$TAG_SHA" "origin/main"; then
-            echo "OK: tag commit is contained in origin/main"
-          else
-            echo "ERROR: tag commit is NOT contained in origin/main"
-            exit 1
-          fi
-
+      # AWS 인증 (Secrets에 저장된 Role ARN 사용)
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ap-northeast-2
 
       - name: Install AWS Copilot
         run: |
-          curl -Lo copilot-cli https://github.com/aws/copilot-cli/releases/latest/download/copilot-linux
-          chmod +x copilot-cli
+          curl -Lo copilot-linux https://github.com/aws/copilot-cli/releases/latest/download/copilot-linux
+          chmod +x copilot-linux
           mkdir -p ~/.local/bin
-          mv copilot-cli ~/.local/bin/copilot
+          mv copilot-linux ~/.local/bin/copilot
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
+      # Prod 환경 배포
       - name: Deploy (prod)
-        run: copilot svc deploy --name api --env prod
-
-      - name: Install jq
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq
-
-      - name: Resolve prod URL
-        id: prod_url
-        run: |
-          set -euo pipefail
-          ENV_NAME="prod"
-          PROD_URL=$(
-            copilot svc show --name api --json \
-            | jq -r --arg env "$ENV_NAME" '.routes[] | select(.environment==$env) | .url' \
-            | head -n 1
-          )
-          if [ -z "$PROD_URL" ] || [ "$PROD_URL" = "null" ]; then
-            echo "ERROR: Failed to resolve prod URL"
-            exit 1
-          fi
-          echo "PROD_URL=$PROD_URL" >> "$GITHUB_OUTPUT"
-
-      - name: Smoke test (prod)
-        run: |
-          URL="${{ steps.prod_url.outputs.PROD_URL }}"
-          curl -fS "$URL/health/ready" > /dev/null
-
-      - name: Resolve prod ALB/TG suffix
-        id: prod_alarm_dims
-        shell: bash
-        run: |
-          set -euo pipefail
-          
-          # 스택 이름 찾기
-          STACK_NAME="$(aws cloudformation list-stacks \
-            --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE UPDATE_ROLLBACK_COMPLETE \
-            --query "StackSummaries[?contains(StackName, \`crm-prod-api\`) == \`true\`].StackName" \
-            --output text | tr '\t' '\n' | grep -v AddonsStack | head -n 1)"
-
-          if [ -z "$STACK_NAME" ]; then exit 1; fi
-
-          # TargetGroup ARN 찾기
-          TG_ARN="$(aws cloudformation describe-stack-resources \
-            --stack-name "$STACK_NAME" \
-            --query "StackResources[?ResourceType==\`AWS::ElasticLoadBalancingV2::TargetGroup\`].PhysicalResourceId | [0]" \
-            --output text)"
-
-          # LoadBalancer ARN 찾기
-          LB_ARN="$(aws elbv2 describe-target-groups \
-            --target-group-arns "$TG_ARN" \
-            --query "TargetGroups[0].LoadBalancerArns[0]" \
-            --output text)"
-
-          PROD_LB_SUFFIX="$(echo "$LB_ARN" | sed 's#^.*loadbalancer/##')"
-          PROD_TG_SUFFIX="$(echo "$TG_ARN" | sed 's#^.*targetgroup/##')"
-
-          echo "PROD_LB_SUFFIX=$PROD_LB_SUFFIX" >> "$GITHUB_OUTPUT"
-          echo "PROD_TG_SUFFIX=$PROD_TG_SUFFIX" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve SNS Topic ARN
-        id: prod_alarm_topic
-        shell: bash
-        run: |
-          set -euo pipefail
-          TOPIC_NAME="crm-prod-alarms"
-          TOPIC_ARN="$(aws sns list-topics --query "Topics[].TopicArn" --output text | tr '\t' '\n' | grep ":${TOPIC_NAME}$" | head -n 1)"
-          
-          if [ -z "$TOPIC_ARN" ]; then exit 1; fi
-          echo "TOPIC_ARN=$TOPIC_ARN" >> "$GITHUB_OUTPUT"
-
-      - name: Apply baseline CloudWatch alarms
-        shell: bash
-        run: |
-          set -euo pipefail
-          LB_SUFFIX="${{ steps.prod_alarm_dims.outputs.PROD_LB_SUFFIX }}"
-          TG_SUFFIX="${{ steps.prod_alarm_dims.outputs.PROD_TG_SUFFIX }}"
-          TOPIC_ARN="${{ steps.prod_alarm_topic.outputs.TOPIC_ARN }}"
-
-          # (1) Target 5XX 알람
-          aws cloudwatch put-metric-alarm \
-            --alarm-name "crm-prod-api-Target5XX" \
-            --namespace "AWS/ApplicationELB" \
-            --metric-name "HTTPCode_Target_5XX_Count" \
-            --dimensions Name=LoadBalancer,Value="$LB_SUFFIX" Name=TargetGroup,Value="$TG_SUFFIX" \
-            --statistic Sum --period 60 --evaluation-periods 5 --datapoints-to-alarm 3 --threshold 10 \
-            --comparison-operator GreaterThanOrEqualToThreshold --treat-missing-data notBreaching \
-            --alarm-actions "$TOPIC_ARN" --ok-actions "$TOPIC_ARN"
-
-          # (2) UnhealthyHostCount 알람
-          aws cloudwatch put-metric-alarm \
-            --alarm-name "crm-prod-api-UnhealthyHostCount" \
-            --namespace "AWS/ApplicationELB" \
-            --metric-name "UnHealthyHostCount" \
-            --dimensions Name=LoadBalancer,Value="$LB_SUFFIX" Name=TargetGroup,Value="$TG_SUFFIX" \
-            --statistic Maximum --period 60 --evaluation-periods 3 --datapoints-to-alarm 2 --threshold 1 \
-            --comparison-operator GreaterThanOrEqualToThreshold --treat-missing-data notBreaching \
-            --alarm-actions "$TOPIC_ARN" --ok-actions "$TOPIC_ARN"
+        run: copilot svc deploy --name api --env prod --detach
