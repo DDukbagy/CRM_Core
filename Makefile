@@ -218,21 +218,21 @@ release: ## Interactive: switch to main, pull, tag & push; then return to previo
 			git switc
 
 .PHONY: branch-reset
-branch-reset: ## Switch to main, pull latest, delete local+remote branch, create new branch (interactive)
+branch-reset: ## Switch to staging, pull latest, delete local+remote branch, create new branch (interactive)
 	@bash -eu -o pipefail -c '\
 		echo "==> Current branch:"; \
 		current="$$(git rev-parse --abbrev-ref HEAD)"; \
 		echo "    $$current"; \
 		echo ""; \
-		echo "==> Switching to main & pulling latest..."; \
-		git switch main >/dev/null; \
-		git pull origin main; \
+		echo "==> Switching to staging & pulling latest..."; \
+		git switch staging >/dev/null; \
+		git pull origin staging; \
 		echo ""; \
 		echo "==> Local branches:"; \
-		git branch --format="%(refname:short)" | sed "s/^/  - /"; \
+		git branch --format="%(refname:short)" | sed "s/^/   - /"; \
 		echo ""; \
 		echo "==> Remote branches (origin):"; \
-		git branch -r --format="%(refname:short)" | sed "s/^/  - /"; \
+		git branch -r --format="%(refname:short)" | sed "s/^/   - /"; \
 		echo ""; \
 		read -r -p "Branch to DELETE (name only, e.g. feature/posts). Leave empty to cancel: " del; \
 		if [ -z "$$del" ]; then \
@@ -243,8 +243,12 @@ branch-reset: ## Switch to main, pull latest, delete local+remote branch, create
 			echo "ERROR: refusing to delete '\''main'\''."; \
 			exit 1; \
 		fi; \
+		if [ "$$del" = "staging" ]; then \
+			echo "ERROR: refusing to delete '\''staging'\''."; \
+			exit 1; \
+		fi; \
 		if [ "$$del" = "$$current" ]; then \
-			echo "NOTE: you were on '\''$$current'\''; already switched to main."; \
+			echo "NOTE: you were on '\''$$current'\''; already switched to staging."; \
 		fi; \
 		read -r -p "New branch to CREATE (e.g. feature/posts): " new; \
 		if [ -z "$$new" ]; then \
@@ -257,7 +261,7 @@ branch-reset: ## Switch to main, pull latest, delete local+remote branch, create
 		echo "==> Deleting remote branch (if exists): origin/$$del"; \
 		git push origin --delete "$$del" 2>/dev/null || echo "  (remote branch not found)"; \
 		echo ""; \
-		echo "==> Creating and switching to: $$new (from updated main)"; \
+		echo "==> Creating and switching to: $$new (from updated staging)"; \
 		git switch -c "$$new"; \
 		echo "==> Creating remote branch + setting upstream: origin/$$new"; \
 		git push -u origin "$$new"; \
