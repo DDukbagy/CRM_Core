@@ -1,9 +1,13 @@
 name: Deploy Prod
 
+# 제목: Deploy Prod | workflow_run | main
+run-name: 🚀 Deploy Prod | ${{ github.event_name }} | ${{ github.event.workflow_run.head_branch }}
+
 on:
-  push:
-    branches: ["main"]
-  workflow_dispatch:
+  workflow_run:
+    workflows: ["Backend CI"]
+    types:
+      - completed
 
 permissions:
   id-token: write
@@ -11,15 +15,18 @@ permissions:
 
 jobs:
   deploy:
-    name: Deploy (prod)
+    # CI 성공 AND 브랜치가 main 일 때만 실행
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    name: 🚀 Deploy (Prod)
     runs-on: ubuntu-latest
     environment: prod
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: main
 
-      # AWS 인증 (Secrets에 저장된 Role ARN 사용)
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -34,6 +41,5 @@ jobs:
           mv copilot-linux ~/.local/bin/copilot
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      # Prod 환경 배포
-      - name: Deploy (prod)
+      - name: Copilot Deploy
         run: copilot svc deploy --name api --env prod --detach
