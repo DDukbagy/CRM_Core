@@ -1,14 +1,14 @@
-name: CI (Tests)
+name: Backend CI
 
 on:
   push:
-    branches: ["**"]  # 모든 브랜치 푸시 시 테스트 실행 (작업 브랜치 포함)
+    branches: ["staging", "main"] # Push 할 때마다 테스트
   pull_request:
-    branches: ["main", "staging"]
+    branches: ["staging", "main"] # PR 올렸을 때도 테스트
 
 jobs:
   test:
-    name: Run Tests
+    name: 🧪 Run Tests & Build
     runs-on: ubuntu-latest
 
     services:
@@ -41,12 +41,12 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction
 
-      # DB 마이그레이션 적용 (SSL 비활성화 환경변수 적용)
       - name: Initialize Database (Alembic)
         env:
           PYTHONPATH: .
           PGSSLMODE: disable
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres?ssl=disable
+          # 테스트용 더미 환경변수
           AWS_ACCESS_KEY_ID: testing
           AWS_SECRET_ACCESS_KEY: testing
           AWS_SECURITY_TOKEN: testing
@@ -57,7 +57,6 @@ jobs:
           SUPABASE_JWT_SECRET: dummy
         run: poetry run alembic upgrade head
 
-      # 테스트 실행
       - name: Run tests
         env:
           PYTHONPATH: .
@@ -68,7 +67,5 @@ jobs:
           SUPABASE_JWT_SECRET: dummy
           AWS_ACCESS_KEY_ID: testing
           AWS_SECRET_ACCESS_KEY: testing
-          AWS_SECURITY_TOKEN: testing
-          AWS_SESSION_TOKEN: testing
           AWS_DEFAULT_REGION: ap-northeast-2
-        run: poetry run pytest -q
+        run: poetry run pytest
