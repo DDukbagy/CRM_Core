@@ -43,11 +43,11 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction
 
-      - name: Initialize Database (Create Tables)
+      - name: Initialize Database
         env:
           PYTHONPATH: .
-          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres
-          # 모델 로딩 시 AWS 설정 등을 통과하기 위한 더미 값
+          # SSL 연결 비활성화
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres?ssl=disable
           AWS_ACCESS_KEY_ID: testing
           AWS_SECRET_ACCESS_KEY: testing
           AWS_SECURITY_TOKEN: testing
@@ -61,7 +61,8 @@ jobs:
       - name: Run tests
         env:
           PYTHONPATH: .
-          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres
+          # SSL 연결 비활성화
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres?ssl=disable
           SUPABASE_URL: https://example.supabase.co
           SUPABASE_ANON_KEY: dummy
           SUPABASE_JWT_SECRET: dummy

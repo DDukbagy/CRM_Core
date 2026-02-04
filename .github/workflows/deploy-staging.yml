@@ -80,3 +80,26 @@ jobs:
           done
           echo "ERROR: Service not ready"
           exit 1
+
+create-pr-to-main:
+  needs: deploy              # deploy job이 성공해야만 실행
+  runs-on: ubuntu-latest
+  permissions:
+    contents: write          # 코드 쓸 권한
+    pull-requests: write     # PR 만들 권한
+
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Create Pull Request (Staging -> Main)
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # 깃허브가 기본 제공하는 토큰 (별도 설정 불필요)
+      run: |
+        # 이미 열려있는 PR이 있으면 에러 안 내고 넘어감 (|| true)
+        gh pr create \
+          --base main \
+          --head staging \
+          --title "🚀 Release Candidate: Staging -> Main" \
+         --body "Staging 배포 및 테스트가 완료되었습니다. 운영 배포를 위해 Merge 해주세요." \
+          || echo "PR already exists, skipping."
