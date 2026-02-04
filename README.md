@@ -33,29 +33,20 @@ make branch-reset   # branch 리셋
 
 2. 작업 → commit → push
 
-3. PR 생성 → CI 실행
+3. PR 생성: 작업 branch ➡️ staging → CI 실행
 
-4. CI 성공 → merge → main push
+4. CI 성공 → merge → staging push
 
-5. CI(main) 성공 → staging 자동 deploy
+5. CI(staging) 성공 → staging 자동 deploy
 
-6. staging deploy 성공 → feature 브랜치 삭제
+6. staging deploy 성공 → staging ➡️ main 방향으로 PR 생성 및 Merge
 
 7. main 기준 make release → prod 자동 deploy
 
 8. prod deploy 성공 → 배포 완료
 
-작업: staging 브랜치에서 feature/login 브랜치 생성 후 작업 & Push.
+9. feature 브랜치 삭제 후 새로운 브랜치로 작업
 
-PR 생성: feature/login ➡️ staging (자동으로 잡힘).
-
-👉 CI.yml 실행 (테스트 통과 ✅)
-
-Staging 병합: PR Merge 클릭.
-
-👉 deploy-staging.yml 실행 (AWS Staging 배포 🚀)
-
-확인: Staging URL 접속해서 기능 테스트. (버그 있으면 1번부터 반복)
 
 Release PR: staging ➡️ main 방향으로 PR 생성 및 Merge.
 
