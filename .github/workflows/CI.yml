@@ -2,8 +2,11 @@ name: CI (Tests)
 
 on:
   push:
-    branches: ["**"]  # feature, staging, main 등 모든 브랜치에서 테스트 실행
-  pull_request:       # PR 생성 시에도 실행
+    branches:
+      - "main"
+      - "staging"
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 jobs:
   test:
@@ -40,7 +43,21 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction
 
-      # 테스트용 가짜 환경변수 주입 (실제 AWS/Supabase 접속 방지)
+      - name: Initialize Database (Create Tables)
+        env:
+          PYTHONPATH: .
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres
+          # 모델 로딩 시 AWS 설정 등을 통과하기 위한 더미 값
+          AWS_ACCESS_KEY_ID: testing
+          AWS_SECRET_ACCESS_KEY: testing
+          AWS_SECURITY_TOKEN: testing
+          AWS_SESSION_TOKEN: testing
+          AWS_DEFAULT_REGION: ap-northeast-2
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_ANON_KEY: dummy
+          SUPABASE_JWT_SECRET: dummy
+        run: poetry run python -m scripts.reset_db
+
       - name: Run tests
         env:
           PYTHONPATH: .
@@ -48,8 +65,6 @@ jobs:
           SUPABASE_URL: https://example.supabase.co
           SUPABASE_ANON_KEY: dummy
           SUPABASE_JWT_SECRET: dummy
-          
-          # moto 라이브러리와 함께 작동할 가짜 AWS 자격증명
           AWS_ACCESS_KEY_ID: testing
           AWS_SECRET_ACCESS_KEY: testing
           AWS_SECURITY_TOKEN: testing
