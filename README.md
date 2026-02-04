@@ -25,7 +25,6 @@ make rollback-dry   # dry rollback 실행
 make branch-reset   # branch 리셋
 ```
 
-
 # 운영 & 배포 가이드 
 
 ## 배포 순서
