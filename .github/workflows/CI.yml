@@ -1,13 +1,14 @@
-name: CI
+name: CI (Tests)
 
 on:
-  workflow_dispatch:
-  pull_request:
   push:
-    branches: ["main"]
+    branches: ["**"]  # 모든 브랜치 푸시 시 테스트 실행 (작업 브랜치 포함)
+  pull_request:
+    branches: ["main", "staging"]
 
 jobs:
   test:
+    name: Run Tests
     runs-on: ubuntu-latest
 
     services:
@@ -26,7 +27,7 @@ jobs:
           --health-retries=10
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -40,21 +41,34 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction
 
-      - name: Prepare DB schema (Alembic)
+      # DB 마이그레이션 적용 (SSL 비활성화 환경변수 적용)
+      - name: Initialize Database (Alembic)
         env:
-          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres
+          PYTHONPATH: .
+          PGSSLMODE: disable
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres?ssl=disable
+          AWS_ACCESS_KEY_ID: testing
+          AWS_SECRET_ACCESS_KEY: testing
+          AWS_SECURITY_TOKEN: testing
+          AWS_SESSION_TOKEN: testing
+          AWS_DEFAULT_REGION: ap-northeast-2
           SUPABASE_URL: https://example.supabase.co
           SUPABASE_ANON_KEY: dummy
           SUPABASE_JWT_SECRET: dummy
-        run: |
-          set -euo pipefail
-          poetry run alembic upgrade head
+        run: poetry run alembic upgrade head
 
+      # 테스트 실행
       - name: Run tests
         env:
           PYTHONPATH: .
-          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres
+          PGSSLMODE: disable
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres?ssl=disable
           SUPABASE_URL: https://example.supabase.co
           SUPABASE_ANON_KEY: dummy
           SUPABASE_JWT_SECRET: dummy
+          AWS_ACCESS_KEY_ID: testing
+          AWS_SECRET_ACCESS_KEY: testing
+          AWS_SECURITY_TOKEN: testing
+          AWS_SESSION_TOKEN: testing
+          AWS_DEFAULT_REGION: ap-northeast-2
         run: poetry run pytest -q
