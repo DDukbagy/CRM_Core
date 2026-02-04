@@ -46,8 +46,8 @@ jobs:
       - name: Initialize Database
         env:
           PYTHONPATH: .
-          # SSL 연결 비활성화
-          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres?ssl=disable
+          PGSSLMODE: disable  
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres
           AWS_ACCESS_KEY_ID: testing
           AWS_SECRET_ACCESS_KEY: testing
           AWS_SECURITY_TOKEN: testing
@@ -61,8 +61,8 @@ jobs:
       - name: Run tests
         env:
           PYTHONPATH: .
-          # SSL 연결 비활성화
-          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres?ssl=disable
+          PGSSLMODE: disable
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres
           SUPABASE_URL: https://example.supabase.co
           SUPABASE_ANON_KEY: dummy
           SUPABASE_JWT_SECRET: dummy
