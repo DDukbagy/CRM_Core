@@ -29,17 +29,17 @@ make branch-reset   # branch 리셋
 
 ## 배포 순서
 
-1. feature 브랜치 생성
+1. 작업 브랜치 생성
 
 2. 작업 → commit → push
 
 3. PR 생성 → CI 실행
 
-4. CI 성공 → merge → main push
+4. CI 성공 → staging merge
 
-5. CI(main) 성공 → staging 자동 deploy
+5. CI(staging) 성공 → staging 자동 deploy
 
-6. staging deploy 성공 → feature 브랜치 삭제
+6. staging deploy 성공 -> main merge
 
 7. main 기준 make release → prod 자동 deploy
 
