@@ -215,60 +215,7 @@ release: ## Interactive: switch to main, pull, tag & push; then return to previo
 		if [ -n "$$ORIG_BRANCH" ]; then \
 			git switch "$$ORIG_BRANCH" >/dev/null 2>&1 || true; \
 		else \
-			git switch --detach "$$ORIG_COMMIT" >/dev/null 2>&1 || true; \
-		fi; \
-	}; \
-	trap 'restore' EXIT INT TERM; \
-	\
-	# working tree must be clean \
-	if [ -n "$$(git status --porcelain)" ]; then \
-		echo "ERROR: Working tree is not clean. Commit/stash first."; \
-		git status --porcelain; \
-		exit 1; \
-	fi; \
-	\
-	echo "==> Switching to main & pulling latest..."; \
-	git switch main >/dev/null; \
-	git pull origin main; \
-	\
-	LATEST_TAG="$$(git tag -l 'v*' --sort=-v:refname | head -n 1)"; \
-	if [ -z "$$LATEST_TAG" ]; then LATEST_TAG="(none)"; fi; \
-	echo "Latest tag: $$LATEST_TAG"; \
-	\
-	read -p "Enter version tag (e.g. v0.1.1 or 0.1.1): " VERSION; \
-	# trim spaces \
-	VERSION="$$(printf "%s" "$$VERSION" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$$//')"; \
-	if [ -z "$$VERSION" ]; then \
-		echo "ERROR: version is required."; \
-		exit 1; \
-	fi; \
-	# auto-prefix v \
-	case "$$VERSION" in v*) ;; *) VERSION="v$$VERSION";; esac; \
-	echo "==> Using tag: $$VERSION"; \
-	\
-	# local tag exists? \
-	if git rev-parse "$$VERSION" >/dev/null 2>&1; then \
-		echo "ERROR: tag '$$VERSION' already exists (local). Choose a new version."; \
-		exit 1; \
-	fi; \
-	# remote tag exists? (covers 'exists on origin but not locally') \
-	if git ls-remote --tags origin "$$VERSION" | grep -q "$$VERSION"; then \
-		echo "ERROR: tag '$$VERSION' already exists on origin. Choose a new version."; \
-		exit 1; \
-	fi; \
-	\
-	echo "==> Creating annotated tag $$VERSION (message: Release $$VERSION)"; \
-	git tag -a "$$VERSION" -m "Release $$VERSION"; \
-	echo "==> Pushing tag $$VERSION to origin (this triggers prod deploy)..."; \
-	git push origin "$$VERSION"; \
-	echo "✅ Done. Pushed tag $$VERSION."; \
-	\
-	# (optional) show where we will return \
-	if [ -n "$$ORIG_BRANCH" ]; then \
-		echo "==> Will return to branch: $$ORIG_BRANCH"; \
-	else \
-		echo "==> Will return to detached commit: $$ORIG_COMMIT"; \
-	fi
+			git switc
 
 .PHONY: branch-reset
 branch-reset: ## Switch to main, pull latest, delete local+remote branch, create new branch (interactive)
