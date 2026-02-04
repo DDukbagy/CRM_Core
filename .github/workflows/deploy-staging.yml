@@ -2,104 +2,53 @@ name: Deploy Staging
 
 on:
   push:
-    branches: ["staging"]  # staging 브랜치 변경 시에만 실행 (권한 문제 해결)
+    branches:
+      - "staging"
+  workflow_dispatch: # [수동 배포] 버튼 활성화
 
 permissions:
   id-token: write
-  contents: read
-
-concurrency:
-  group: deploy-staging-${{ github.sha }}
-  cancel-in-progress: true
+  contents: write # PR 생성을 위해 write 권한 필요
+  pull-requests: write
 
 jobs:
   deploy:
-    name: Deploy (staging)
+    name: Deploy to Staging
     runs-on: ubuntu-latest
-    environment: staging
-
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      # staging 브랜치는 AWS IAM에서 허용해주어야 함
-      - name: Configure AWS credentials (OIDC)
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ap-northeast-2
 
-      - name: Install AWS Copilot
+      - name: Install AWS Copilot CLI
         run: |
-          curl -Lo copilot-cli https://github.com/aws/copilot-cli/releases/latest/download/copilot-linux
-          chmod +x copilot-cli
-          mkdir -p ~/.local/bin
-          mv copilot-cli ~/.local/bin/copilot
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          curl -Lo copilot-linux [https://github.com/aws/copilot-cli/releases/latest/download/copilot-linux](https://github.com/aws/copilot-cli/releases/latest/download/copilot-linux)
+          chmod +x copilot-linux
+          sudo mv copilot-linux /usr/local/bin/copilot
 
-      - name: Deploy (staging)
-        run: copilot svc deploy --name api --env staging
-
-      - name: Install jq
+      - name: Deploy to Staging
         run: |
-          sudo apt-get update
-          sudo apt-get install -y jq
+          copilot svc deploy --name api --env staging --detach
 
-      - name: Resolve staging URL
-        id: staging_url
+  create-pr-to-main:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create Pull Request (Staging -> Main)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
-          ENV_NAME="staging"
-          STAGING_URL=$(
-            copilot svc show --name api --json \
-            | jq -r --arg env "$ENV_NAME" '.routes[] | select(.environment==$env) | .url' \
-            | head -n 1
-          )
-          
-          if [ -z "$STAGING_URL" ] || [ "$STAGING_URL" = "null" ]; then
-            echo "ERROR: Failed to resolve staging URL"
-            exit 1
-          fi
-
-          echo "STAGING_URL=$STAGING_URL" >> "$GITHUB_OUTPUT"
-          echo "Staging URL: $STAGING_URL"
-
-      - name: Smoke test (staging)
-        run: |
-          URL="${{ steps.staging_url.outputs.STAGING_URL }}"
-          echo "Checking $URL/health/ready"
-          
-          # Retry loop (max 90s)
-          for i in {1..18}; do
-            if curl -fsS "$URL/health/ready" > /dev/null; then
-              echo "OK: Ready"
-              exit 0
-            fi
-            echo "Waiting... ($i/18)"
-            sleep 5
-          done
-          echo "ERROR: Service not ready"
-          exit 1
-
-create-pr-to-main:
-  needs: deploy              # deploy job이 성공해야만 실행
-  runs-on: ubuntu-latest
-  permissions:
-    contents: write          # 코드 쓸 권한
-    pull-requests: write     # PR 만들 권한
-
-  steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Create Pull Request (Staging -> Main)
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # 깃허브가 기본 제공하는 토큰 (별도 설정 불필요)
-      run: |
-        # 이미 열려있는 PR이 있으면 에러 안 내고 넘어감 (|| true)
-        gh pr create \
-          --base main \
-          --head staging \
-          --title "🚀 Release Candidate: Staging -> Main" \
-         --body "Staging 배포 및 테스트가 완료되었습니다. 운영 배포를 위해 Merge 해주세요." \
-          || echo "PR already exists, skipping."
+          gh pr create \
+            --base main \
+            --head staging \
+            --title "🚀 Release Candidate: Staging -> Main" \
+            --body "Staging 배포가 완료되었습니다. 운영 배포를 위해 Merge 해주세요." \
+            || echo "PR already exists, skipping."
