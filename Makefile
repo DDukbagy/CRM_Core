@@ -220,20 +220,31 @@ release: ## Interactive: switch to main, pull, tag & push; then return to previo
 .PHONY: branch-reset
 branch-reset: ## Switch to staging, pull latest, delete local+remote branch, create new branch (interactive)
 	@bash -eu -o pipefail -c '\
+		# 1. 현재 상태 확인 및 Main 브랜치 동기화 \
 		echo "==> Current branch:"; \
 		current="$$(git rev-parse --abbrev-ref HEAD)"; \
 		echo "    $$current"; \
 		echo ""; \
-		echo "==> Switching to staging & pulling latest..."; \
-		git switch staging >/dev/null; \
-		git pull origin staging; \
+		echo "🔄 Syncing local MAIN branch..."; \
+		git fetch origin main:main 2>/dev/null || (git switch main >/dev/null && git pull origin main && git switch - >/dev/null); \
+		echo "   ✅ Main is up-to-date."; \
 		echo ""; \
+		\
+		# 2. Staging 브랜치 동기화 \
+		echo "🔄 Switching to staging & pulling latest..."; \
+		git switch staging >/dev/null; \
+		git pull --prune origin staging; \
+		echo ""; \
+		\
+		# 3. 브랜치 목록 출력 \
 		echo "==> Local branches:"; \
 		git branch --format="%(refname:short)" | sed "s/^/   - /"; \
 		echo ""; \
 		echo "==> Remote branches (origin):"; \
 		git branch -r --format="%(refname:short)" | sed "s/^/   - /"; \
 		echo ""; \
+		\
+		# 4. 브랜치 삭제 로직 \
 		read -r -p "Branch to DELETE (name only, e.g. feature/posts). Leave empty to cancel: " del; \
 		if [ -z "$$del" ]; then \
 			echo "Cancelled."; \
@@ -250,17 +261,23 @@ branch-reset: ## Switch to staging, pull latest, delete local+remote branch, cre
 		if [ "$$del" = "$$current" ]; then \
 			echo "NOTE: you were on '\''$$current'\''; already switched to staging."; \
 		fi; \
+		\
+		# 5. 새 브랜치 이름 입력 \
 		read -r -p "New branch to CREATE (e.g. feature/posts): " new; \
 		if [ -z "$$new" ]; then \
 			echo "ERROR: new branch name is required."; \
 			exit 1; \
 		fi; \
 		echo ""; \
+		\
+		# 6. 실제 삭제 실행 \
 		echo "==> Deleting local branch (if exists): $$del"; \
 		git branch -D "$$del" 2>/dev/null || echo "  (local branch not found)"; \
 		echo "==> Deleting remote branch (if exists): origin/$$del"; \
 		git push origin --delete "$$del" 2>/dev/null || echo "  (remote branch not found)"; \
 		echo ""; \
+		\
+		# 7. 새 브랜치 생성 및 이동 \
 		echo "==> Creating and switching to: $$new (from updated staging)"; \
 		git switch -c "$$new"; \
 		echo "==> Creating remote branch + setting upstream: origin/$$new"; \
@@ -270,109 +287,75 @@ branch-reset: ## Switch to staging, pull latest, delete local+remote branch, cre
 	'
 
 .PHONY: rollback-dry
-rollback-dry: ## Interactive: show what rollback would do (NO tag created, NO push)
-	@set -e; \
-	# 작업트리 깨끗한지 확인 \
-	if [ -n "$$(git status --porcelain)" ]; then \
-		echo "ERROR: Working tree is not clean. Commit/stash first."; \
-		git status --porcelain; \
-		exit 1; \
-	fi; \
-	echo "==> Switching to main & pulling latest..."; \
-	git switch main >/dev/null; \
-	git pull origin main; \
-	echo "==> Fetching tags..."; \
-	git fetch --tags; \
-	echo "Recent tags:"; \
-	git tag -l 'v*' --sort=-v:refname | head -n 10; \
-	read -p "Enter FROM tag to rollback to (e.g. v0.1.3): " FROM; \
-	if [ -z "$$FROM" ]; then \
-		echo "ERROR: FROM tag is required."; \
-		exit 1; \
-	fi; \
-	case "$$FROM" in v*) ;; *) echo "ERROR: FROM tag must start with 'v' (e.g. v0.1.3)"; exit 1;; esac; \
-	if ! git rev-parse "$$FROM" >/dev/null 2>&1; then \
-		echo "ERROR: FROM tag '$$FROM' does not exist (local). Did you fetch tags?"; \
-		exit 1; \
-	fi; \
-	read -p "Enter NEW tag to create for rollback (e.g. v0.1.4): " TO; \
-	if [ -z "$$TO" ]; then \
-		echo "ERROR: TO tag is required."; \
-		exit 1; \
-	fi; \
-	case "$$TO" in v*) ;; *) echo "ERROR: TO tag must start with 'v' (e.g. v0.1.4)"; exit 1;; esac; \
-	if git rev-parse "$$TO" >/dev/null 2>&1; then \
-		echo "ERROR: tag '$$TO' already exists (local). Choose a new version."; \
-		exit 1; \
-	fi; \
-	FROM_SHA="$$(git rev-list -n 1 "$$FROM")"; \
-	echo ""; \
-	echo "=== DRY RUN (no changes will be made) ==="; \
-	echo "Would create annotated tag: $$TO"; \
-	echo "  points to tag: $$FROM"; \
-	echo "  FROM sha: $$FROM_SHA"; \
-	echo "  message : rollback: $$FROM -> $$TO"; \
-	echo "Would push: git push origin $$TO"; \
-	echo "========================================"; \
-	echo ""; \
-	echo "✅ Dry run complete. To execute for real: make rollback"
-
+rollback-dry: ## [Safe] Simulate rollback: Show file changes without modifying anything
+	@bash -eu -o pipefail -c '\
+		echo "🔍 [DRY RUN] checking rollback diff..."; \
+		# 1. Main 최신화 (변경사항 없이 확인만) \
+		git fetch origin main; \
+		\
+		# 2. 태그 목록 보여주기 \
+		echo ""; \
+		echo "📜 Recent Tags:"; \
+		git tag -l "v*" --sort=-v:refname | head -n 10; \
+		echo ""; \
+		read -r -p "Enter TAG to rollback to (e.g. v0.1.0): " TARGET_TAG; \
+		if [ -z "$$TARGET_TAG" ]; then echo "❌ Error: Tag is required."; exit 1; fi; \
+		\
+		# 3. 변경사항 미리보기 (Diff Stat) \
+		echo ""; \
+		echo "📊 If you rollback to $$TARGET_TAG, these files will change:"; \
+		echo "-------------------------------------------------------------"; \
+		git diff --stat origin/main "$$TARGET_TAG"; \
+		echo "-------------------------------------------------------------"; \
+		echo ""; \
+		echo "✅ Dry run complete. Nothing changed."; \
+		echo "👉 To execute for real: make rollback"; \
+	'
 
 .PHONY: rollback
-rollback-safe:
-	@set -e; \
-	# 작업트리 깨끗한지 확인(운영 사고 시 실수 방지) \
-	if [ -n "$$(git status --porcelain)" ]; then \
-		echo "ERROR: Working tree is not clean. Commit/stash first."; \
-		git status --porcelain; \
-		exit 1; \
-	fi; \
-	echo "==> Switching to main & pulling latest..."; \
-	git switch main >/dev/null; \
-	git pull origin main; \
-	echo "==> Fetching tags..."; \
-	git fetch --tags; \
-	echo "Recent tags:"; \
-	git tag -l 'v*' --sort=-v:refname | head -n 10; \
-	read -p "Enter FROM tag to rollback to (e.g. v0.1.3): " FROM; \
-	if [ -z "$$FROM" ]; then \
-		echo "ERROR: FROM tag is required."; \
-		exit 1; \
-	fi; \
-	case "$$FROM" in v*) ;; *) echo "ERROR: FROM tag must start with 'v' (e.g. v0.1.3)"; exit 1;; esac; \
-	if ! git rev-parse "$$FROM" >/dev/null 2>&1; then \
-		echo "ERROR: FROM tag '$$FROM' does not exist (local). Did you fetch tags?"; \
-		exit 1; \
-	fi; \
-	read -p "Enter NEW tag to create for rollback (e.g. v0.1.4): " TO; \
-	if [ -z "$$TO" ]; then \
-		echo "ERROR: TO tag is required."; \
-		exit 1; \
-	fi; \
-	case "$$TO" in v*) ;; *) echo "ERROR: TO tag must start with 'v' (e.g. v0.1.4)"; exit 1;; esac; \
-	if git rev-parse "$$TO" >/dev/null 2>&1; then \
-		echo "ERROR: tag '$$TO' already exists (local). Choose a new version."; \
-		exit 1; \
-	fi; \
-	FROM_SHA="$$(git rev-list -n 1 "$$FROM")"; \
-	echo ""; \
-	echo "=== FINAL CONFIRMATION REQUIRED ==="; \
-	echo "You are about to ROLLBACK prod by pushing a NEW tag:"; \
-	echo "  FROM tag : $$FROM (sha: $$FROM_SHA)"; \
-	echo "  NEW  tag : $$TO"; \
-	echo "This will trigger prod deploy via deploy.yml"; \
-	echo ""; \
-	read -p "Type YES to continue: " CONFIRM; \
-	if [ "$$CONFIRM" != "YES" ]; then \
-		echo "Aborted. (You did not type YES)"; \
-		exit 1; \
-	fi; \
-	echo "==> Creating annotated tag $$TO pointing to $$FROM (message: rollback: $$FROM -> $$TO)"; \
-	git tag -a "$$TO" "$$FROM" -m "rollback: $$FROM -> $$TO"; \
-	echo "==> Pushing tag $$TO to origin (this triggers prod deploy)..."; \
-	git push origin "$$TO"; \
-	echo "✅ Done. Rolled back by pushing tag $$TO (points to $$FROM)."
-
+rollback: ## [Danger] Rollback Main branch to specific Tag/Commit (Triggers Deploy)
+	@bash -eu -o pipefail -c '\
+		echo "⚠️  [DANGER] Rolling back MAIN branch content..."; \
+		if [ -n "$$(git status --porcelain)" ]; then \
+			echo "❌ Error: Working tree is not clean. Commit or stash changes first."; \
+			exit 1; \
+		fi; \
+		\
+		echo "🔄 Switching to main and pulling latest..."; \
+		git switch main; \
+		git pull origin main; \
+		\
+		echo ""; \
+		echo "📜 Recent Tags:"; \
+		git tag -l "v*" --sort=-v:refname | head -n 10; \
+		echo ""; \
+		read -r -p "Enter TAG to rollback to (e.g. v0.1.0): " TARGET_TAG; \
+		if [ -z "$$TARGET_TAG" ]; then echo "❌ Error: Tag is required."; exit 1; fi; \
+		\
+		if ! git rev-parse "$$TARGET_TAG" >/dev/null 2>&1; then \
+			echo "❌ Error: Tag $$TARGET_TAG not found."; \
+			exit 1; \
+		fi; \
+		\
+		echo ""; \
+		echo "=================================================="; \
+		echo "🚨 ROLLBACK CONFIRMATION"; \
+		echo "Target Tag  : $$TARGET_TAG"; \
+		echo "Action      : Overwrite Main code with $$TARGET_TAG content"; \
+		echo "Result      : This will create a NEW commit on Main and TRIGGER DEPLOY."; \
+		echo "=================================================="; \
+		read -r -p "Type YES to proceed: " CONFIRM; \
+		if [ "$$CONFIRM" != "YES" ]; then echo "🚫 Aborted."; exit 1; fi; \
+		\
+		echo "🔄 Reverting code to $$TARGET_TAG..."; \
+		git checkout "$$TARGET_TAG" -- . ; \
+		echo "📦 Committing rollback..."; \
+		git commit -m "revert: rollback to $$TARGET_TAG"; \
+		\
+		echo "🚀 Pushing to Main (Deploy will start)..."; \
+		git push origin main; \
+		echo "✅ Rollback initiated successfully!"; \
+	'
 .PHONY: alarms-prod-dim
 alarms-prod-dim: ## Print PROD ALB/TG suffix (for CloudWatch dimensions)
 	@bash -eu -o pipefail -c '\
