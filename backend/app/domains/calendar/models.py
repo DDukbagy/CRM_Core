@@ -1,9 +1,10 @@
-from datetime import date, datetime, time, timezone
+from datetime import datetime, time, timezone, date
 from typing import TYPE_CHECKING, Optional, List
 from uuid import UUID
+from enum import Enum
 
 from pydantic import AwareDatetime
-from sqlalchemy import Index, text, Text, UniqueConstraint
+from sqlalchemy import Index, text, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy_utc import UtcDateTime
 from sqlmodel import Field, Relationship, SQLModel, func
@@ -11,6 +12,10 @@ from sqlmodel import Field, Relationship, SQLModel, func
 if TYPE_CHECKING:
     from app.domains.account.models import User
 
+# 예약 타입 정의 (일반 레슨 / 휴무)
+class BookingType(str, Enum):
+    LESSON = "LESSON"     # 일반 예약 (레슨, 게임 등)
+    HOLIDAY = "HOLIDAY"   # 휴무 (강사 일정 차단)
 
 class Calendar(SQLModel, table=True):
     __tablename__ = "calendars"
@@ -79,21 +84,25 @@ class TimeSlot(SQLModel, table=True):
 class Booking(SQLModel, table=True):
     __tablename__ = "bookings"
     __table_args__ = (
-    Index(
-        "uq_booking_active_slot_date",
-        "when",
-        "time_slot_id",
-        unique=True,
-        postgresql_where=text("status <> 'CANCELLED'"),
-    ),
-)
+        Index(
+            "uq_booking_active_slot_date",
+            "when",
+            "time_slot_id",
+            unique=True,
+            postgresql_where=text("status <> 'CANCELLED'"),
+        ),
+    )
 
     id: Optional[int] = Field(default=None, primary_key=True)
 
     when: date
     topic: str
+    
+    # 예약 타입 (기본값: LESSON)
+    type: BookingType = Field(default=BookingType.LESSON, description="LESSON / HOLIDAY")
+    
     status: str = Field(default="CONFIRMED", description="CONFIRMED / CANCELLED / COMPLETED")
-    description: str = Field(sa_type=Text, description="예약 설명")
+    description: Optional[str] = Field(default=None, sa_type=Text, description="예약 설명")
 
     time_slot_id: int = Field(foreign_key="time_slots.id")
     time_slot: TimeSlot = Relationship(back_populates="bookings")

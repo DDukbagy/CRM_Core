@@ -1,5 +1,5 @@
 {
-  "name": "crm_backend-devcontainer",
+  "name": "crm-project-devcontainer",
   "build": {
     "dockerfile": "Dockerfile.devcontainer",
     "context": ".."
@@ -8,8 +8,8 @@
     "POETRY_VIRTUALENVS_IN_PROJECT": "1",
     "POETRY_VIRTUALENVS_CREATE": "1"
   },
-  "postCreateCommand": "bash -lc \"git config --global --add safe.directory /workspaces/crm_backend && poetry config virtualenvs.in-project true --local && bash -lc './scripts/install_aws_tools.sh' && poetry install --no-root\"",
-  "postStartCommand": "bash -lc \"git config --global --add safe.directory /workspaces/crm_backend && poetry config virtualenvs.in-project true --local && (test -f .venv/pyvenv.cfg && .venv/bin/python -c 'import fastapi' >/dev/null 2>&1 || poetry install --no-root)\"",
+  "postCreateCommand": "bash -lc \"git config --global --add safe.directory /workspaces/crm-project && cd backend && poetry config virtualenvs.in-project true --local && bash -lc './scripts/install_aws_tools.sh' && poetry install --no-root\"",
+  "postStartCommand": "bash -lc \"git config --global --add safe.directory /workspaces/crm-project && cd backend && poetry config virtualenvs.in-project true --local && (test -f .venv/pyvenv.cfg && .venv/bin/python -c 'import fastapi' >/dev/null 2>&1 || poetry install --no-root)\"",
   "customizations": {
     "vscode": {
       "extensions": [
@@ -17,10 +17,10 @@
         "ms-python.vscode-pylance"
       ],
       "settings": {
-        "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+        "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
         "terminal.integrated.env.linux": {
-          "VIRTUAL_ENV": "${workspaceFolder}/.venv",
-          "PATH": "${workspaceFolder}/.venv/bin:${env:PATH}"
+          "VIRTUAL_ENV": "${workspaceFolder}/backend/.venv",
+          "PATH": "${workspaceFolder}/backend/.venv/bin:${env:PATH}"
         },
         "workbench.colorTheme": "Default Dark+"
       }

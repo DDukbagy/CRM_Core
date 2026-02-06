@@ -5,6 +5,7 @@ from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+from app.domains.calendar.models import BookingType
 
 
 class CalendarCreate(BaseModel):
@@ -94,7 +95,6 @@ class AvailabilityDay(BaseModel):
 class AvailabilityResponse(BaseModel):
     """
     특정 기간 동안 '예약 가능한 시간표'를 계산해서 내려주는 응답
-    - 실제 구현에서는 bookings(이미 예약된 것)까지 반영해서 slots를 필터링하게 됨
     """
     host_id: UUID
     start: date
@@ -110,12 +110,14 @@ BookingStatus = Literal["CONFIRMED", "CANCELLED", "COMPLETED"]
 class BookingCreate(BaseModel):
     """
     게스트가 예약 생성할 때 입력
-    - description은 DB에서 nullable 허용이므로 Optional
     """
     time_slot_id: int
     when: date
     topic: str = Field(min_length=1)
     description: str | None = None
+    
+    # 예약 타입 (기본값 LESSON, 휴무 등록 시 HOLIDAY)
+    type: BookingType = BookingType.LESSON
 
     model_config = {"extra": "forbid"}
 
@@ -128,6 +130,7 @@ class BookingRead(BaseModel):
     when: date
     topic: str
     status: BookingStatus
+    type: BookingType  # 타입 정보 포함
     description: str | None
     time_slot_id: int
     guest_id: UUID
@@ -140,7 +143,6 @@ class BookingRead(BaseModel):
 class BookingCancelResponse(BaseModel):
     """
     예약 취소 응답(최소 응답 형태)
-    - 클라이언트가 상태 변경만 빠르게 확인할 수 있게 함
     """
     id: int
     status: BookingStatus

@@ -5,9 +5,10 @@ run-name: 🚀 Deploy Staging | ${{ github.event_name }} | ${{ github.event.work
 
 on:
   workflow_run:
-    workflows: ["Backend CI"] # CI.yml의 name과 일치해야 함
+    workflows: ["Backend CI"]
     types:
       - completed
+    branches: [staging]
 
 permissions:
   id-token: write
@@ -46,6 +47,7 @@ jobs:
       # Staging 배포 실행
       - name: Copilot Deploy
         run: copilot svc deploy --name api --env staging --detach
+        working-directory: ./backend
 
       # 배포 성공 시 Staging -> Main PR 자동 생성
       - name: Create Pull Request to Main

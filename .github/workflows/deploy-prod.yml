@@ -8,6 +8,7 @@ on:
     workflows: ["Backend CI"]
     types:
       - completed
+    branches: [main]
 
 permissions:
   id-token: write
@@ -43,3 +44,4 @@ jobs:
 
       - name: Copilot Deploy
         run: copilot svc deploy --name api --env prod --detach
+        working-directory: ./backend

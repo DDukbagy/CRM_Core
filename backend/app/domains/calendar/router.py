@@ -1,16 +1,19 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import Response
+from icalendar import Calendar as ICal, Event as ICalEvent
+
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.core.auth.deps import require_role, get_current_user, CurrentUser
 from app.db.session import get_session
-from app.domains.calendar.models import Booking, Calendar, TimeSlot
+from app.domains.calendar.models import Booking, Calendar, TimeSlot, BookingType
 from app.domains.calendar.schemas import (
     AvailabilityDay,
     AvailabilityResponse,
@@ -31,7 +34,7 @@ cal_router = APIRouter(prefix="/calendars", tags=["Calendar"])
 bk_router = APIRouter(prefix="/bookings", tags=["Booking"])
 
 
-# Helpers (필수만 최소)
+# --- Helpers ---
 def _date_range_inclusive(start: date, end: date) -> list[date]:
     days: list[date] = []
     cur = start
@@ -73,7 +76,7 @@ def _raise_booking_conflict(*, time_slot_id: int, when: date) -> None:
     )
 
 
-# Host: My Calendar
+# --- Host: My Calendar ---
 @cal_router.post(
     "/me",
     response_model=CalendarRead,
@@ -86,7 +89,6 @@ async def create_my_calendar(
 ):
     host_id = UUID(str(host.id))
 
-    # 호스트당 1개만(UNIQUE)
     exists = await session.execute(select(Calendar).where(Calendar.host_id == host_id))
     if exists.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Calendar already exists for this host")
@@ -141,7 +143,7 @@ async def update_my_calendar(
     return calendar
 
 
-# Host: TimeSlots CRUD
+# --- Host: TimeSlots CRUD ---
 @cal_router.post(
     "/me/time-slots",
     response_model=TimeSlotRead,
@@ -257,7 +259,7 @@ async def delete_time_slot(
     return None
 
 
-# Public: Host Calendar & Availability
+# --- Public: Host Calendar & Availability ---
 @cal_router.get("/{host_id}", response_model=CalendarRead)
 async def get_host_calendar(
     host_id: UUID,
@@ -280,7 +282,7 @@ async def get_availability(
     if end < start:
         raise HTTPException(status_code=400, detail="end must be >= start")
 
-    # 운영 안전장치(너무 큰 기간 조회 방지) - 필요없으면 지워도 됨
+    # 운영 안전장치(너무 큰 기간 조회 방지)
     if (end - start).days > 90:
         raise HTTPException(status_code=400, detail="range is too large (max 90 days)")
 
@@ -290,13 +292,13 @@ async def get_availability(
     if calendar_id is None:
         raise HTTPException(status_code=404, detail="Calendar not found")
 
-    # 1) 해당 캘린더의 모든 time_slots
+    # 해당 캘린더의 모든 time_slots
     slots_res = await session.execute(
         select(TimeSlot).where(TimeSlot.calendar_id == calendar_id).order_by(TimeSlot.id.asc())
     )
     slots = slots_res.scalars().all()
 
-    # 2) 기간 내 예약(취소 제외) -> (time_slot_id, when) set
+    # 기간 내 예약(취소 제외) 조회 -> (time_slot_id, when) set
     booked_res = await session.execute(
         select(Booking.time_slot_id, Booking.when)
         .join(TimeSlot, TimeSlot.id == Booking.time_slot_id)
@@ -332,7 +334,7 @@ async def get_availability(
     return AvailabilityResponse(host_id=host_id, start=start, end=end, days=days_out)
 
 
-# Bookings (Guest + Host)
+# --- Bookings (Guest + Host) ---
 @bk_router.post("", response_model=BookingRead, status_code=status.HTTP_201_CREATED)
 async def create_booking(
     data: BookingCreate,
@@ -341,7 +343,7 @@ async def create_booking(
 ):
     guest_id = UUID(str(user.id))
 
-    # time_slot 존재 확인 + weekdays 체크
+    # TimeSlot 존재 확인
     ts_res = await session.execute(select(TimeSlot).where(TimeSlot.id == data.time_slot_id))
     ts = ts_res.scalar_one_or_none()
     if not ts:
@@ -350,7 +352,17 @@ async def create_booking(
     if data.when.weekday() not in (ts.weekdays or []):
         raise HTTPException(status_code=400, detail="Selected date is not available for this time slot")
 
-    # "취소가 아닌" 예약만 중복으로 막는다
+    # 휴무는 해당 TimeSlot의 주인(Host)만 등록
+    if data.type == BookingType.HOLIDAY:
+        # TimeSlot -> Calendar -> Host 확인
+        cal_res = await session.execute(select(Calendar).where(Calendar.id == ts.calendar_id))
+        calendar = cal_res.scalar_one_or_none()
+        
+        if not calendar or calendar.host_id != guest_id:
+             # guest_id가 로그인한 유저ID이므로, 이게 host_id와 같은지 확인
+             raise HTTPException(status_code=403, detail="Only the host can schedule a HOLIDAY")
+
+    # 중복 예약 확인 (취소가 아닌 건들)
     existing = await session.execute(
         select(Booking.id).where(
             Booking.time_slot_id == data.time_slot_id,
@@ -359,7 +371,6 @@ async def create_booking(
         )
     )
     if existing.scalar_one_or_none():
-        # 운영 친화적 409 (프론트가 이걸 보고 안내+재조회)
         _raise_slot_already_booked(time_slot_id=data.time_slot_id, when=data.when)
 
     booking = Booking(
@@ -369,6 +380,7 @@ async def create_booking(
         time_slot_id=data.time_slot_id,
         guest_id=guest_id,
         status="CONFIRMED",
+        type=data.type,  # 예약 타입 저장 (LESSON or HOLIDAY)
     )
     session.add(booking)
 
@@ -378,10 +390,8 @@ async def create_booking(
         return booking
 
     except IntegrityError:
-        # 레이스 컨디션(동시 예약) 최종 방어
         await session.rollback()
-
-        # 커밋 실패 후 DB를 다시 확인해서 "진짜 이미 예약"인지 판단
+        # 동시성 처리: 다시 한 번 확인
         again = await session.execute(
             select(Booking.id).where(
                 Booking.time_slot_id == data.time_slot_id,
@@ -392,7 +402,6 @@ async def create_booking(
         if again.scalar_one_or_none():
             _raise_slot_already_booked(time_slot_id=data.time_slot_id, when=data.when)
 
-        # active booking이 없으면 정책/인덱스 불일치 등 "충돌"로 처리
         _raise_booking_conflict(time_slot_id=data.time_slot_id, when=data.when)
 
 
@@ -443,7 +452,7 @@ async def cancel_booking_as_guest(
 ):
     """
     게스트(예약자) 취소
-    - row 삭제가 아니라 status 변경(운영 정석)
+    - row 삭제 X, status 변경
     """
     user_id = UUID(str(user.id))
 
@@ -498,6 +507,52 @@ async def cancel_booking_as_host(
     return BookingCancelResponse(id=booking.id, status=booking.status, updated_at=booking.updated_at)
 
 
-# main.py에서 include_router(calendar_router)로 한 번만 붙일 수 있게 export
+# 스마트폰 캘린더용 .ics 파일 다운로드
+@bk_router.get("/{booking_id}/download", summary="스마트폰 캘린더 연동 (.ics 다운로드)")
+async def download_booking_ics(
+    booking_id: int,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(get_current_user),
+):
+    # 예약 정보 조회
+    stmt = select(Booking).where(Booking.id == booking_id)
+    result = await session.execute(stmt)
+    booking = result.scalar_one_or_none()
+    
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    # TimeSlot 정보 (시간 확인용)
+    ts_result = await session.execute(select(TimeSlot).where(TimeSlot.id == booking.time_slot_id))
+    ts = ts_result.scalar_one_or_none()
+    
+    if not ts:
+        raise HTTPException(status_code=404, detail="TimeSlot not found")
+
+    # ICS 파일 생성
+    cal = ICal()
+    event = ICalEvent()
+    
+    event.add('summary', f"[CRM 예약] {booking.topic}")
+    event.add('description', booking.description or "CRM 앱에서 생성된 예약입니다.")
+    
+    start_dt = datetime.combine(booking.when, ts.start_time)
+    end_dt = datetime.combine(booking.when, ts.end_time)
+    
+    event.add('dtstart', start_dt)
+    event.add('dtend', end_dt)
+    event.add('dtstamp', datetime.now())
+    
+    cal.add_component(event)
+
+    filename = f"booking_{booking_id}.ics"
+    return Response(
+        content=cal.to_ical(),
+        media_type="text/calendar",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+# main.py에서 등록할 라우터
 router.include_router(cal_router)
 router.include_router(bk_router)
