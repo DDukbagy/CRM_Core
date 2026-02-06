@@ -5,9 +5,10 @@ run-name: 🚀 Deploy Staging | ${{ github.event_name }} | ${{ github.event.work
 
 on:
   workflow_run:
-    workflows: ["Backend CI"] # CI.yml의 name과 일치해야 함
+    workflows: ["Backend CI"]
     types:
       - completed
+    branches: [staging]
 
 permissions:
   id-token: write
