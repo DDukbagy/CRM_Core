@@ -30,7 +30,7 @@ RUN pip install --no-cache-dir poetry
 WORKDIR /workspaces
 
 # 의존성 파일 복사 (캐시 최적화)
-COPY pyproject.toml poetry.lock* ./
+COPY backend/pyproject.toml backend/poetry.lock* ./
 
 # 의존성 설치 (프로젝트는 패키지 설치 안 함)
 RUN poetry install --no-root
@@ -41,4 +41,4 @@ COPY . .
 EXPOSE 8000
 
 # 개발 편의: reload 기본
-CMD ["poetry", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["sh", "-c", "cd backend && poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]

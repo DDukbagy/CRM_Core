@@ -12,13 +12,15 @@ from sqlalchemy.orm import selectinload
 
 from app.core.auth.deps import CurrentUser, get_current_user, require_role, get_current_user_optional
 from app.db.session import get_session
-from app.domains.posts.models import Post, MediaType, PostType
+from app.domains.posts.models import Post, MediaType, PostType, MatchRequest, MatchStatus
 from app.domains.posts.schemas import (
     PostCreate, PostResponse, PostMediaResponse, 
-    CommentCreate, CommentResponse, PostUpdate, CommentUpdate, NotificationResponse
+    CommentCreate, CommentResponse, PostUpdate, CommentUpdate, NotificationResponse,
+    MatchRequestCreate, MatchRequestRead, MatchDecision
 )
 from app.domains.posts.repository import PostRepository
 from app.core.s3 import upload_file_to_s3, create_presigned_url, delete_file_from_s3 
+from app.domains.calendar.models import Booking, BookingType
 
 router = APIRouter(tags=["Posts"])
 admin_router = APIRouter(prefix="/admin", tags=["Admin Posts"])
@@ -421,5 +423,94 @@ async def mark_notification_as_read(
     if not success:
         raise HTTPException(status_code=404, detail="Notification not found or access denied")
     return {"ok": True}
+
+# 매칭 참가 신청
+@router.post("/match/request", response_model=MatchRequestRead, status_code=201)
+async def request_match(
+    data: MatchRequestCreate,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(get_current_user),
+):
+    post_res = await session.execute(select(Post).where(Post.id == data.post_id))
+    post = post_res.scalar_one_or_none()
+    if not post:
+        raise HTTPException(404, "Post not found")
+        
+    if post.owner_user_id == user.id:
+        raise HTTPException(400, "Host cannot apply to their own post")
+
+    existing = await session.execute(select(MatchRequest).where(
+        MatchRequest.post_id == data.post_id,
+        MatchRequest.guest_id == user.id
+    ))
+    if existing.scalar_one_or_none():
+        raise HTTPException(409, "Already applied")
+
+    match_req = MatchRequest(
+        post_id=data.post_id,
+        guest_id=user.id,
+        status=MatchStatus.PENDING
+    )
+    session.add(match_req)
+    await session.commit()
+    await session.refresh(match_req)
+    return match_req
+
+# 매칭 신청자 목록 조회
+@router.get("/match/{post_id}/requests", response_model=list[MatchRequestRead])
+async def get_match_requests(
+    post_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(get_current_user),
+):
+    result = await session.execute(
+        select(MatchRequest).where(MatchRequest.post_id == post_id)
+    )
+    return result.scalars().all()
+
+# 매칭 수락/거절 결정 (수락 시 예약 자동 생성)
+@router.post("/match/decide", status_code=200)
+async def decide_match(
+    data: MatchDecision,
+    session: AsyncSession = Depends(get_session),
+    host: CurrentUser = Depends(get_current_user),
+):
+    req_res = await session.execute(select(MatchRequest).where(MatchRequest.id == data.match_request_id))
+    match_req = req_res.scalar_one_or_none()
+    if not match_req:
+        raise HTTPException(404, "Request not found")
+
+    post_res = await session.execute(select(Post).where(Post.id == match_req.post_id))
+    post = post_res.scalar_one_or_none()
+    
+    if post.owner_user_id != host.id:
+        raise HTTPException(403, "Only host can decide")
+
+    if not data.accept:
+        match_req.status = MatchStatus.REJECTED
+        session.add(match_req)
+        await session.commit()
+        return {"message": "Rejected"}
+
+    if match_req.status == MatchStatus.ACCEPTED:
+        return {"message": "Already accepted"}
+
+    match_req.status = MatchStatus.ACCEPTED
+    session.add(match_req)
+    
+    if post.time_slot_id and post.when:
+        booking = Booking(
+            when=post.when,
+            topic=f"Match from Post #{post.id}",
+            description=f"Approved match for {post.title}",
+            time_slot_id=post.time_slot_id,
+            guest_id=match_req.guest_id,
+            status="CONFIRMED",
+            type=BookingType.LESSON
+        )
+        session.add(booking)
+    
+    await session.commit()
+    return {"message": "Accepted and Booking Created"}
 
 router.include_router(admin_router)

@@ -25,43 +25,45 @@ make rollback-dry   # dry rollback 실행
 make branch-reset   # branch 리셋
 ```
 
+---
+
 # 운영 & 배포 가이드 
 
-## 배포 순서
+## 🚀 배포 프로세스 (Deployment Pipeline)
 
-1. feature 브랜치 생성
+**"Code Push → Test → Staging Deploy → Main Merge → Prod Deploy"**
 
-2. 작업 → commit → push
+### 1️⃣ 개발 단계 (Development)
+1. **작업 브랜치 생성**
+   - `make branch-reset` 명령어로 Staging 동기화 및 브랜치 생성
+2. **코드 작성 및 푸시**
+   - 작업 후 `git commit` → `git push`
+3. **PR 생성 및 테스트**
+   - GitHub에서 PR 생성 (`feature` → `staging`)
+   - **CI (Test)** 자동 실행
 
-3. PR 생성 → CI 실행
+### 2️⃣ 스테이징 배포 (Staging)
+4. **Staging 병합 (Merge)**
+   - CI 통과 시 `staging` 브랜치로 Merge
+5. **자동 배포 (Deploy Staging)**
+   - Merge 즉시 **CI** 재실행 → 성공 시 **Deploy Staging** 워크플로우 실행
+   - 배포 성공 시 **"Release: Staging to Main"** PR 자동 생성
 
-4. CI 성공 → merge → main push
+### 3️⃣ 운영 배포 (Production)
+6. **Main 병합 (Merge to Main)**
+   - 자동 생성된 PR 확인 후 **Merge** 버튼 클릭
+7. **자동 배포 (Deploy Prod)**
+   - Main Merge 즉시 **CI** 재실행 → 성공 시 **Deploy Prod** 워크플로우 실행
+8. **배포 완료**
+   - 🚀 Production 환경 배포 완료
 
-5. CI(main) 성공 → staging 자동 deploy
-
-6. staging deploy 성공 → feature 브랜치 삭제
-
-7. main 기준 make release → prod 자동 deploy
-
-8. prod deploy 성공 → 배포 완료
+---
 
 ## 운영 환경 구성
 
 * dev: 로컬 / Codespace 개발
 * staging: AWS 리허설 환경
 * prod: 실제 운영 환경
-
----
-
-## 배포 흐름 요약
-
-1. PR 생성
-2. CI 자동 실행 (테스트/검증)
-3. CI 통과 후 main merge
-4. main merge → **staging 자동 배포**
-5. staging 환경 확인
-6. 승인 → **tag 형식**
-7. **prod 배포**
 
 ---
 

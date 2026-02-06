@@ -1,5 +1,5 @@
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional, List
 from uuid import UUID
 
@@ -32,6 +32,12 @@ class NotificationType(str, Enum):
     REPLY = "REPLY"
     SYSTEM = "SYSTEM"
 
+# 매칭 상태
+class MatchStatus(str, Enum):
+    PENDING = "PENDING"
+    ACCEPTED = "ACCEPTED"
+    REJECTED = "REJECTED"
+
 # 미디어 테이블
 class PostMedia(SQLModel, table=True):
     __tablename__ = "post_media"
@@ -52,7 +58,7 @@ class PostMedia(SQLModel, table=True):
 
     post: "Post" = Relationship(back_populates="media")
 
-# 댓글 테이블 (대댓글 처리를 위한 parent_id 추가)
+# 댓글 테이블
 class Comment(SQLModel, table=True):
     __tablename__ = "comments"
 
@@ -63,7 +69,7 @@ class Comment(SQLModel, table=True):
     )
     post_id: UUID = Field(foreign_key="posts.id", nullable=False, index=True)
     user_id: UUID = Field(sa_type=PGUUID(as_uuid=True), nullable=False, index=True)
-    parent_id: Optional[UUID] = Field(default=None, sa_type=PGUUID(as_uuid=True), index=True) # 부모 댓글 ID
+    parent_id: Optional[UUID] = Field(default=None, sa_type=PGUUID(as_uuid=True), index=True)
     
     content: str = Field(nullable=False)
 
@@ -106,17 +112,34 @@ class Notification(SQLModel, table=True):
         sa_type=PGUUID(as_uuid=True),
         sa_column_kwargs={"server_default": text("gen_random_uuid()")},
     )
-    recipient_id: UUID = Field(sa_type=PGUUID(as_uuid=True), nullable=False, index=True) # 알림 수신자
-    sender_id: Optional[UUID] = Field(sa_type=PGUUID(as_uuid=True), nullable=True)      # 알림 발신자
+    recipient_id: UUID = Field(sa_type=PGUUID(as_uuid=True), nullable=False, index=True)
+    sender_id: Optional[UUID] = Field(sa_type=PGUUID(as_uuid=True), nullable=True)
     
     notification_type: NotificationType = Field(nullable=False)
-    related_post_id: Optional[UUID] = Field(sa_type=PGUUID(as_uuid=True), nullable=True) # 연관 게시물 ID
-    content: Optional[str] = Field(default=None) # 알림 요약 메시지
+    related_post_id: Optional[UUID] = Field(sa_type=PGUUID(as_uuid=True), nullable=True)
+    content: Optional[str] = Field(default=None)
     
-    is_read: bool = Field(default=False) # 읽음 상태
+    is_read: bool = Field(default=False)
     created_at: datetime = Field(
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     )
+
+# 매칭 신청 테이블
+class MatchRequest(SQLModel, table=True):
+    __tablename__ = "match_requests"
+    __table_args__ = (
+        UniqueConstraint("post_id", "guest_id", name="uq_post_guest_application"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    
+    post_id: UUID = Field(foreign_key="posts.id", index=True)
+    guest_id: UUID = Field(foreign_key="users.id", index=True)
+    
+    status: MatchStatus = Field(default=MatchStatus.PENDING)
+    
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
 
 # 게시물 테이블
 class Post(SQLModel, table=True):
@@ -140,6 +163,10 @@ class Post(SQLModel, table=True):
     post_type: PostType = Field(default=PostType.COMMUNITY, index=True)
     status: PostStatus = Field(default=PostStatus.PRIVATE, nullable=False, index=True)
     is_consent_given: bool = Field(default=False)
+
+    # 캘린더 연동 필드
+    time_slot_id: Optional[int] = Field(default=None)
+    when: Optional[date] = Field(default=None)
 
     created_at: datetime = Field(
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

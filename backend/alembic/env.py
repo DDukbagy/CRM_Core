@@ -22,20 +22,36 @@ env_path = project_root / ".env"
 load_dotenv(dotenv_path=env_path)
 
 # ----------------------------------------------------------------------
-# 2. 모델 등록 (가장 중요!)
+# 2. 모델 등록 (수정됨)
 # ----------------------------------------------------------------------
 try:
     from app.core.config import settings
     
-    # [수정됨] 라이브러리에서 직접 SQLModel 가져오기
+    # SQLModel과 기존 Base 가져오기
     from sqlmodel import SQLModel
-    
-    # [핵심] 우리가 만든 모델 파일들을 여기서 import 해줘야 Alembic이 인식합니다.
-    # 여기에 User 등 다른 모델이 있다면 추가해야 합니다.
-    from app.domains.posts.models import Post 
-    # from app.domains.users.models import User  <-- (예시: 유저 모델이 있다면 주석 해제)
+    from app.db.base import Base  # app/db/base.py의 Base 클래스
 
-    # 모든 모델이 로드된 후 metadata 연결
+    # 모든 도메인 모델 Import
+    # 여기서 불러와야 Alembic이 테이블 존재를 알 수 있습니다.
+    
+    # [Account]
+    from app.domains.account.models import User
+    
+    # [Calendar]
+    from app.domains.calendar.models import Calendar, TimeSlot, Booking
+    
+    # [Posts]
+    from app.domains.posts.models import Post, MatchRequest, Comment, PostMedia, PostLike, Notification
+
+    # 3. 메타데이터 통합 (중요!)
+    # User(Base)와 MatchRequest(SQLModel)가 서로 다른 부모를 가질 경우를 대비해
+    # Base의 테이블 정보를 SQLModel로 복사합니다.
+    if hasattr(Base, "metadata") and hasattr(SQLModel, "metadata"):
+        for name, table in Base.metadata.tables.items():
+            if name not in SQLModel.metadata.tables:
+                table.to_metadata(SQLModel.metadata)
+
+    # 통합된 메타데이터 사용
     target_metadata = SQLModel.metadata
 
 except ImportError as e:
