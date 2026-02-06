@@ -46,6 +46,7 @@ jobs:
       # Staging 배포 실행
       - name: Copilot Deploy
         run: copilot svc deploy --name api --env staging --detach
+        working-directory: ./backend
 
       # 배포 성공 시 Staging -> Main PR 자동 생성
       - name: Create Pull Request to Main
