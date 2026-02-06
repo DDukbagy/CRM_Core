@@ -40,35 +40,19 @@ def upgrade() -> None:
     op.create_index(op.f('ix_match_requests_guest_id'), 'match_requests', ['guest_id'], unique=False)
     op.create_index(op.f('ix_match_requests_post_id'), 'match_requests', ['post_id'], unique=False)
     
-    # 2. oauth_accounts 테이블 생성
-    op.create_table('oauth_accounts',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('provider', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('provider_account_id', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('user_id', sa.UUID(), nullable=False),
-    sa.Column('created_at', sqlalchemy_utc.sqltypes.UtcDateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('updated_at', sqlalchemy_utc.sqltypes.UtcDateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('provider', 'provider_account_id', name='uq_provider_provider_account_id')
-    )
-    
-    # 3. Booking Type Enum 생성 및 컬럼 추가 (수정됨)
+    # [삭제됨] oauth_accounts 테이블 생성 코드 (이미 존재하므로 삭제)
+    # op.create_table('oauth_accounts', ...)
+
+    # 2. Booking Type Enum 생성 및 컬럼 추가
+    # (주의: 만약 bookingtype Enum도 이미 있다고 에러나면 이 부분도 지워야 할 수 있습니다. 일단은 둡니다.)
     booking_type_enum = sa.Enum('LESSON', 'HOLIDAY', name='bookingtype')
-    booking_type_enum.create(op.get_bind())
+    booking_type_enum.create(op.get_bind(), checkfirst=True) # checkfirst=True 추가로 안전하게
+
     op.add_column('bookings', sa.Column('type', sa.Enum('LESSON', 'HOLIDAY', name='bookingtype'), nullable=False, server_default='LESSON'))
 
-    # [삭제됨] 불필요한 ID 변경 코드들 (에러 원인)
-    # op.alter_column('bookings', 'time_slot_id', ...)
-    # op.alter_column('calendars', 'id', ...)
-    
     op.create_foreign_key(None, 'calendars', 'users', ['host_id'], ['id'])
     op.add_column('posts', sa.Column('time_slot_id', sa.Integer(), nullable=True))
     op.add_column('posts', sa.Column('when', sa.Date(), nullable=True))
-    
-    # [삭제됨] 불필요한 ID 변경 코드들 (에러 원인)
-    # op.alter_column('time_slots', 'id', ...)
-    # op.alter_column('time_slots', 'calendar_id', ...)
     
     op.create_foreign_key(None, 'time_slots', 'calendars', ['calendar_id'], ['id'])
     op.alter_column('users', 'role',
@@ -93,24 +77,19 @@ def downgrade() -> None:
                existing_server_default=sa.text("'CUSTOMER'::text"))
     op.drop_constraint(None, 'time_slots', type_='foreignkey')
     
-    # [삭제됨] ID 변경 롤백 코드 삭제
-    # op.alter_column('time_slots', 'calendar_id', ...)
-    # op.alter_column('time_slots', 'id', ...)
-    
     op.drop_column('posts', 'when')
     op.drop_column('posts', 'time_slot_id')
     op.drop_constraint(None, 'calendars', type_='foreignkey')
     
-    # [삭제됨] ID 변경 롤백 코드 삭제
-    # op.alter_column('calendars', 'id', ...)
-    # op.alter_column('bookings', 'time_slot_id', ...)
-    
     op.drop_column('bookings', 'type')
-    op.drop_table('oauth_accounts')
+    
+    # [수정됨] oauth_accounts 삭제 부분도 제거 (생성을 안 했으니 삭제도 안 함)
+    # op.drop_table('oauth_accounts')
+
     op.drop_index(op.f('ix_match_requests_post_id'), table_name='match_requests')
     op.drop_index(op.f('ix_match_requests_guest_id'), table_name='match_requests')
     op.drop_table('match_requests')
 
     booking_type_enum = sa.Enum('LESSON', 'HOLIDAY', name='bookingtype')
-    booking_type_enum.drop(op.get_bind())
+    booking_type_enum.drop(op.get_bind(), checkfirst=True)
     # ### end Alembic commands ###
