@@ -1,41 +1,4 @@
-# --- Python ---
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.so
-*.egg-info/
-dist/
-build/
-
-# --- Virtualenv ---
-.venv/
-venv/
-
-# --- Env / secrets ---
-.env
-.env.*
-!.env.example
-scripts/dev_tokens.sh
-env.local.sh
-
-# --- Logs ---
-*.log
-
-# --- Test / tooling ---
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
-
-# --- OS / Editor ---
 .DS_Store
 .vscode/
 .idea/
-
-# --- zip --- #
-awscliv2.zip
-
-# --- tmp --- #
-.tmp/
+*.log
