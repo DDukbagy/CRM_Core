@@ -1,37 +1,116 @@
 name: Deploy Prod
 
-# 제목: Deploy Prod | workflow_run | main
-run-name: 🚀 Deploy Prod | ${{ github.event_name }} | ${{ github.event.workflow_run.head_branch }}
+# 제목: Deploy Prod | push | main
+run-name: 🚀 Deploy Prod | ${{ github.event_name }} | ${{ github.ref_name }}
 
 on:
-  workflow_run:
-    workflows: ["Backend CI"]
-    types:
-      - completed
-    branches: [main]
+  push:
+    branches: [main] # Main에 코드가 들어오면(Merge됨) 실행
+  workflow_dispatch:
 
 permissions:
   id-token: write
   contents: read
 
 jobs:
-  deploy:
-    # CI 성공 AND 브랜치가 main 일 때만 실행
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
-    name: 🚀 Deploy (Prod)
+  # [1단계] 테스트 (CI.yml 내용과 동일)
+  test:
+    name: 🧪 Double Check CI & Build
     runs-on: ubuntu-latest
-    environment: prod
+    
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          ref: main
 
-      - name: Configure AWS credentials (OIDC)
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+        working-directory: ./backend
+
+      - name: Initialize Database (Alembic)
+        env:
+          PYTHONPATH: .
+          PGSSLMODE: disable
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres?ssl=disable
+          AWS_ACCESS_KEY_ID: testing
+          AWS_SECRET_ACCESS_KEY: testing
+          AWS_SECURITY_TOKEN: testing
+          AWS_SESSION_TOKEN: testing
+          AWS_DEFAULT_REGION: ap-northeast-2
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_ANON_KEY: dummy
+          SUPABASE_JWT_SECRET: dummy
+        run: poetry run alembic upgrade head
+        working-directory: ./backend
+
+      - name: Run tests
+        env:
+          PYTHONPATH: .
+          PGSSLMODE: disable
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres?ssl=disable
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_ANON_KEY: dummy
+          SUPABASE_JWT_SECRET: dummy
+          AWS_ACCESS_KEY_ID: testing
+          AWS_SECRET_ACCESS_KEY: testing
+          AWS_DEFAULT_REGION: ap-northeast-2
+        run: poetry run pytest
+        working-directory: ./backend
+
+  # [2단계] 배포 (테스트 성공 시 실행)
+  deploy:
+    needs: test # 👈 테스트 성공해야만 실행!
+    name: 🚀 Deploy (Prod)
+    runs-on: ubuntu-latest
+    environment: prod # GitHub Environment 보호 규칙 적용
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        # Main 브랜치 코드 자동 체크아웃
+
+      # 디버깅
+      - name: 🔍 Debug OIDC Context (로그 확인용)
+        run: |
+          echo "=========================================="
+          echo "GitHub가 AWS에 보낼 정보(Claims) 미리보기"
+          echo "------------------------------------------"
+          echo "1. Repository (repo): ${{ github.repository }}"
+          echo "2. Ref (ref): ${{ github.ref }}"
+          echo "3. Actor (actor): ${{ github.actor }}"
+          echo "4. Event (event_name): ${{ github.event_name }}"
+          echo "5. Workflow (workflow): ${{ github.workflow }}"
+          echo "=========================================="
+          echo "만약 위 정보와 AWS 신뢰 정책이 글자 하나라도 다르면 실패합니다."
+        shell: bash
+
+      # AWS 인증
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_PROD }}
           aws-region: ap-northeast-2
 
       - name: Install AWS Copilot
@@ -42,6 +121,7 @@ jobs:
           mv copilot-linux ~/.local/bin/copilot
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
+      # Prod 배포 실행
       - name: Copilot Deploy
         run: copilot svc deploy --name api --env prod --detach
         working-directory: ./backend

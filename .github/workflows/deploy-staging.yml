@@ -1,24 +1,89 @@
 name: Deploy Staging
 
-# 제목: Deploy Staging | workflow_run | staging
-run-name: 🚀 Deploy Staging | ${{ github.event_name }} | ${{ github.event.workflow_run.head_branch }}
+# 제목: Deploy Staging | push | staging
+run-name: 🚀 Deploy Staging | ${{ github.event_name }} | ${{ github.ref_name }}
 
 on:
-  workflow_run:
-    workflows: ["Backend CI"]
-    types:
-      - completed
-    branches: [staging]
+  push:
+    branches: [staging] # Staging 브랜치에 코드가 들어오면 즉시 실행
+  workflow_dispatch:
 
 permissions:
   id-token: write
-  contents: write  # PR 생성을 위해 write 권한 필요
-  pull-requests: write # PR 생성을 위해 필수
+  contents: write
+  pull-requests: write
 
 jobs:
+  # [1단계] 테스트 (CI.yml의 내용을 그대로 가져옴)
+  test:
+    name: 🧪 CI Test & Build
+    runs-on: ubuntu-latest
+    
+    # DB가 필요한 테스트를 위해 서비스 컨테이너 설정
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+        working-directory: ./backend
+
+      - name: Initialize Database (Alembic)
+        env:
+          PYTHONPATH: .
+          PGSSLMODE: disable
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres?ssl=disable
+          AWS_ACCESS_KEY_ID: testing
+          AWS_SECRET_ACCESS_KEY: testing
+          AWS_SECURITY_TOKEN: testing
+          AWS_SESSION_TOKEN: testing
+          AWS_DEFAULT_REGION: ap-northeast-2
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_ANON_KEY: dummy
+          SUPABASE_JWT_SECRET: dummy
+        run: poetry run alembic upgrade head
+        working-directory: ./backend
+
+      - name: Run tests
+        env:
+          PYTHONPATH: .
+          PGSSLMODE: disable
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres?ssl=disable
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_ANON_KEY: dummy
+          SUPABASE_JWT_SECRET: dummy
+          AWS_ACCESS_KEY_ID: testing
+          AWS_SECRET_ACCESS_KEY: testing
+          AWS_DEFAULT_REGION: ap-northeast-2
+        run: poetry run pytest
+        working-directory: ./backend
+
+  # [2단계] 배포 (테스트 성공 시 실행)
   deploy:
-    # CI가 성공했고, 그 CI가 'staging' 브랜치에서 실행됐을 때만 배포
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'staging' }}
+    needs: test # 위 테스트 잡이 성공해야만 실행됨
     name: 🚀 Deploy (Staging)
     runs-on: ubuntu-latest
     environment: staging
@@ -26,14 +91,28 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          ref: staging # workflow_run은 기본 브랜치를 가져오므로 명시적으로 staging 체크아웃
+        # push 이벤트이므로 ref 지정 불필요 (자동으로 해당 커밋 체크아웃)
+
+      # 디버깅
+      - name: 🔍 Debug OIDC Context (로그 확인용)
+        run: |
+          echo "=========================================="
+          echo "GitHub가 AWS에 보낼 정보(Claims) 미리보기"
+          echo "------------------------------------------"
+          echo "1. Repository (repo): ${{ github.repository }}"
+          echo "2. Ref (ref): ${{ github.ref }}"
+          echo "3. Actor (actor): ${{ github.actor }}"
+          echo "4. Event (event_name): ${{ github.event_name }}"
+          echo "5. Workflow (workflow): ${{ github.workflow }}"
+          echo "=========================================="
+          echo "만약 위 정보와 AWS 신뢰 정책이 글자 하나라도 다르면 실패합니다."
+        shell: bash
 
       # AWS 인증
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_STAGING }}
           aws-region: ap-northeast-2
 
       - name: Install AWS Copilot

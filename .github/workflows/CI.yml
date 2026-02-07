@@ -1,10 +1,8 @@
-name: Backend CI
+name: Feature Branch CI
 
 on:
-  push:
-    branches: ["staging", "main"] # Push 할 때마다 테스트
   pull_request:
-    branches: ["staging", "main"] # PR 올렸을 때도 테스트
+    branches: ["staging", "main"]
 
 jobs:
   test:
@@ -47,7 +45,6 @@ jobs:
           PYTHONPATH: .
           PGSSLMODE: disable
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres?ssl=disable
-          # 테스트용 더미 환경변수
           AWS_ACCESS_KEY_ID: testing
           AWS_SECRET_ACCESS_KEY: testing
           AWS_SECURITY_TOKEN: testing
