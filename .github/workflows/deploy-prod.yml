@@ -91,6 +91,21 @@ jobs:
         uses: actions/checkout@v4
         # Main 브랜치 코드 자동 체크아웃
 
+      # 디버깅
+      - name: 🔍 Debug OIDC Context (로그 확인용)
+        run: |
+          echo "=========================================="
+          echo "GitHub가 AWS에 보낼 정보(Claims) 미리보기"
+          echo "------------------------------------------"
+          echo "1. Repository (repo): ${{ github.repository }}"
+          echo "2. Ref (ref): ${{ github.ref }}"
+          echo "3. Actor (actor): ${{ github.actor }}"
+          echo "4. Event (event_name): ${{ github.event_name }}"
+          echo "5. Workflow (workflow): ${{ github.workflow }}"
+          echo "=========================================="
+          echo "만약 위 정보와 AWS 신뢰 정책이 글자 하나라도 다르면 실패합니다."
+        shell: bash
+
       # AWS 인증
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
