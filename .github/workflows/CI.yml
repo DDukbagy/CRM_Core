@@ -1,12 +1,8 @@
 name: Feature Branch CI
 
 on:
-  push:
-    branches-ignore: # Staging과 Main은 각자 파일에서 테스트하므로 제외
-      - "staging"
-      - "main"
   pull_request:
-    branches: ["staging", "main"] # PR 단계에서는 미리 테스트 실행
+    branches: ["staging", "main"]
 
 jobs:
   test:
