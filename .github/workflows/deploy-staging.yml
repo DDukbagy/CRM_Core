@@ -97,7 +97,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 디버깅용 
+      # 디버깅
       - name: 🔍 Debug OIDC Context (로그 확인용)
         run: |
           echo "=========================================="

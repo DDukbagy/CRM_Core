@@ -91,7 +91,7 @@ jobs:
         uses: actions/checkout@v4
         # Main 브랜치 코드 자동 체크아웃
 
-      # 디버깅용 
+      # 디버깅
       - name: 🔍 Debug OIDC Context (로그 확인용)
         run: |
           echo "=========================================="
