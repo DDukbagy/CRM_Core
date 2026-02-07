@@ -1,8 +1,11 @@
-name: Feature Branch CI
+name: Backend CI
 
 on:
   pull_request:
     branches: ["staging", "main"]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-ci.yml'
 
 jobs:
   test:
