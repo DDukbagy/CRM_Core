@@ -35,7 +35,7 @@ make branch-reset   # branch 리셋
 
 ### 1️⃣ 개발 단계 (Development)
 1. **작업 브랜치 생성**
-   - `make branch-reset` 명령어로 Staging 동기화 및 브랜치 생성
+   - 작업 브랜치 생성
 2. **코드 작성 및 푸시**
    - 작업 후 `git commit` → `git push`
 3. **PR 생성 및 테스트**
@@ -46,14 +46,14 @@ make branch-reset   # branch 리셋
 4. **Staging 병합 (Merge)**
    - CI 통과 시 `staging` 브랜치로 Merge
 5. **자동 배포 (Deploy Staging)**
-   - Merge 즉시 **CI** 재실행 → 성공 시 **Deploy Staging** 워크플로우 실행
+   - Merge 즉시 **Deploy Staging** 워크플로우 실행(deploy 안에 CI 포함)
    - 배포 성공 시 **"Release: Staging to Main"** PR 자동 생성
 
 ### 3️⃣ 운영 배포 (Production)
 6. **Main 병합 (Merge to Main)**
    - 자동 생성된 PR 확인 후 **Merge** 버튼 클릭
 7. **자동 배포 (Deploy Prod)**
-   - Main Merge 즉시 **CI** 재실행 → 성공 시 **Deploy Prod** 워크플로우 실행
+   - Main Merge 즉시 **Deploy Prod** 워크플로우 실행(deploy 안에 CI 포함)
 8. **배포 완료**
    - 🚀 Production 환경 배포 완료
 
