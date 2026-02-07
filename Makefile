@@ -48,15 +48,15 @@ endef
 # -----------------------------
 .PHONY: server
 server: ## Run backend server (reload)
-	cd backend && poetry run uvicorn $(APP) --reload --host $(HOST) --port $(PORT)
+	@cd backend && poetry run uvicorn $(APP) --reload --host $(HOST) --port $(PORT)
 
 .PHONY: verify
 verify: ## One-click verify (auto start server if needed + tokens + flow)
-	cd backend && ./scripts/verify.sh
+	@cd backend && ./scripts/verify.sh
 
 .PHONY: verify-setup
 verify-setup: ## chmod +x scripts/verify.sh (first time only)
-	cd backend && chmod +x scripts/verify.sh
+	@cd backend && chmod +x scripts/verify.sh
 
 # -----------------------------
 # Supabase access token (password grant) / Flow
@@ -67,26 +67,26 @@ token: ## Issue access token interactively (loads URL/Key from .env)
 
 .PHONY: flow
 flow: ## Run flow (assumes server is running and tokens are available inside scripts)
-	cd backend && ./scripts/run_flow.sh
+	@cd backend && ./scripts/run_flow.sh
 
 # -----------------------------
 # Docker (dev/prod)
 # -----------------------------
 .PHONY: docker-dev-build
 docker-dev-build: ## Build dev image (Dockerfile.dev)
-	cd backend && docker build -f Dockerfile.dev -t $(DEV_IMAGE) .
+	@cd backend && docker build -f Dockerfile.dev -t $(DEV_IMAGE) .
 
 .PHONY: docker-dev-run
 docker-dev-run: ## Run dev image on :8000 using .env
-	cd backend && docker run --rm -p $(PORT):8000 --env-file $(ENV_FILE) $(DEV_IMAGE)
+	@cd backend && docker run --rm -p $(PORT):8000 --env-file $(ENV_FILE) $(DEV_IMAGE)
 
 .PHONY: docker-prod-build
 docker-prod-build: ## Build prod image (Dockerfile)
-	cd backend && docker build -t $(PROD_IMAGE) .
+	@cd backend && docker build -t $(PROD_IMAGE) .
 
 .PHONY: docker-prod-run
 docker-prod-run: ## Run prod image on :8000 using .env
-	cd backend && docker run --rm -p $(PORT):8000 --env-file $(ENV_FILE) $(PROD_IMAGE)
+	@cd backend && docker run --rm -p $(PORT):8000 --env-file $(ENV_FILE) $(PROD_IMAGE)
 
 # -----------------------------
 # Alembic migrations
@@ -94,19 +94,19 @@ docker-prod-run: ## Run prod image on :8000 using .env
 .PHONY: mig-new
 mig-new: ## Create new migration (usage: make mig-new M="message")
 	@$(call require_var,M)
-	cd backend && poetry run alembic revision --autogenerate -m "$(M)"
+	@cd backend && poetry run alembic revision --autogenerate -m "$(M)"
 
 .PHONY: mig-up
 mig-up: ## Upgrade to head
-	cd backend && poetry run alembic upgrade head
+	@cd backend && poetry run alembic upgrade head
 
 .PHONY: mig-current
 mig-current: ## Show current migration
-	cd backend && poetry run alembic current
+	@cd backend && poetry run alembic current
 
 .PHONY: mig-heads
 mig-heads: ## Show heads
-	cd backend && poetry run alembic heads
+	@cd backend && poetry run alembic heads
 
 # -----------------------------
 # CI trigger
@@ -133,7 +133,7 @@ grep: ## Search string (usage: make grep Q="text")
 # -----------------------------
 .PHONY: aws-tools
 aws-tools: ## Install AWS tools via script
-	cd backend && ./scripts/install_aws_tools.sh
+	@cd backend && ./scripts/install_aws_tools.sh
 
 .PHONY: aws-check
 aws-check: ## Check aws/copilot versions (and hint PATH if missing)
@@ -159,35 +159,35 @@ aws-whoami: ## Check current AWS identity
 
 .PHONY: copilot-envs
 copilot-envs: ## List copilot environments
-	cd backend && copilot env ls
+	@cd backend && copilot env ls
 
 .PHONY: copilot-status-staging
 copilot-status-staging: ## Show staging service status
-	cd backend && copilot svc status --name api --env staging
+	@cd backend && copilot svc status --name api --env staging
 
 .PHONY: copilot-status-prod
 copilot-status-prod: ## Show prod service status
-	cd backend && copilot svc status --name api --env prod
+	@cd backend && copilot svc status --name api --env prod
 
 .PHONY: copilot-deploy-staging
 copilot-deploy-staging: ## Manually deploy to staging
-	cd backend && copilot svc deploy --name api --env staging
+	@cd backend && copilot svc deploy --name api --env staging
 
 .PHONY: copilot-deploy-prod
 copilot-deploy-prod: ## Manually deploy to prod (use with caution)
-	cd backend && copilot svc deploy --name api --env prod
+	@cd backend && copilot svc deploy --name api --env prod
 
 .PHONY: copilot-logs-staging
 copilot-logs-staging: ## Follow staging logs
-	cd backend && copilot svc logs --name api --env staging --follow
+	@cd backend && copilot svc logs --name api --env staging --follow
 
 .PHONY: copilot-logs-prod
 copilot-logs-prod: ## Follow prod logs
-	cd backend && copilot svc logs --name api --env prod --follow
+	@cd backend && copilot svc logs --name api --env prod --follow
 
 .PHONY: copilot-exec-staging
 copilot-exec-staging: ## Exec into staging task
-	cd backend && copilot svc exec --name api --env staging
+	@cd backend && copilot svc exec --name api --env staging
 
 .PHONY: check-db
 check-db: ## Check database connection status
