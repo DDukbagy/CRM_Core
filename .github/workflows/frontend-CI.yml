@@ -1,0 +1,33 @@
+name: frontend CI
+
+on:
+  workflow_call: # Deploy 파일에서 불러올 수 있게 허용
+
+jobs:
+  test:
+    name: 🧪 Run Tests & Build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24' # 설치한 버전과 맞춤
+          cache: 'npm'
+          cache-dependency-path: './frontend/package-lock.json'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run Lint
+        run: npm run lint
+
+      - name: Build project
+        run: npm run build

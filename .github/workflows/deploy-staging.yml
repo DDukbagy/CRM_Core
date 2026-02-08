@@ -5,7 +5,7 @@ run-name: 🚀 Deploy Staging | ${{ github.event_name }} | ${{ github.ref_name }
 
 on:
   push:
-    branches: [staging] # Staging 브랜치에 코드가 들어오면 즉시 실행
+    branches: [staging] # Merge(Push) 완료되면 이 파일 하나만 실행됨
   workflow_dispatch:
 
 permissions:
@@ -14,76 +14,29 @@ permissions:
   pull-requests: write
 
 jobs:
-  # [1단계] 테스트 (CI.yml의 내용을 그대로 가져옴)
-  test:
-    name: 🧪 CI Test & Build
+  root-check:
+    name: 🔍 Global Linter / Config Check
     runs-on: ubuntu-latest
-    
-    # DB가 필요한 테스트를 위해 서비스 컨테이너 설정
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready -U postgres"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=10
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - name: Run Root Scripts or Linters
+        run: |
+          echo "루트 설정 파일(Makefile, 환경변수 등)의 형식을 검사합니다."
+          # 여기에 전체 프로젝트 공통 검사 로직이 있다면 추가 (없으면 생략 가능)
+          
+  # Backend CI 참조
+  backend-check:
+    uses: ./.github/workflows/backend-CI.yml
+    secrets: inherit
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+  # Frontend CI 참조
+  frontend-check:
+    uses: ./.github/workflows/frontend-CI.yml
+    secrets: inherit
 
-      - name: Install Poetry
-        run: pipx install poetry
-
-      - name: Install dependencies
-        run: poetry install --no-interaction
-        working-directory: ./backend
-
-      - name: Initialize Database (Alembic)
-        env:
-          PYTHONPATH: .
-          PGSSLMODE: disable
-          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres?ssl=disable
-          AWS_ACCESS_KEY_ID: testing
-          AWS_SECRET_ACCESS_KEY: testing
-          AWS_SECURITY_TOKEN: testing
-          AWS_SESSION_TOKEN: testing
-          AWS_DEFAULT_REGION: ap-northeast-2
-          SUPABASE_URL: https://example.supabase.co
-          SUPABASE_ANON_KEY: dummy
-          SUPABASE_JWT_SECRET: dummy
-        run: poetry run alembic upgrade head
-        working-directory: ./backend
-
-      - name: Run tests
-        env:
-          PYTHONPATH: .
-          PGSSLMODE: disable
-          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres?ssl=disable
-          SUPABASE_URL: https://example.supabase.co
-          SUPABASE_ANON_KEY: dummy
-          SUPABASE_JWT_SECRET: dummy
-          AWS_ACCESS_KEY_ID: testing
-          AWS_SECRET_ACCESS_KEY: testing
-          AWS_DEFAULT_REGION: ap-northeast-2
-        run: poetry run pytest
-        working-directory: ./backend
-
-  # [2단계] 배포 (테스트 성공 시 실행)
+  # 배포
   deploy:
-    needs: test # 위 테스트 잡이 성공해야만 실행됨
+    needs: [root-check, backend-check, frontend-check]
     name: 🚀 Deploy (Staging)
     runs-on: ubuntu-latest
     environment: staging
@@ -91,7 +44,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        # push 이벤트이므로 ref 지정 불필요 (자동으로 해당 커밋 체크아웃)
 
       # 디버깅
       - name: 🔍 Debug OIDC Context (로그 확인용)
@@ -128,7 +80,6 @@ jobs:
         run: copilot svc deploy --name api --env staging --detach
         working-directory: ./backend
 
-      # 배포 성공 시 Staging -> Main PR 자동 생성
       - name: Create Pull Request to Main
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
