@@ -4,6 +4,10 @@ on:
   pull_request:
     branches: ["staging"]
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   # 변경된 파일 경로 분석
   changes:

@@ -2,8 +2,6 @@ name: frontend CI
 
 on:
   workflow_call: # Deploy 파일에서 불러올 수 있게 허용
-  pull_request:
-    types: [opened, synchronize, reopened]
 
 jobs:
   test:
