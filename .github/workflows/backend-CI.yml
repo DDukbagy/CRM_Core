@@ -1,16 +1,21 @@
 name: Backend CI
 
 on:
+  workflow_call: # Deploy 파일에서 불러올 수 있게 허용
   pull_request:
     branches: ["staging", "main"]
     paths:
       - 'backend/**'
-      - '.github/workflows/backend-ci.yml'
+      - '.github/workflows/backend-CI.yml'
 
 jobs:
   test:
     name: 🧪 Run Tests & Build
     runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./backend
 
     services:
       postgres:
@@ -41,7 +46,6 @@ jobs:
 
       - name: Install dependencies
         run: poetry install --no-interaction
-        working-directory: ./backend
 
       - name: Initialize Database (Alembic)
         env:
@@ -57,7 +61,6 @@ jobs:
           SUPABASE_ANON_KEY: dummy
           SUPABASE_JWT_SECRET: dummy
         run: poetry run alembic upgrade head
-        working-directory: ./backend
 
       - name: Run tests
         env:
@@ -71,4 +74,3 @@ jobs:
           AWS_SECRET_ACCESS_KEY: testing
           AWS_DEFAULT_REGION: ap-northeast-2
         run: poetry run pytest
-        working-directory: ./backend

@@ -5,7 +5,7 @@ run-name: 🚀 Deploy Staging | ${{ github.event_name }} | ${{ github.ref_name }
 
 on:
   push:
-    branches: [staging] # Staging 브랜치에 코드가 들어오면 즉시 실행
+    branches: [staging] # Merge(Push) 완료되면 이 파일 하나만 실행됨
   workflow_dispatch:
 
 permissions:
@@ -14,101 +14,19 @@ permissions:
   pull-requests: write
 
 jobs:
-  # [1단계-A] 백엔드 테스트 (기존 유지)
-  test:
-    name: 🧪 CI Test & Build (Backend)
-    runs-on: ubuntu-latest
-    
-    # DB가 필요한 테스트를 위해 서비스 컨테이너 설정
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready -U postgres"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=10
+  # [1단계] Backend CI 불러오기 (참조)
+  backend-check:
+    uses: ./.github/workflows/backend-CI.yml
+    secrets: inherit
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+  # [1단계] Frontend CI 불러오기 (참조)
+  frontend-check:
+    uses: ./.github/workflows/frontend-CI.yml
+    secrets: inherit
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install Poetry
-        run: pipx install poetry
-
-      - name: Install dependencies
-        run: poetry install --no-interaction
-        working-directory: ./backend
-
-      - name: Initialize Database (Alembic)
-        env:
-          PYTHONPATH: .
-          PGSSLMODE: disable
-          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres?ssl=disable
-          AWS_ACCESS_KEY_ID: testing
-          AWS_SECRET_ACCESS_KEY: testing
-          AWS_SECURITY_TOKEN: testing
-          AWS_SESSION_TOKEN: testing
-          AWS_DEFAULT_REGION: ap-northeast-2
-          SUPABASE_URL: https://example.supabase.co
-          SUPABASE_ANON_KEY: dummy
-          SUPABASE_JWT_SECRET: dummy
-        run: poetry run alembic upgrade head
-        working-directory: ./backend
-
-      - name: Run tests
-        env:
-          PYTHONPATH: .
-          PGSSLMODE: disable
-          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres?ssl=disable
-          SUPABASE_URL: https://example.supabase.co
-          SUPABASE_ANON_KEY: dummy
-          SUPABASE_JWT_SECRET: dummy
-          AWS_ACCESS_KEY_ID: testing
-          AWS_SECRET_ACCESS_KEY: testing
-          AWS_DEFAULT_REGION: ap-northeast-2
-        run: poetry run pytest
-        working-directory: ./backend
-
-  # [1단계-B] 프론트엔드 빌드 검증 (배포 전 최종 확인)
-  frontend-test:
-    name: 🧪 CI Build Check (Frontend)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./frontend
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: './frontend/package-lock.json'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build project
-        run: npm run build
-
-  # [2단계] 배포 (백엔드/프론트엔드 검증 성공 시 실행)
+  # [2단계] 배포 (위의 두 검사가 끝나야 실행됨)
   deploy:
-    needs: [test, frontend-test] # 두 검사가 모두 통과해야 배포 시작
+    needs: [backend-check, frontend-check] # 👈 순차 실행의 핵심 (Merge Done -> CI -> Deploy)
     name: 🚀 Deploy (Staging)
     runs-on: ubuntu-latest
     environment: staging
