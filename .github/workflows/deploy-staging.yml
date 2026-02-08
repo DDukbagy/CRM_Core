@@ -69,15 +69,3 @@ jobs:
       - name: Copilot Deploy
         run: copilot svc deploy --name api --env staging --detach
         working-directory: ./backend
-
-      # 배포 성공 시 Staging -> Main PR 자동 생성
-      - name: Create Pull Request to Main
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh pr create \
-            --base main \
-            --head staging \
-            --title "🚀 Release: Staging to Main" \
-            --body "Staging 환경 배포 및 테스트가 완료되었습니다. Main으로 병합을 요청합니다." \
-            || echo "PR already exists"
