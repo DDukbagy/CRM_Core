@@ -4,7 +4,7 @@ on:
   workflow_call: # Deploy 파일에서 불러올 수 있게 허용
   pull_request:
     types: [opened, synchronize, reopened]
-    branches: ["staging", "main"]
+    branches: ["staging"]
     paths:
       - 'backend/**'
       - '.github/workflows/backend-CI.yml'
