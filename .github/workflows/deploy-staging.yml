@@ -14,19 +14,29 @@ permissions:
   pull-requests: write
 
 jobs:
-  # [1단계] Backend CI 불러오기 (참조)
+  root-check:
+    name: 🔍 Global Linter / Config Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Root Scripts or Linters
+        run: |
+          echo "루트 설정 파일(Makefile, 환경변수 등)의 형식을 검사합니다."
+          # 여기에 전체 프로젝트 공통 검사 로직이 있다면 추가 (없으면 생략 가능)
+          
+  # Backend CI 참조
   backend-check:
     uses: ./.github/workflows/backend-CI.yml
     secrets: inherit
 
-  # [1단계] Frontend CI 불러오기 (참조)
+  # Frontend CI 참조
   frontend-check:
     uses: ./.github/workflows/frontend-CI.yml
     secrets: inherit
 
-  # [2단계] 배포 (위의 두 검사가 끝나야 실행됨)
+  # 배포
   deploy:
-    needs: [backend-check, frontend-check] # 👈 순차 실행의 핵심 (Merge Done -> CI -> Deploy)
+    needs: [root-check, backend-check, frontend-check]
     name: 🚀 Deploy (Staging)
     runs-on: ubuntu-latest
     environment: staging
