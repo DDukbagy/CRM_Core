@@ -9,4 +9,4 @@
 ## 🚀 실행 방법
 각 폴더 내의 README를 참고하세요.
 
-## Makefile
+## Makefile 사용 방법
