@@ -1,20 +1,21 @@
 name: Frontend CI
 
 on:
-  push:
-    paths:
-      - 'frontend/**'  # frontend 폴더 안의 파일이 바뀔 때만 작동
+  workflow_call: # Deploy 파일에서 불러올 수 있게 허용
   pull_request:
+    branches: ["staging", "main"]
     paths:
       - 'frontend/**'
+      - '.github/workflows/frontend-ci.yml'
 
 jobs:
-  build-and-test:
+  test:
+    name: 🧪 Run Tests & Build
     runs-on: ubuntu-latest
 
     defaults:
       run:
-        working-directory: ./frontend  # 명령어를 frontend 폴더 안에서 실행
+        working-directory: ./frontend
 
     steps:
       - name: Checkout code
