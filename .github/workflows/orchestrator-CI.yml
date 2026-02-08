@@ -1,0 +1,65 @@
+name: Orchestrator CI
+
+on:
+  pull_request:
+    branches: ["staging"]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  # 변경된 파일 경로 분석
+  changes:
+    name: 🔍 Check Changed Paths
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      root: ${{ steps.filter.outputs.root }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Path Filter
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+            frontend:
+              - 'frontend/**'
+            root:
+              - 'README.md'
+              - 'Makefile'
+              - '.github/workflows/**'
+              - '.gitignore'
+
+  # Backend CI 호출 (backend 폴더 혹은 root 파일 수정 시)
+  backend-ci:
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.root == 'true' }}
+    uses: ./.github/workflows/backend-CI.yml
+    secrets: inherit
+
+  # Frontend CI 호출 (frontend 폴더 혹은 root 파일 수정 시)
+  frontend-ci:
+    needs: changes
+    if: ${{ needs.changes.outputs.frontend == 'true' || needs.changes.outputs.root == 'true' }}
+    uses: ./.github/workflows/frontend-CI.yml
+    secrets: inherit
+
+  ci-result:
+    name: 🏁 Final CI Result
+    needs: [backend-ci, frontend-ci]
+    if: always() # 앞에 작업이 건너뛰어져도 무조건 실행
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all results
+        run: |
+          if [[ "${{ needs.backend-ci.result }}" == "failure" || "${{ needs.frontend-ci.result }}" == "failure" ]]; then
+            echo "One of the CI jobs failed."
+            exit 1
+          fi
+          echo "All relevant CI jobs passed or were skipped correctly."
