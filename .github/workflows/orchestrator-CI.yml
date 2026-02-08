@@ -49,3 +49,17 @@ jobs:
     if: ${{ needs.changes.outputs.frontend == 'true' || needs.changes.outputs.root == 'true' }}
     uses: ./.github/workflows/frontend-CI.yml
     secrets: inherit
+
+  ci-result:
+    name: 🏁 Final CI Result
+    needs: [backend-ci, frontend-ci]
+    if: always() # 앞에 작업이 건너뛰어져도 무조건 실행
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all results
+        run: |
+          if [[ "${{ needs.backend-ci.result }}" == "failure" || "${{ needs.frontend-ci.result }}" == "failure" ]]; then
+            echo "One of the CI jobs failed."
+            exit 1
+          fi
+          echo "All relevant CI jobs passed or were skipped correctly."
