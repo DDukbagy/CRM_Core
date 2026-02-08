@@ -6,7 +6,7 @@ on:
     branches: ["staging", "main"]
     paths:
       - 'backend/**'
-      - '.github/workflows/backend-ci.yml'
+      - '.github/workflows/backend-CI.yml'
 
 jobs:
   test:
