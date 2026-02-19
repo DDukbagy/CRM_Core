@@ -51,14 +51,14 @@ async def _get_calendar_id_by_host(session: AsyncSession, host_id: UUID) -> int:
         raise HTTPException(status_code=404, detail="Calendar not found")
     return cal_id
 
-# NEW: 409(예약 충돌) 응답을 운영용으로 통일 (프론트가 파싱하기 쉬움)
+# 409(예약 충돌) 응답을 운영용으로 통일 (프론트가 파싱하기 쉬움)
 def _booking_conflict_detail(*, time_slot_id: int, when: date, error: str) -> dict:
     return {
         "error": error,  # e.g. SLOT_ALREADY_BOOKED / BOOKING_CONFLICT
         "message": "이미 예약된 시간대입니다. 최신 일정으로 갱신 후 다시 선택해주세요."
         if error == "SLOT_ALREADY_BOOKED"
         else "예약 충돌이 발생했습니다. 최신 일정으로 갱신 후 다시 시도해주세요.",
-        "hint": "REFETCH_AVAILABILITY",  # 프론트: availability 재조회 트리거
+        "hint": "REFETCH_AVAILABILITY",  # availability 재조회 트리거
         "time_slot_id": time_slot_id,
         "when": when.isoformat(),
     }
@@ -282,7 +282,7 @@ async def get_availability(
     if end < start:
         raise HTTPException(status_code=400, detail="end must be >= start")
 
-    # 운영 안전장치(너무 큰 기간 조회 방지)
+    # 너무 큰 기간 조회 방지
     if (end - start).days > 90:
         raise HTTPException(status_code=400, detail="range is too large (max 90 days)")
 
@@ -391,7 +391,7 @@ async def create_booking(
 
     except IntegrityError:
         await session.rollback()
-        # 동시성 처리: 다시 한 번 확인
+        # 동시성 처리
         again = await session.execute(
             select(Booking.id).where(
                 Booking.time_slot_id == data.time_slot_id,

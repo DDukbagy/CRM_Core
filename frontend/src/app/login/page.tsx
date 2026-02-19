@@ -1,3 +1,4 @@
+// frontend/src/app/login/page.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -19,7 +20,7 @@ function sanitizeNext(raw: string | null): string | null {
 }
 
 function pickRedirectPath(role: string | undefined, nextPath: string | null): string | null {
-  // 역할별로 허용할 next 범위를 제한 (운영 안정성/보안)
+  // 역할별로 허용할 next 범위를 제한
   if (role === "ADMIN") {
     if (nextPath && (nextPath === "/admin" || nextPath.startsWith("/admin/"))) return nextPath;
     return "/admin";
@@ -74,7 +75,7 @@ export default function LoginPage() {
 
   const redirectByRole = async () => {
     try {
-      const res = await api.get("/users/me"); // ✅ /api/users/me (BFF)
+      const res = await api.get("/users/me");
       const role = res.data?.role as string | undefined;
 
       const target = pickRedirectPath(role, nextParam);

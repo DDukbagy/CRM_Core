@@ -1,3 +1,4 @@
+// frontend/src/app/not-found.tsx
 /**
  * 전역 404 페이지
  * - Next가 내부 _not-found 트리를 만들지 않도록 명시적으로 제공합니다.

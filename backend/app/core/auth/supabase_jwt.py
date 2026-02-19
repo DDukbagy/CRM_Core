@@ -42,7 +42,7 @@ def jwks_url_from_issuer(issuer: str) -> str:
     return f"{_rstrip(issuer)}/.well-known/jwks.json"  # :contentReference[oaicite:5]{index=5}
 
 def _peek_header(token: str) -> dict:
-    # 혹시라도 "Bearer xxx" 형태로 들어오면 방어
+    # "Bearer xxx" 형태로 들어오면 방어
     if token.lower().startswith("bearer "):
         token = token.split(" ", 1)[1].strip()
 
@@ -52,7 +52,7 @@ def _peek_header(token: str) -> dict:
         header_json = base64url_decode(header_b64)
         return json.loads(header_json)
     except Exception as e:
-        # 여기서 터지면 지금처럼 500이 나가버리므로 SupabaseJWTError로 변환
+        # SupabaseJWTError로 변환
         raise SupabaseJWTError("Invalid token header") from e
 
 async def _fetch_jwks(jwks_url: str) -> dict:
@@ -94,7 +94,7 @@ async def verify_supabase_access_token(
         alg = header.get("alg")
         kid = header.get("kid")
 
-        # 1) 비대칭(권장) : RS256/ES256 등 -> JWKS
+        # 비대칭 : RS256/ES256 등 -> JWKS
         if alg and alg != "HS256":
             jwks = await _fetch_jwks(jwks_url_from_issuer(issuer))
             if not kid:
@@ -110,7 +110,7 @@ async def verify_supabase_access_token(
                 options={"verify_exp": True, "verify_iss": True, "verify_aud": True},
             )
 
-        # 2) HS256(legacy/shared secret)
+        # HS256(legacy/shared secret)
         if not jwt_secret:
             raise SupabaseJWTError("JWT secret is required for HS256 verification")
 

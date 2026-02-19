@@ -1,3 +1,4 @@
+// frontend/src/components/auth/AuthShell.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -21,13 +22,13 @@ export default function AuthShell({ children }: { children: React.ReactNode }) {
   const [roleChecked, setRoleChecked] = useState(false);
 
   useEffect(() => {
-    // 로그인 페이지는 인증 가드 적용하지 않음
+    // 로그인 페이지는 인증 가드 적용 x
     if (isLoginPage) return;
 
     // 세션 로딩 중이면 대기
     if (loading) return;
 
-    // 세션이 없으면 즉시 로그인으로 이동
+    // 세션이 없으면 로그인으로 이동
     if (!session) {
       router.replace("/login");
       return;

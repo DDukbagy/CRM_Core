@@ -1,3 +1,4 @@
+// frontend/src/lib/providers.tsx
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -34,8 +35,8 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 60 * 1000, // 1분 동안은 데이터가 신선하다고 간주 (재요청 안 함)
-            refetchOnWindowFocus: false, // 탭 전환했다 돌아와도 깜빡거리며 재요청 안 함
+            staleTime: 60 * 1000,
+            refetchOnWindowFocus: false,
           },
         },
       })

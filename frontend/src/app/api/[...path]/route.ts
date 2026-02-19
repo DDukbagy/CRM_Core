@@ -25,7 +25,6 @@ async function getAccessTokenFromCookies(req: NextRequest): Promise<string | nul
       cookies: {
         getAll: () => req.cookies.getAll(),
         setAll: () => {
-          // API Route에서는 세션 읽기 목적이라 set 불필요
         },
       },
     }
@@ -57,13 +56,12 @@ async function proxyToUpstream(req: NextRequest, pathParts: string[]) {
 
   const accessToken = await getAccessTokenFromCookies(req);
 
-  // 헤더 복사 (불필요/위험 헤더 제거)
+  // 헤더 복사
   const headers = new Headers(req.headers);
   headers.delete("host");
-  headers.delete("cookie"); // ✅ 업스트림에는 Authorization만 전달(쿠키 노출 방지)
+  headers.delete("cookie"); // 업스트림에는 Authorization만 전달(쿠키 노출 방지)
   headers.delete("connection");
 
-  // 백엔드가 Authorization을 기대하므로 서버에서 붙여준다
   if (accessToken) {
     headers.set("authorization", `Bearer ${accessToken}`);
   } else {
@@ -83,7 +81,7 @@ async function proxyToUpstream(req: NextRequest, pathParts: string[]) {
       redirect: "manual",
     });
 
-    // 응답 그대로 내려줌
+    // 응답 그대로
     const resHeaders = new Headers(upstreamRes.headers);
     // fetch가 자동으로 디코드한 경우 헤더 불일치 방지
     resHeaders.delete("content-encoding");

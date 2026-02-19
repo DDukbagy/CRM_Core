@@ -1,3 +1,4 @@
+// frontend/src/app/(protected)/instructor/page.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";

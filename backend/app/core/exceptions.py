@@ -23,7 +23,7 @@ def _error(code: str, message: str, details: Any = None, request_id: str | None 
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
-        # 운영 핵심: 401/403/404 등은 절대 500으로 바뀌면 안 됨
+        # 401/403/404 등은 절대 500으로 바뀌면 안 됨
         request_id = getattr(request.state, "request_id", None)
         return JSONResponse(
             status_code=exc.status_code,
@@ -75,7 +75,6 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):
         """
-        운영 핵심:
         - Exception 핸들러는 1개만 둔다 (중복 등록 금지)
         - HTTPException은 이미 위에서 처리되므로 여기서 다시 건드리지 않는다
         - 로그에는 request_id를 포함해 추적 가능하게 한다

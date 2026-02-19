@@ -31,7 +31,7 @@ def _make_username(user_id: UUID, email: str | None) -> str:
     - 없으면 user_<uuid앞8자리>
     """
     base = (email.split("@")[0] if email else f"user_{str(user_id)[:8]}")
-    return base[:30]  # suffix 붙일 여지 남김
+    return base[:30]
 
 
 async def _get_or_create_user_row(
@@ -61,7 +61,7 @@ async def _get_or_create_user_row(
             username=username,
             email=email,
             display_name=display,
-            password=None,     # ✅ password는 DB에서 nullable이어야 함
+            password=None,     # password는 DB에서 nullable
             role="CUSTOMER",
         )
         session.add(new_user)
@@ -78,8 +78,6 @@ async def _get_or_create_user_row(
             existing = result.scalar_one_or_none()
             if existing:
                 return existing
-
-            # 아니면 username 충돌 가능성 → retry
 
     raise HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

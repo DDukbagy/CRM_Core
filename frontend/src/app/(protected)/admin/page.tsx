@@ -1,3 +1,4 @@
+// frontend/src/app/(protected)/admin/page.tsx
 import DashboardLayout, { type SidebarItem } from "@/components/layout/DashboardLayout";
 
 const adminNav: SidebarItem[] = [

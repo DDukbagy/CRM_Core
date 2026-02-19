@@ -19,7 +19,7 @@ class UserRead(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    # SQLModel/ORM 객체를 그대로 반환해도 스키마로 변환되게 해줌
+    # SQLModel/ORM 객체를 그대로 반환해도 스키마로 변환
     model_config = {"from_attributes": True}
 
 class UsersListResponse(BaseModel):

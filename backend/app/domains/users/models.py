@@ -1,4 +1,3 @@
-# backend_app_domains_users_models.py
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional, List
 from uuid import UUID
@@ -41,6 +40,14 @@ class User(SQLModel, table=True):
         sa_type=String(20),
         nullable=False,
         description="사용자 역할 (CUSTOMER, INSTRUCTOR, CONTENT_MANAGER, ADMIN)",
+    )
+
+    # 승인/활성 상태 (DB 컬럼은 이미 추가 완료했다고 했으니 모델만 맞춰줌)
+    status: str = Field(
+        default="ACTIVE",
+        sa_type=String(20),
+        nullable=False,
+        description="계정 상태 (ACTIVE, PENDING, SUSPENDED)",
     )
 
     manager_id: Optional[UUID] = Field(

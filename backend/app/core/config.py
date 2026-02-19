@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     SUPABASE_JWT_SECRET: str
     SUPABASE_JWT_AUDIENCE: str = "authenticated"
 
-    # ✅ 소문자/기존 키까지 모두 허용
+    # 소문자/기존 키까지 모두 허용
     CORS_ORIGIN_REGEX: str | None = Field(
         default=None,
         validation_alias=AliasChoices(
@@ -35,7 +35,7 @@ class Settings(BaseSettings):
         ),
     )
 
-    # ✅ 소문자/기존 키까지 모두 허용
+    # 소문자/기존 키까지 모두 허용
     CORS_ALLOW_ORIGINS: Union[str, List[str]] = Field(
         default='["http://localhost:3000"]',
         validation_alias=AliasChoices(

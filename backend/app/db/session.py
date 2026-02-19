@@ -52,8 +52,8 @@ def make_engine():
 
     connect_args = {}
 
-    # 기본: SSL 검증 ON (Supabase CA로 검증)
-    # 단, 로컬 테스트에서만 끄고 싶으면 DB_SSL_DISABLE=1 로 실행
+    # SSL 검증 ON (Supabase CA로 검증)
+    # 로컬 테스트에서만 끄고 싶으면 DB_SSL_DISABLE=1 로 실행
     if os.getenv("DB_SSL_DISABLE") == "1":
         connect_args["ssl"] = None
     else:

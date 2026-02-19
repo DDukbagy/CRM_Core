@@ -18,7 +18,7 @@ from app.core.auth.supabase_jwt import (
     SupabaseJWTExpired,
     verify_supabase_access_token,
 )
-from app.domains.users.models import User  # ✅ ORM 기반 JIT용
+from app.domains.users.models import User  # ORM 기반 JIT용
 
 bearer = HTTPBearer(auto_error=False)
 
@@ -58,7 +58,7 @@ async def get_claims_optional(
             audience=getattr(settings, "SUPABASE_JWT_AUD", "authenticated"),
         )
     except SupabaseJWTExpired:
-        # optional이라도 "잘못된 토큰"은 401로 막는 게 운영상 안전
+        # optional이라도 "잘못된 토큰"은 401로 방어
         raise HTTPException(status_code=401, detail="Token expired")
     except SupabaseJWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -70,7 +70,7 @@ def _parse_sub_to_uuid(sub: str | None) -> UUID:
     try:
         return UUID(str(sub))
     except (ValueError, TypeError):
-        # ✅ sub가 UUID가 아니면 500이 아니라 401
+        # sub가 UUID가 아니면 401
         raise HTTPException(status_code=401, detail="Invalid token: malformed sub")
 
 
@@ -82,7 +82,7 @@ def _make_username(user_id: UUID, email: str | None) -> str:
     - DB 제약: max_length 40, unique
     """
     base = (email.split("@")[0] if email else f"user_{str(user_id)[:8]}")
-    # 너무 길어지면 suffix 붙일 여지를 남기기 위해 base는 30자로 제한
+    # base는 30자로 제한
     return base[:30]
 
 
@@ -94,7 +94,6 @@ async def _get_or_create_user_from_claims(
     claims -> CurrentUser (JIT 포함)
     get_current_user / get_current_user_optional이 동일 로직을 공유한다.
 
-    ✅ 변경점(인증 안정화):
     - sub(UUID) 검증 실패는 401로 귀결
     - users row가 없으면 ORM 기반으로 안전하게 생성(JIT)
     - username unique 충돌/동시성은 IntegrityError 처리 후 재조회/재시도
@@ -105,14 +104,14 @@ async def _get_or_create_user_from_claims(
 
     user_uuid = _parse_sub_to_uuid(sub)
 
-    # 1) 먼저 조회
+    # 먼저 조회
     result = await session.execute(select(User).where(User.id == user_uuid))
     user = result.scalar_one_or_none()
 
-    # 2) 없으면 JIT 생성
+    # 없으면 JIT 생성
     if user is None:
         username_base = _make_username(user_uuid, email)
-        display_name = (claims.get("user_metadata", {}) or {}).get("full_name")  # 있으면 참고
+        display_name = (claims.get("user_metadata", {}) or {}).get("full_name")
         display = display_name or email or phone or "사용자"
 
         for i in range(5):
@@ -148,7 +147,7 @@ async def _get_or_create_user_from_claims(
         if user is None:
             raise HTTPException(status_code=500, detail="Failed to provision user")
 
-    # 3) CurrentUser로 반환 (role/display_name은 NOT NULL 전제로 유지)
+    # CurrentUser로 반환 (role/display_name은 NOT NULL 전제로 유지)
     return CurrentUser(
         id=str(user.id),
         email=user.email,
@@ -199,7 +198,7 @@ async def get_current_user(
     session: AsyncSession = Depends(get_session),
 ) -> CurrentUser:
     """
-    운영형 JIT 프로비저닝:
+    JIT 프로비저닝:
     - Supabase sub(UUID)를 우리 public.users.id로 사용
     - 없으면 자동 생성 (display_name NOT NULL 대응)
     """

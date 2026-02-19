@@ -1,3 +1,4 @@
+// frontend/src/proxy.ts
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
@@ -69,7 +70,7 @@ export async function proxy(req: NextRequest) {
     }
   );
 
-  // 1) 로그인 여부 체크
+  // 로그인 여부 체크
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -81,11 +82,11 @@ export async function proxy(req: NextRequest) {
     return NextResponse.redirect(redirectUrl);
   }
 
-  // 2) /admin, /instructor는 role 기반으로 강제
+  // /admin, /instructor는 role 기반으로 강제
   if (needsAdmin(pathname) || needsInstructor(pathname)) {
     const role = await getRoleFromUsersTable(supabase, user.id);
 
-    // role을 못 읽으면(테이블/RLS/데이터 불일치) 운영 안정성상 차단
+    // role을 못 읽으면(테이블/RLS/데이터 불일치) 차단
     if (!role) {
       const redirectUrl = req.nextUrl.clone();
       redirectUrl.pathname = "/login";

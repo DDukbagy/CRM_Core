@@ -24,7 +24,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
 
         except HTTPException as e:
-            # 401/403 등은 "정상적인" 예외 흐름일 수 있으니 error 로깅 대신 warning 정도로만 남김
+            # 401/403 등은 정상적인 예외 흐름일 수 있으니 error 로깅 대신 warning 정도로만 남김
             elapsed_ms = (time.perf_counter() - start) * 1000
             logger.warning(
                 "request_id=%s method=%s path=%s status=%s duration_ms=%.2f client=%s",
