@@ -1,4 +1,3 @@
-# backend_app_domains_users_router.py
 from __future__ import annotations
 
 import secrets
@@ -27,6 +26,16 @@ router = APIRouter(
     prefix="/users",
     tags=["Users"]
 )
+
+def _safe_uuid(value: str) -> UUID:
+    """
+    ✅ 인증 안전장치:
+    - current_user.id(UUID 문자열)가 깨져 있으면 500이 아니라 401로 귀결
+    """
+    try:
+        return UUID(str(value))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=401, detail="Invalid token subject")
 
 def _make_username(user_id: UUID, email: str | None) -> str:
     """
@@ -83,7 +92,7 @@ async def _get_or_create_user_row(
             existing = result.scalar_one_or_none()
             if existing:
                 return existing
-            
+
             # 아니면 username 충돌 가능성 → retry
 
     raise HTTPException(
@@ -101,10 +110,10 @@ async def get_my_account(
     - 로그인한 유저 본인만 접근
     - users row가 없으면 자동 생성(동기화)
     """
-    user_id = UUID(current_user.id)
+    user_id = _safe_uuid(current_user.id)
     email = current_user.email
     display_name = current_user.display_name
-    
+
     user = await _get_or_create_user_row(session, user_id, email, display_name)
     return user
 
@@ -119,7 +128,7 @@ async def update_my_account(
     - username/email/display_name 중 들어온 것만 업데이트
     - users row가 없으면 먼저 자동 생성(동기화) 후 업데이트
     """
-    user_id = UUID(current_user.id)
+    user_id = _safe_uuid(current_user.id)
     email = current_user.email
     display_name = current_user.display_name
     user = await _get_or_create_user_row(session, user_id, email, display_name)
@@ -171,20 +180,20 @@ async def list_users(
 
     if current_user.role == 'ADMIN':
         # 관리자: 제약 없음 (모든 데이터 조회)
-        pass 
+        pass
     elif current_user.role == 'INSTRUCTOR':
         # 강사: 본인이 담당자(manager_id)인 고객만 조회 OR 본인 계정
         filters.append(
-            (User.manager_id == UUID(str(current_user.id))) | (User.id == UUID(str(current_user.id)))
+            (User.manager_id == _safe_uuid(str(current_user.id))) | (User.id == _safe_uuid(str(current_user.id)))
         )
     else:
         # 일반 고객 등: 본인 것만 조회 (보안)
-        filters.append(User.id == UUID(str(current_user.id)))
+        filters.append(User.id == _safe_uuid(str(current_user.id)))
 
     # 페이징 적용
     stmt = select(User).where(*filters).order_by(User.created_at.desc())
     stmt = stmt.limit(limit).offset(offset)
-    
+
     result = await session.execute(stmt)
     users = result.scalars().all()
 
@@ -218,11 +227,11 @@ async def get_user_detail(
     if current_user.role == 'ADMIN':
         return user
     elif current_user.role == 'INSTRUCTOR':
-        if user.id != UUID(str(current_user.id)) and user.manager_id != UUID(str(current_user.id)):
+        if user.id != _safe_uuid(str(current_user.id)) and user.manager_id != _safe_uuid(str(current_user.id)):
             raise HTTPException(status_code=403, detail="Forbidden")
         return user
     else:
-        if user.id != UUID(str(current_user.id)):
+        if user.id != _safe_uuid(str(current_user.id)):
             raise HTTPException(status_code=403, detail="Forbidden")
         return user
 
@@ -251,7 +260,7 @@ async def create_user(
         # 강사는 'CUSTOMER'만 만들 수 있게 강제 (보안)
         if user_in.role != 'CUSTOMER':
             raise HTTPException(status_code=403, detail="강사는 일반 고객만 등록할 수 있습니다.")
-    
+
     # DB 모델 생성
     new_user = User(
         id=new_id,
@@ -264,7 +273,7 @@ async def create_user(
         role=user_in.role or "CUSTOMER",
         is_active=True,
     )
-    
+
     try:
         session.add(new_user)
         await session.commit()
@@ -289,29 +298,29 @@ async def update_user(
     """
     result = await session.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
-    
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     if current_user.role == 'ADMIN':
         pass
     elif current_user.role == 'INSTRUCTOR':
-        if user.id != UUID(str(current_user.id)) and user.manager_id != UUID(str(current_user.id)):
+        if user.id != _safe_uuid(str(current_user.id)) and user.manager_id != _safe_uuid(str(current_user.id)):
             raise HTTPException(status_code=403, detail="Forbidden")
     else:
-        if user.id != UUID(str(current_user.id)):
+        if user.id != _safe_uuid(str(current_user.id)):
             raise HTTPException(status_code=403, detail="Forbidden")
 
     # 업데이트 로직
     update_data = user_in.model_dump(exclude_unset=True)
-    
+
     if "username" in update_data and update_data["username"]:
         user.username = update_data["username"]
     if "email" in update_data and update_data["email"]:
         user.email = update_data["email"]
     if "display_name" in update_data and update_data["display_name"]:
         user.display_name = update_data["display_name"]
-        
+
     try:
         session.add(user)
         await session.commit()
@@ -332,19 +341,19 @@ async def delete_user(
     """
     result = await session.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
-    
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     if current_user.role == 'ADMIN':
         pass
     elif current_user.role == 'INSTRUCTOR':
-        if user.id != UUID(str(current_user.id)) and user.manager_id != UUID(str(current_user.id)):
+        if user.id != _safe_uuid(str(current_user.id)) and user.manager_id != _safe_uuid(str(current_user.id)):
             raise HTTPException(status_code=403, detail="Forbidden")
     else:
-        if user.id != UUID(str(current_user.id)):
+        if user.id != _safe_uuid(str(current_user.id)):
             raise HTTPException(status_code=403, detail="Forbidden")
-        
+
     await session.delete(user)
     await session.commit()
     return None
@@ -370,7 +379,7 @@ async def login_access_token(
 
     # 유효기간 설정 (24시간)
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    
+
     # 토큰 발급 (신분증에 user_id랑 role 정보를 심어줌)
     access_token = create_access_token(
         data={"sub": str(user.id), "role": user.role},

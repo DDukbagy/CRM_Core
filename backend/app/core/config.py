@@ -25,9 +25,26 @@ class Settings(BaseSettings):
     SUPABASE_JWT_SECRET: str
     SUPABASE_JWT_AUDIENCE: str = "authenticated"
 
+    # ✅ 소문자/기존 키까지 모두 허용
+    CORS_ORIGIN_REGEX: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "CORS_ORIGIN_REGEX",
+            "CORS_ALLOW_ORIGIN_REGEX",
+            "cors_origin_regex",
+        ),
+    )
+
+    # ✅ 소문자/기존 키까지 모두 허용
     CORS_ALLOW_ORIGINS: Union[str, List[str]] = Field(
-        default='["http://localhost:3000","http://localhost:5173","http://127.0.0.1:3000","http://127.0.0.1:5173"]',
-        validation_alias=AliasChoices("CORS_ALLOW_ORIGINS", "CORS_ORIGINS"),
+        default='["http://localhost:3000"]',
+        validation_alias=AliasChoices(
+            "CORS_ALLOW_ORIGINS",
+            "CORS_ORIGINS",
+            "CORS_ORIGIN",
+            "cors_origins",
+            "cors_origin",
+        ),
     )
 
     @field_validator("CORS_ALLOW_ORIGINS", mode="before")
@@ -50,12 +67,6 @@ class Settings(BaseSettings):
 
     @property
     def ASYNC_DATABASE_URL(self) -> str:
-        """
-        SQLAlchemy async driver URL
-        postgresql+asyncpg:// -> 그대로 사용
-        postgresql:// -> postgresql+asyncpg:// 로 변환
-        postgres:// -> postgresql:// 로 변환 후 처리
-        """
         url = self.DATABASE_URL
         if url.startswith("postgresql+asyncpg://"):
             return url
@@ -68,23 +79,18 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> List[str]:
         v = self.CORS_ALLOW_ORIGINS
-
         if isinstance(v, list):
             return v
-
         s = str(v).strip()
         if not s:
             return []
-
         try:
             parsed = json.loads(s)
             if isinstance(parsed, list):
                 return parsed
         except Exception:
             pass
-
-        parts = [o.strip() for o in s.split(",") if o.strip()]
-        return parts
+        return [o.strip() for o in s.split(",") if o.strip()]
 
     @property
     def SUPABASE_ISSUER(self) -> str:

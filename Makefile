@@ -46,6 +46,21 @@ endef
 # -----------------------------
 # Server
 # -----------------------------
+
+.PHONY: frontend
+frontend: ## Run Next.js dev server (auto cd if needed, clear .next cache)
+	@set -e; \
+	if [ -f package.json ] && [ -d src ] && [ -d node_modules ]; then \
+		echo "[make] frontend: running in current directory"; \
+		rm -rf .next; \
+		npm run dev; \
+	else \
+		echo "[make] frontend: running in ./frontend"; \
+		cd frontend; \
+		rm -rf .next; \
+		npm run dev; \
+	fi
+
 .PHONY: server
 server: ## Run backend server (reload)
 	@cd backend && poetry run uvicorn $(APP) --reload --host $(HOST) --port $(PORT)

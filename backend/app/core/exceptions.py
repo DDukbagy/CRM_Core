@@ -11,37 +11,42 @@ from sqlalchemy.exc import IntegrityError
 logger = logging.getLogger(__name__)
 
 
-def _error(code: str, message: str, details: Any = None) -> Dict[str, Any]:
+def _error(code: str, message: str, details: Any = None, request_id: str | None = None) -> Dict[str, Any]:
     payload: Dict[str, Any] = {"error": {"code": code, "message": message}}
     if details is not None:
         payload["error"]["details"] = details
+    if request_id:
+        payload["error"]["request_id"] = request_id
     return payload
 
 
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
-        # HTTPException 응답 포맷 통일
+        # 운영 핵심: 401/403/404 등은 절대 500으로 바뀌면 안 됨
+        request_id = getattr(request.state, "request_id", None)
         return JSONResponse(
             status_code=exc.status_code,
-            content=_error(code="HTTP_EXCEPTION", message=str(exc.detail)),
+            content=_error(code="HTTP_EXCEPTION", message=str(exc.detail), request_id=request_id),
         )
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
-        # 422 validation 에러 포맷 통일
+        request_id = getattr(request.state, "request_id", None)
         return JSONResponse(
             status_code=422,
             content=_error(
                 code="VALIDATION_ERROR",
                 message="Request validation failed",
                 details=exc.errors(),
+                request_id=request_id,
             ),
         )
 
     @app.exception_handler(IntegrityError)
     async def integrity_error_handler(request: Request, exc: IntegrityError):
-        # 유니크 충돌(중복 예약 등)을 409로 매핑
+        request_id = getattr(request.state, "request_id", None)
+
         orig = getattr(exc, "orig", None)
         orig_type = type(orig).__name__ if orig is not None else ""
         orig_msg = str(orig) if orig is not None else str(exc)
@@ -53,34 +58,40 @@ def register_exception_handlers(app: FastAPI) -> None:
                 content=_error(
                     code="UNIQUE_CONSTRAINT_VIOLATION",
                     message="Resource conflict (duplicate).",
+                    request_id=request_id,
                 ),
             )
 
-        # 그 외 무결성 오류
         return JSONResponse(
             status_code=400,
             content=_error(
                 code="INTEGRITY_ERROR",
                 message="Database integrity error.",
                 details=orig_msg,
+                request_id=request_id,
             ),
         )
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):
+        """
+        운영 핵심:
+        - Exception 핸들러는 1개만 둔다 (중복 등록 금지)
+        - HTTPException은 이미 위에서 처리되므로 여기서 다시 건드리지 않는다
+        - 로그에는 request_id를 포함해 추적 가능하게 한다
+        """
         request_id = getattr(request.state, "request_id", None)
         path_params = dict(getattr(request, "path_params", {}) or {})
 
-        # 가능한 경우 user_id를 추출 (Authorization이 optional인 경우도 많아서 "best-effort")
         user_id = None
         try:
-            # 토큰 기반이면 보통 request.state.user / request.state.claims 같은 게 있을 수 있음
             user = getattr(request.state, "user", None)
             if user and getattr(user, "id", None):
                 user_id = str(user.id)
         except Exception:
             user_id = None
 
+        # uvicorn.error에도 남기면 ECS/CloudWatch에서 찾기 쉬움
         uvicorn_logger = logging.getLogger("uvicorn.error")
         uvicorn_logger.exception(
             "Unhandled exception request_id=%s method=%s path=%s path_params=%s user_id=%s",
@@ -103,5 +114,9 @@ def register_exception_handlers(app: FastAPI) -> None:
 
         return JSONResponse(
             status_code=500,
-            content={"error": {"code": "INTERNAL_SERVER_ERROR", "message": "Unexpected server error."}},
+            content=_error(
+                code="INTERNAL_SERVER_ERROR",
+                message="Unexpected server error.",
+                request_id=request_id,
+            ),
         )

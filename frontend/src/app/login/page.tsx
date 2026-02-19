@@ -1,20 +1,50 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/axios";
 import { Lock, User, Loader2, ArrowRight } from "lucide-react";
-import { supabase, useAuth } from "@/lib/providers";
+import { supabaseBrowser } from "@/lib/supabase/client";
+
+function sanitizeNext(raw: string | null): string | null {
+  if (!raw) return null;
+
+  // 외부 URL 방지 (open redirect 차단)
+  // next는 반드시 "/..." 형태만 허용
+  if (!raw.startsWith("/")) return null;
+  if (raw.startsWith("//")) return null;
+  if (raw.includes("://")) return null;
+
+  return raw;
+}
+
+function pickRedirectPath(role: string | undefined, nextPath: string | null): string | null {
+  // 역할별로 허용할 next 범위를 제한 (운영 안정성/보안)
+  if (role === "ADMIN") {
+    if (nextPath && (nextPath === "/admin" || nextPath.startsWith("/admin/"))) return nextPath;
+    return "/admin";
+  }
+
+  if (role === "INSTRUCTOR") {
+    if (nextPath && (nextPath === "/instructor" || nextPath.startsWith("/instructor/"))) return nextPath;
+    return "/instructor";
+  }
+
+  return null;
+}
 
 export default function LoginPage() {
   const router = useRouter();
-  const { session, loading } = useAuth();
+  const searchParams = useSearchParams();
+  const supabase = supabaseBrowser();
+
+  const nextParam = sanitizeNext(searchParams.get("next"));
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
   const [formData, setFormData] = useState({
-    username: "", // 기존 UI 유지: 입력값은 "이메일"로 사용합니다.
+    username: "",
     password: "",
   });
 
@@ -24,38 +54,40 @@ export default function LoginPage() {
     setError("");
   };
 
-  // 자동 로그인: 세션이 있으면 바로 role 확인 후 분기
+  // 이미 세션 있으면 바로 role 체크
   useEffect(() => {
-    if (loading) return;
-    if (!session) return;
+    let mounted = true;
 
     (async () => {
-      await redirectByRole();
+      const { data } = await supabase.auth.getSession();
+      if (!mounted) return;
+      if (data.session) {
+        await redirectByRole();
+      }
     })();
+
+    return () => {
+      mounted = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, session]);
+  }, []);
 
   const redirectByRole = async () => {
     try {
-      // 백엔드 기준으로 role 확인 (Single Source of Truth)
-      const res = await api.get("/users/me");
-      const role = res.data?.role;
-      const displayName = res.data?.display_name;
+      const res = await api.get("/users/me"); // ✅ /api/users/me (BFF)
+      const role = res.data?.role as string | undefined;
 
-      if (role === "ADMIN") {
-        router.replace("/admin");
-        return;
-      }
-      if (role === "INSTRUCTOR") {
-        router.replace("/instructor");
+      const target = pickRedirectPath(role, nextParam);
+
+      if (target) {
+        router.replace(target);
         return;
       }
 
-      // CUSTOMER 등은 웹 접근 차단
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "local" });
       setError("일반 회원은 관리자 웹페이지에 접속할 수 없습니다.");
     } catch {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "local" });
       setError("권한 정보를 불러오지 못했습니다. 다시 로그인 해주세요.");
     }
   };
@@ -66,20 +98,18 @@ export default function LoginPage() {
     setError("");
 
     try {
-      // 운영 기준: Supabase Auth 로그인 (username 입력은 이메일로 사용)
       const email = formData.username;
 
-      const { error } = await supabase.auth.signInWithPassword({
+      const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password: formData.password,
       });
 
-      if (error) {
-        setError(error.message || "로그인 실패");
+      if (signInError) {
+        setError(signInError.message || "로그인 실패");
         return;
       }
 
-      // 로그인 성공 후 role 분기
       await redirectByRole();
     } finally {
       setIsLoading(false);
@@ -143,7 +173,16 @@ export default function LoginPage() {
             disabled={isLoading}
             className="w-full bg-indigo-900 hover:bg-indigo-800 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-indigo-500/30 flex items-center justify-center gap-2"
           >
-            {isLoading ? <Loader2 className="animate-spin" /> : <>로그인하기 <ArrowRight size={18} /></>}
+            {isLoading ? (
+              <>
+                <Loader2 className="animate-spin" />
+                로그인 중...
+              </>
+            ) : (
+              <>
+                로그인하기 <ArrowRight size={18} />
+              </>
+            )}
           </button>
         </form>
       </div>

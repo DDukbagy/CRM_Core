@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import api from "@/lib/axios";
+import { api } from "@/lib/axios";
 
 export default function HealthTest() {
   const [message, setMessage] = useState("서버 응답 대기중...");

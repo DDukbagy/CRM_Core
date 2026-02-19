@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import secrets
 from dataclasses import dataclass
 from typing import Optional
+from uuid import UUID
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer, OAuth2PasswordBearer
-from sqlalchemy import text
+from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -15,6 +18,7 @@ from app.core.auth.supabase_jwt import (
     SupabaseJWTExpired,
     verify_supabase_access_token,
 )
+from app.domains.users.models import User  # ✅ ORM 기반 JIT용
 
 bearer = HTTPBearer(auto_error=False)
 
@@ -60,6 +64,28 @@ async def get_claims_optional(
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
+def _parse_sub_to_uuid(sub: str | None) -> UUID:
+    if not sub:
+        raise HTTPException(status_code=401, detail="Invalid token: missing sub")
+    try:
+        return UUID(str(sub))
+    except (ValueError, TypeError):
+        # ✅ sub가 UUID가 아니면 500이 아니라 401
+        raise HTTPException(status_code=401, detail="Invalid token: malformed sub")
+
+
+def _make_username(user_id: UUID, email: str | None) -> str:
+    """
+    자동 생성 username 규칙
+    - email이 있으면 email prefix 우선
+    - 없으면 user_<uuid앞8자리>
+    - DB 제약: max_length 40, unique
+    """
+    base = (email.split("@")[0] if email else f"user_{str(user_id)[:8]}")
+    # 너무 길어지면 suffix 붙일 여지를 남기기 위해 base는 30자로 제한
+    return base[:30]
+
+
 async def _get_or_create_user_from_claims(
     claims: dict,
     session: AsyncSession,
@@ -67,58 +93,69 @@ async def _get_or_create_user_from_claims(
     """
     claims -> CurrentUser (JIT 포함)
     get_current_user / get_current_user_optional이 동일 로직을 공유한다.
+
+    ✅ 변경점(인증 안정화):
+    - sub(UUID) 검증 실패는 401로 귀결
+    - users row가 없으면 ORM 기반으로 안전하게 생성(JIT)
+    - username unique 충돌/동시성은 IntegrityError 처리 후 재조회/재시도
     """
-    user_id = claims.get("sub")
+    sub = claims.get("sub")
     email = claims.get("email")
     phone = claims.get("phone")
 
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Invalid token: missing sub")
+    user_uuid = _parse_sub_to_uuid(sub)
 
-    result = await session.execute(
-        text(
-            """
-            select id, email, username, display_name, role
-            from public.users
-            where id = :id
-            """
-        ),
-        {"id": user_id},
-    )
-    row = result.first()
+    # 1) 먼저 조회
+    result = await session.execute(select(User).where(User.id == user_uuid))
+    user = result.scalar_one_or_none()
 
-    if row is None:
-        base = user_id.replace("-", "")[:8]
-        username = f"user-{base}"
-        display_name = email or phone or username
+    # 2) 없으면 JIT 생성
+    if user is None:
+        username_base = _make_username(user_uuid, email)
+        display_name = (claims.get("user_metadata", {}) or {}).get("full_name")  # 있으면 참고
+        display = display_name or email or phone or "사용자"
 
-        await session.execute(
-            text(
-                """
-                insert into public.users (id, username, email, display_name, role)
-                values (:id, :username, :email, :display_name, 'CUSTOMER')
-                """
-            ),
-            {"id": user_id, "username": username, "email": email, "display_name": display_name},
-        )
-        await session.commit()
+        for i in range(5):
+            suffix = "" if i == 0 else "_" + secrets.token_hex(2)  # 4 hex
+            username = (username_base + suffix)[:40]
 
-        return CurrentUser(
-            id=user_id,
-            email=email,
-            phone=phone,
-            username=username,
-            display_name=display_name,
-            role="CUSTOMER",
-        )
+            new_user = User(
+                id=user_uuid,
+                username=username,
+                email=email,
+                display_name=display,
+                role="CUSTOMER",
+                is_active=True,
+                password=None,
+            )
+            session.add(new_user)
 
+            try:
+                await session.commit()
+                await session.refresh(new_user)
+                user = new_user
+                break
+            except IntegrityError:
+                await session.rollback()
+
+                # 동시성으로 누군가 먼저 만들었으면 재조회해서 사용
+                result = await session.execute(select(User).where(User.id == user_uuid))
+                existing = result.scalar_one_or_none()
+                if existing is not None:
+                    user = existing
+                    break
+
+        if user is None:
+            raise HTTPException(status_code=500, detail="Failed to provision user")
+
+    # 3) CurrentUser로 반환 (role/display_name은 NOT NULL 전제로 유지)
     return CurrentUser(
-        id=str(row[0]),
-        email=row[1],
+        id=str(user.id),
+        email=user.email,
         phone=phone,
-        username=row[2],
-        display_name=row[3],
-        role=str(row[4]) if row[4] is not None else "CUSTOMER",
+        username=user.username,
+        display_name=user.display_name,
+        role=(user.role or "CUSTOMER"),
     )
 
 
@@ -132,6 +169,7 @@ async def get_current_user_optional(
 
 
 oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
+
 
 async def get_access_token(
     cred: HTTPAuthorizationCredentials | None = Depends(bearer),
