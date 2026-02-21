@@ -578,6 +578,8 @@ async def cancel_booking_as_guest(
     - row 삭제 X, status 변경
     - 고객 cancel: REQUESTED(요청 철회) / CONFIRMED(확정 취소) 모두 허용
       (거절은 decline로만 처리)
+    - REQUESTED는 /withdraw(요청 철회)로 처리 (개념 분리)
+    - cancel은 CONFIRMED만 허용
     """
     user_id = UUID(str(user.id))
 
@@ -597,12 +599,61 @@ async def cancel_booking_as_guest(
         raise HTTPException(status_code=400, detail="Completed booking cannot be cancelled")
 
     # 고객 cancel 허용 상태 제한
-    if booking.status not in {"REQUESTED", "CONFIRMED"}:
+    # - REQUESTED는 withdraw(요청 철회)로 처리
+    if booking.status == "REQUESTED":
+        raise HTTPException(status_code=400, detail="Requested booking should be withdrawn, not cancelled")
+    if booking.status != "CONFIRMED":
         raise HTTPException(status_code=400, detail=f"Invalid status transition: {booking.status} -> CANCELLED")
 
     booking.status = "CANCELLED"
 
     # cancel_reason 저장
+    if body is not None and getattr(body, "reason", None):
+        if hasattr(booking, "cancel_reason"):
+            booking.cancel_reason = body.reason
+
+    session.add(booking)
+    await session.commit()
+    await session.refresh(booking)
+    return BookingCancelResponse(id=booking.id, status=booking.status, updated_at=booking.updated_at)
+
+
+@bk_router.patch("/{booking_id}/withdraw", response_model=BookingCancelResponse)
+async def withdraw_booking_as_guest(
+    booking_id: int,
+    body: BookingCancelRequest | None = None,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """
+    게스트(예약자) 요청 철회
+    - row 삭제 X, status 변경
+    - REQUESTED 상태에서만 허용
+    """
+    user_id = UUID(str(user.id))
+
+    res = await session.execute(select(Booking).where(Booking.id == booking_id))
+    booking = res.scalar_one_or_none()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if booking.guest_id != user_id:
+        raise HTTPException(status_code=403, detail="Only the guest can withdraw this booking")
+
+    if booking.status == "CANCELLED":
+        return BookingCancelResponse(id=booking.id, status=booking.status, updated_at=booking.updated_at)
+
+    # COMPLETED는 철회 불가
+    if booking.status == "COMPLETED":
+        raise HTTPException(status_code=400, detail="Completed booking cannot be withdrawn")
+
+    # 요청 철회는 REQUESTED에서만
+    if booking.status != "REQUESTED":
+        raise HTTPException(status_code=400, detail=f"Invalid status transition: {booking.status} -> CANCELLED")
+
+    booking.status = "CANCELLED"
+
+    # cancel_reason 저장(요청철회 사유도 같은 컬럼 사용)
     if body is not None and getattr(body, "reason", None):
         if hasattr(booking, "cancel_reason"):
             booking.cancel_reason = body.reason
