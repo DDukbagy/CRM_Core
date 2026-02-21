@@ -216,6 +216,17 @@ check-schema: ## Verify if database tables and columns are created correctly
 reset-db: ## db reset
 	@cd backend && poetry run python -m scripts.reset_db
 
+.PHONY: smoke-booking
+smoke-booking:
+	@set -e; \
+	if [ -f "backend/scripts/smoke_booking.sh" ]; then \
+		bash backend/scripts/smoke_booking.sh; \
+	elif [ -f "scripts/smoke_booking.sh" ]; then \
+		bash scripts/smoke_booking.sh; \
+	else \
+		exit 1; \
+	fi
+
 .PHONY: release
 release: ## Interactive: switch to main, pull, tag & push; then return to previous ref
 	@set -e; \
