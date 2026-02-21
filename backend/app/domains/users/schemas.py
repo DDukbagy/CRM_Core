@@ -1,10 +1,10 @@
-# backend_app_domains_users_schemas.py
 from __future__ import annotations
 
 from datetime import datetime
 from uuid import UUID
 from typing import Optional, List
 from pydantic import BaseModel, EmailStr, ConfigDict
+
 
 class UserRead(BaseModel):
     """
@@ -17,13 +17,17 @@ class UserRead(BaseModel):
     display_name: str
     phone: str | None = None
     role: str
+
+    # status
+    status: str = "ACTIVE"
+
     manager_id: UUID | None = None
     is_active: bool = True
     created_at: datetime
     updated_at: datetime
 
-    # SQLModel/ORM 객체를 그대로 반환해도 스키마로 변환되게 해줌
     model_config = ConfigDict(from_attributes=True)
+
 
 class UsersListResponse(BaseModel):
     """
@@ -34,6 +38,7 @@ class UsersListResponse(BaseModel):
     total: int | None = None
     limit: int | None = None
     offset: int | None = None
+
 
 class UserUpdate(BaseModel):
     """
@@ -47,10 +52,10 @@ class UserUpdate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+
 class UserCreateFromAuth(BaseModel):
     """
-    Supabase Auth(소셜/이메일 로그인) 이후 우리 users 테이블 row를 생성/동기화할 때 쓰는 내부 스키마
-    - Supabase를 쓰면 'password'는 보통 우리 백엔드가 직접 받지 않는다
+    Supabase Auth 이후 우리 users 테이블 row를 생성/동기화할 때 쓰는 내부 스키마
     - users.id는 Supabase JWT의 sub(UUID) 값을 그대로 사용
     """
     id: UUID
@@ -58,13 +63,15 @@ class UserCreateFromAuth(BaseModel):
     email: EmailStr | None = None
     display_name: str
     role: str = "CUSTOMER"
+    status: str = "ACTIVE"
 
     model_config = ConfigDict(extra="forbid")
+
 
 class UserCreate(BaseModel):
     """
     신규 회원 등록 요청 스키마
-    - 프론트엔드 회원가입 폼에서 받는 데이터와 일치해야 합니다.
+    - (현재 Supabase Auth를 쓰면, 이 경로는 보조/테스트용일 가능성 높음)
     """
     username: str
     email: EmailStr
@@ -72,4 +79,5 @@ class UserCreate(BaseModel):
     phone: str | None = None
     password: str
     role: str = "CUSTOMER"
+    status: str = "ACTIVE"
     manager_id: UUID | None = None

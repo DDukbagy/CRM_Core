@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth.deps import get_current_user, require_role, CurrentUser
+from app.core.auth.deps import require_role, CurrentUser
+from app.core.config import settings
 from app.db.session import get_session
 from app.domains.instructor.schemas import (
     InstructorStaffCreate,
@@ -12,6 +13,7 @@ from app.domains.instructor.schemas import (
 )
 
 router = APIRouter(prefix="/instructors", tags=["Instructor"])
+
 
 @router.post(
     "/me/staff",
@@ -24,7 +26,6 @@ async def add_staff(
 ):
     instructor_id = UUID(str(user.id))
 
-    # staff 유저 찾기
     res = await session.execute(
         text(
             """
@@ -41,11 +42,9 @@ async def add_staff(
 
     staff_user_id = row[0]
 
-    # 자기 자신 추가 방지
     if str(staff_user_id) == str(instructor_id):
         raise HTTPException(status_code=400, detail="Cannot add yourself as staff")
 
-    # 위임 관계 생성
     try:
         await session.execute(
             text(
@@ -65,6 +64,7 @@ async def add_staff(
         raise HTTPException(status_code=409, detail="Staff already assigned")
 
     return {"ok": True}
+
 
 @router.delete(
     "/me/staff/{staff_user_id}",
@@ -96,6 +96,7 @@ async def remove_staff(
 
     await session.commit()
     return None
+
 
 @router.get(
     "/me/staff",
@@ -135,3 +136,136 @@ async def list_staff(
         )
         for row in res
     ]
+
+
+# 강사 신청/승인
+@router.post("/apply")
+async def apply_instructor(
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(require_role({"CUSTOMER"})),
+):
+    """
+    CUSTOMER → INSTRUCTOR 신청
+    - role=INSTRUCTOR, status=PENDING
+    - 승인 전에는 deps.require_role에서 INSTRUCTOR 기능 접근 차단됨
+    """
+    try:
+        # 이미 신청했는지/강사인지 체크
+        check = await session.execute(
+            text(
+                """
+                select role, status
+                from public.users
+                where id = :user_id
+                """
+            ),
+            {"user_id": str(user.id)},
+        )
+        row = check.first()
+        if not row:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        current_role = (row.role or "").upper()
+        current_status = (row.status or "ACTIVE").upper()
+
+        if current_role == "INSTRUCTOR":
+            # 이미 강사면 그대로 반환
+            return {"ok": True, "role": current_role, "status": current_status}
+
+        if current_role != "CUSTOMER":
+            raise HTTPException(status_code=400, detail="Invalid role transition")
+
+        res = await session.execute(
+            text(
+                """
+                update public.users
+                set role = 'INSTRUCTOR',
+                    status = 'PENDING'
+                where id = :user_id
+                returning id, role, status
+                """
+            ),
+            {"user_id": str(user.id)},
+        )
+        updated = res.first()
+        await session.commit()
+        return {"ok": True, "id": str(updated.id), "role": updated.role, "status": updated.status}
+    except HTTPException:
+        raise
+    except Exception:
+        await session.rollback()
+        raise HTTPException(status_code=500, detail="Failed to apply instructor")
+
+
+@router.get("/pending")
+async def list_pending_instructors(
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(require_role({"ADMIN"})),
+):
+    """
+    ADMIN: 승인 대기 강사 목록
+    """
+    res = await session.execute(
+        text(
+            """
+            select id, email, username, display_name, created_at
+            from public.users
+            where role = 'INSTRUCTOR'
+              and status = 'PENDING'
+              and is_active = true
+            order by created_at asc
+            """
+        )
+    )
+    rows = res.fetchall()
+    return [
+        {
+            "id": str(r.id),
+            "email": r.email,
+            "username": r.username,
+            "display_name": r.display_name,
+            "created_at": r.created_at,
+        }
+        for r in rows
+    ]
+
+
+@router.post("/{user_id}/approve")
+async def approve_instructor(
+    user_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(require_role({"ADMIN"})),
+):
+    """
+    ADMIN: 강사 승인
+    - status를 ACTIVE로 변경
+    """
+    # 슈퍼어드민 보호
+    if settings.SUPER_ADMIN_USER_ID and str(user_id) == str(settings.SUPER_ADMIN_USER_ID):
+        raise HTTPException(status_code=403, detail="Cannot modify super admin")
+
+    try:
+        res = await session.execute(
+            text(
+                """
+                update public.users
+                set status = 'ACTIVE'
+                where id = :target_id
+                  and role = 'INSTRUCTOR'
+                returning id, role, status
+                """
+            ),
+            {"target_id": str(user_id)},
+        )
+        row = res.first()
+        if not row:
+            await session.rollback()
+            raise HTTPException(status_code=404, detail="Pending instructor not found")
+
+        await session.commit()
+        return {"ok": True, "id": str(row.id), "role": row.role, "status": row.status}
+    except HTTPException:
+        raise
+    except Exception:
+        await session.rollback()
+        raise HTTPException(status_code=500, detail="Failed to approve instructor")

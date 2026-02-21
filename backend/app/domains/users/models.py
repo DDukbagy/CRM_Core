@@ -8,7 +8,7 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlmodel import SQLModel, Field, Relationship, func
 from sqlalchemy_utc import UtcDateTime
 
-# 순환 참조 방지를 위한 타입 체크
+# 순환 참조 방지
 if TYPE_CHECKING:
     from app.domains.calendar.models import Calendar, Booking
 
@@ -42,7 +42,7 @@ class User(SQLModel, table=True):
         description="사용자 역할 (CUSTOMER, INSTRUCTOR, CONTENT_MANAGER, ADMIN)",
     )
 
-    # 승인/활성 상태 (DB 컬럼은 이미 추가 완료했다고 했으니 모델만 맞춰줌)
+    # ✅승인/상태
     status: str = Field(
         default="ACTIVE",
         sa_type=String(20),

@@ -12,7 +12,6 @@ from starlette.responses import Response
 from app.core.config import settings
 from app.db.session import get_session
 
-from app.domains.account.router import router as account_router
 from app.domains.calendar.router import router as calendar_router
 from app.core.exceptions import register_exception_handlers
 from app.core.middleware import RequestLoggingMiddleware
@@ -50,7 +49,7 @@ async def allow_options_preflight(request, call_next):
         return Response(status_code=204)
     return await call_next(request)
 
-# CORS (운영에서는 허용 도메인만 넣는 방식으로 좁히는 게 정석)
+# CORS
 cors_regex = getattr(settings, "CORS_ALLOW_ORIGIN_REGEX", None)
 cors_origins = getattr(settings, "CORS_ALLOW_ORIGINS", [])
 
@@ -70,7 +69,6 @@ async def root():
     return {"status": "ok"}
 
 app.include_router(auth_router)
-app.include_router(account_router)
 app.include_router(calendar_router)
 app.include_router(posts_router)
 app.include_router(users_router)
