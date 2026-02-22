@@ -26,13 +26,13 @@ import app.domains.calendar.router as calendar_router
 
 
 async def _ensure_test_user_id(session: AsyncSession) -> uuid.UUID:
-    # 1) 기존 users에서 하나 가져오기 (있으면 가장 안전)
+    # 기존 users에서 하나 가져오기 (있으면 가장 안전)
     res = await session.execute(text("select id from public.users limit 1"))
     row = res.first()
     if row and row[0]:
         return uuid.UUID(str(row[0]))
 
-    # 2) 없으면 생성 시도 (스키마가 다르면 여기서 실패할 수 있음)
+    # 없으면 생성 시도 (스키마가 다르면 여기서 실패할 수 있음)
     user_id = uuid.uuid4()
     await session.execute(
         text(
@@ -149,6 +149,8 @@ async def client(db_conn_and_sessionmaker: async_sessionmaker[AsyncSession]) -> 
             username="test-user",
             display_name="Test User",
             role="CUSTOMER",
+            status="ACTIVE",
+            is_active=True,
         )
 
     app.dependency_overrides[get_session] = override_get_session
