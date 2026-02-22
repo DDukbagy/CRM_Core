@@ -37,8 +37,8 @@ async def _ensure_test_user_id(session: AsyncSession) -> uuid.UUID:
     await session.execute(
         text(
             """
-            insert into public.users (id, username, email, display_name, status, role)
-            values (:id, :username, :email, :display_name, 'ACTIVE', 'CUSTOMER')
+            insert into public.users (id, username, email, display_name, is_active, status, role)
+            values (:id, :username, :email, :display_name, true, 'ACTIVE', 'CUSTOMER')
             """
         ),
         {
