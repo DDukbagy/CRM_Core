@@ -206,10 +206,10 @@ async def free_slot_and_date(db_conn_and_sessionmaker: async_sessionmaker[AsyncS
                 ins = await session.execute(
                     text("""
                         insert into public.calendars (topics, description, host_id)
-                        values (:topics::jsonb, :description, :host_id)
+                        values (CAST(:topics AS jsonb), :description, :host_id)
                         returning id
                     """),
-                    {
+                    {               
                         "topics": '["테스트"]',
                         "description": "테스트 캘린더",
                         "host_id": host_id,
