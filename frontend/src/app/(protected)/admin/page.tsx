@@ -1,4 +1,6 @@
 // frontend/src/app/(protected)/admin/page.tsx
+export const dynamic = "force-dynamic";
+
 import DashboardLayout, { type SidebarItem } from "@/components/layout/DashboardLayout";
 
 const adminNav: SidebarItem[] = [
