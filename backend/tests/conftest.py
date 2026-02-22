@@ -235,7 +235,7 @@ async def free_slot_and_date(db_conn_and_sessionmaker: async_sessionmaker[AsyncS
                 await session.execute(
                     text("""
                         insert into public.time_slots (start_time, end_time, weekdays, is_active, calendar_id)
-                        values ('09:00'::time, '10:00'::time, array[0,1,2,3,4,5,6]::int[], true, :calendar_id)
+                        values ('09:00'::time, '10:00'::time, '[0,1,2,3,4,5,6]'::jsonb, true, :calendar_id)
                     """),
                     {"calendar_id": calendar_id},
                 )
