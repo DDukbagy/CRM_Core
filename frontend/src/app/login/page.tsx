@@ -1,7 +1,7 @@
 // frontend/src/app/login/page.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/axios";
 import { Lock, User, Loader2, ArrowRight } from "lucide-react";
@@ -34,7 +34,19 @@ function pickRedirectPath(role: string | undefined, nextPath: string | null): st
   return null;
 }
 
-export default function LoginPage() {
+function LoginFallback() {
+  // 단순 fallback
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="flex items-center gap-2 text-gray-700">
+        <Loader2 className="animate-spin" />
+        Loading...
+      </div>
+    </div>
+  );
+}
+
+function LoginInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = supabaseBrowser();
@@ -188,5 +200,13 @@ export default function LoginPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginFallback />}>
+      <LoginInner />
+    </Suspense>
   );
 }
