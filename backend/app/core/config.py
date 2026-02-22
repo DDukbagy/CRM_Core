@@ -25,9 +25,29 @@ class Settings(BaseSettings):
     SUPABASE_JWT_SECRET: str
     SUPABASE_JWT_AUDIENCE: str = "authenticated"
 
+    # Super Admin
+    SUPER_ADMIN_USER_ID: str | None = None
+    SUPER_ADMIN_EMAIL: str | None = None
+
+    CORS_ORIGIN_REGEX: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "CORS_ORIGIN_REGEX",
+            "CORS_ALLOW_ORIGIN_REGEX",
+            "CORS_REGEX",
+            "cors_origin_regex",
+        ),
+    )
+
     CORS_ALLOW_ORIGINS: Union[str, List[str]] = Field(
-        default='["http://localhost:3000","http://localhost:5173","http://127.0.0.1:3000","http://127.0.0.1:5173"]',
-        validation_alias=AliasChoices("CORS_ALLOW_ORIGINS", "CORS_ORIGINS"),
+        default='["http://localhost:3000"]',
+        validation_alias=AliasChoices(
+            "CORS_ALLOW_ORIGINS",
+            "CORS_ORIGINS",
+            "CORS_ORIGIN",
+            "cors_origins",
+            "cors_origin",
+        ),
     )
 
     @field_validator("CORS_ALLOW_ORIGINS", mode="before")

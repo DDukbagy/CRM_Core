@@ -18,7 +18,7 @@ def _get_s3_client():
         print("Error: AWS Credentials or Bucket Name missing.")
         return None
     
-    # [설정] 서명 버전 4 (서울 리전 필수)
+    # 서명 버전 4 - 서울 리전 필수
     s3_config = Config(
         signature_version='s3v4',
         region_name=REGION

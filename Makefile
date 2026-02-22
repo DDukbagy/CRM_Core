@@ -46,6 +46,21 @@ endef
 # -----------------------------
 # Server
 # -----------------------------
+
+.PHONY: frontend
+frontend: ## Run Next.js dev server (auto cd if needed, clear .next cache)
+	@set -e; \
+	if [ -f package.json ] && [ -d src ] && [ -d node_modules ]; then \
+		echo "[make] frontend: running in current directory"; \
+		rm -rf .next; \
+		npm run dev; \
+	else \
+		echo "[make] frontend: running in ./frontend"; \
+		cd frontend; \
+		rm -rf .next; \
+		npm run dev; \
+	fi
+
 .PHONY: server
 server: ## Run backend server (reload)
 	@cd backend && poetry run uvicorn $(APP) --reload --host $(HOST) --port $(PORT)
@@ -200,6 +215,17 @@ check-schema: ## Verify if database tables and columns are created correctly
 .PHONY: reset-db
 reset-db: ## db reset
 	@cd backend && poetry run python -m scripts.reset_db
+
+.PHONY: smoke-booking
+smoke-booking:
+	@set -e; \
+	if [ -f "backend/scripts/smoke_booking.sh" ]; then \
+		bash backend/scripts/smoke_booking.sh; \
+	elif [ -f "scripts/smoke_booking.sh" ]; then \
+		bash scripts/smoke_booking.sh; \
+	else \
+		exit 1; \
+	fi
 
 .PHONY: release
 release: ## Interactive: switch to main, pull, tag & push; then return to previous ref

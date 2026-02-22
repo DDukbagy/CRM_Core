@@ -26,19 +26,19 @@ import app.domains.calendar.router as calendar_router
 
 
 async def _ensure_test_user_id(session: AsyncSession) -> uuid.UUID:
-    # 1) 기존 users에서 하나 가져오기 (있으면 가장 안전)
+    # 기존 users에서 하나 가져오기 (있으면 가장 안전)
     res = await session.execute(text("select id from public.users limit 1"))
     row = res.first()
     if row and row[0]:
         return uuid.UUID(str(row[0]))
 
-    # 2) 없으면 생성 시도 (스키마가 다르면 여기서 실패할 수 있음)
+    # 없으면 생성 시도 (스키마가 다르면 여기서 실패할 수 있음)
     user_id = uuid.uuid4()
     await session.execute(
         text(
             """
-            insert into public.users (id, username, email, display_name, role)
-            values (:id, :username, :email, :display_name, 'CUSTOMER')
+            insert into public.users (id, username, email, display_name, is_active, status, role)
+            values (:id, :username, :email, :display_name, true, 'ACTIVE', 'CUSTOMER')
             """
         ),
         {
@@ -149,6 +149,8 @@ async def client(db_conn_and_sessionmaker: async_sessionmaker[AsyncSession]) -> 
             username="test-user",
             display_name="Test User",
             role="CUSTOMER",
+            status="ACTIVE",
+            is_active=True,
         )
 
     app.dependency_overrides[get_session] = override_get_session
@@ -167,5 +169,85 @@ async def free_slot_and_date(db_conn_and_sessionmaker: async_sessionmaker[AsyncS
     async with db_conn_and_sessionmaker() as session:
         picked = await _pick_free_slot_and_date(session)
         if picked is None:
-            pytest.skip("time_slots가 없거나, 30일 내에 비어있는 slot/date를 찾지 못했습니다.")
+            # host 유저 확보 (없으면 하나 생성)
+            res = await session.execute(
+                text("select id from public.users where role in ('INSTRUCTOR','ADMIN') limit 1")
+            )
+            row = res.first()
+            if row and row[0]:
+                host_id = str(row[0])
+            else:
+                host_uuid = uuid.uuid4()
+                host_id = str(host_uuid)
+                await session.execute(
+                    text(
+                        """
+                        insert into public.users (id, username, email, display_name, is_active, status, role)
+                        values (:id, :username, :email, :display_name, true, 'ACTIVE', 'INSTRUCTOR')
+                        """
+                    ),
+                    {
+                        "id": host_id,
+                        "username": f"host-{host_uuid.hex[:8]}",
+                        "email": f"host-{host_uuid.hex[:8]}@example.com",
+                        "display_name": f"host-{host_uuid.hex[:8]}",
+                    },
+                )
+
+            # calendar 확보 (없으면 생성) - calendars.host_id는 UNIQUE
+            res = await session.execute(
+                text("select id from public.calendars where host_id = :host_id limit 1"),
+                {"host_id": host_id},
+            )
+            cal = res.first()
+            if cal and cal[0]:
+                calendar_id = int(cal[0])
+            else:
+                ins = await session.execute(
+                    text("""
+                        insert into public.calendars (topics, description, host_id)
+                        values (CAST(:topics AS jsonb), :description, :host_id)
+                        returning id
+                    """),
+                    {               
+                        "topics": '["테스트"]',
+                        "description": "테스트 캘린더",
+                        "host_id": host_id,
+                    },
+                )
+                calendar_id = int(ins.scalar_one())
+
+            # time_slot 이미 있으면 재사용, 없으면 생성
+            res = await session.execute(
+                text("""
+                    select id
+                    from public.time_slots
+                    where calendar_id = :calendar_id
+                      and start_time = '09:00'::time
+                      and end_time = '10:00'::time
+                    limit 1
+                """),
+                {"calendar_id": calendar_id},
+            )
+            slot_row = res.first()
+
+            if not (slot_row and slot_row[0]):
+                await session.execute(
+                    text("""
+                        insert into public.time_slots (start_time, end_time, weekdays, is_active, calendar_id)
+                        values ('09:00'::time, '10:00'::time, '[0,1,2,3,4,5,6]'::jsonb, true, :calendar_id)
+                    """),
+                    {"calendar_id": calendar_id},
+                )
+
+            await session.commit()
+
+            # 다시 pick
+            picked = await _pick_free_slot_and_date(session)
+            if picked is None:
+                raise AssertionError(
+                    "free_slot_and_date: seed 이후에도 30일 내 예약 가능한 slot/date를 찾지 못했습니다."
+                )
+
         return picked
+    

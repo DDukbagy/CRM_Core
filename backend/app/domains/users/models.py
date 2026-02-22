@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlmodel import SQLModel, Field, Relationship, func
 from sqlalchemy_utc import UtcDateTime
 
+# 순환 참조 방지
 if TYPE_CHECKING:
     from app.domains.calendar.models import Calendar, Booking
 
@@ -33,10 +34,33 @@ class User(SQLModel, table=True):
 
     display_name: str = Field(max_length=40, description="사용자 표시 이름")
 
+    phone: Optional[str] = Field(default=None, max_length=20, description="전화번호")
+
     role: str = Field(
         sa_type=String(20),
         nullable=False,
         description="사용자 역할 (CUSTOMER, INSTRUCTOR, CONTENT_MANAGER, ADMIN)",
+    )
+
+    # ✅승인/상태
+    status: str = Field(
+        default="ACTIVE",
+        sa_type=String(20),
+        nullable=False,
+        description="계정 상태 (ACTIVE, PENDING, SUSPENDED)",
+    )
+
+    manager_id: Optional[UUID] = Field(
+        default=None,
+        sa_type=PGUUID(as_uuid=True),
+        foreign_key="users.id",
+        description="담당 강사/관리자 ID"
+    )
+
+    is_active: bool = Field(
+        default=True,
+        nullable=False,
+        description="계정 활성화 여부"
     )
 
     password: Optional[str] = Field(default=None, max_length=128, description="사용자 비밀번호")
@@ -58,6 +82,7 @@ class User(SQLModel, table=True):
         },
     )
 
+    # Relationships
     oauth_accounts: List["OAuthAccount"] = Relationship(back_populates="user")
 
     calendar: Optional["Calendar"] = Relationship(

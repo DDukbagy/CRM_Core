@@ -1,7 +1,7 @@
 name: backend CI
 
 on:
-  workflow_call: # Deploy 파일에서 불러올 수 있게 허용
+  workflow_call:
 
 jobs:
   test:
@@ -56,6 +56,19 @@ jobs:
           SUPABASE_ANON_KEY: dummy
           SUPABASE_JWT_SECRET: dummy
         run: poetry run alembic upgrade head
+
+      - name: Smoke (bookings)
+        env:
+          PYTHONPATH: .
+          PGSSLMODE: disable
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres?ssl=disable
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_ANON_KEY: dummy
+          SUPABASE_JWT_SECRET: dummy
+          AWS_ACCESS_KEY_ID: testing
+          AWS_SECRET_ACCESS_KEY: testing
+          AWS_DEFAULT_REGION: ap-northeast-2
+        run: poetry run pytest -q tests/test_bookings.py
 
       - name: Run tests
         env:
