@@ -1,7 +1,7 @@
 """init schema tables
 
 Revision ID: 91d68413f8d6
-Revises: e5278775d3fc
+Revises: 41fd85a02af6
 Create Date: 2026-02-22 06:20:42.037973
 
 """
@@ -9,6 +9,11 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parents[2]))
+
 from app.db.base import Base
 import app.db.models
 
