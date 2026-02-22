@@ -169,5 +169,94 @@ async def free_slot_and_date(db_conn_and_sessionmaker: async_sessionmaker[AsyncS
     async with db_conn_and_sessionmaker() as session:
         picked = await _pick_free_slot_and_date(session)
         if picked is None:
-            pytest.skip("time_slots가 없거나, 30일 내에 비어있는 slot/date를 찾지 못했습니다.")
+            # host 유저 확보 (없으면 하나 생성)
+            res = await session.execute(
+                text("select id from public.users where role in ('INSTRUCTOR','ADMIN') limit 1")
+            )
+            row = res.first()
+            if row and row[0]:
+                host_id = str(row[0])
+            else:
+                host_uuid = uuid.uuid4()
+                host_id = str(host_uuid)
+                await session.execute(
+                    text(
+                        """
+                        insert into public.users (id, username, email, display_name, is_active, status, role)
+                        values (:id, :username, :email, :display_name, true, 'ACTIVE', 'INSTRUCTOR')
+                        """
+                    ),
+                    {
+                        "id": host_id,
+                        "username": f"host-{host_uuid.hex[:8]}",
+                        "email": f"host-{host_uuid.hex[:8]}@example.com",
+                        "display_name": f"host-{host_uuid.hex[:8]}",
+                    },
+                )
+
+            # calendar 확보 (없으면 생성) - calendars.host_id는 UNIQUE
+            res = await session.execute(
+                text("select id from public.calendars where host_id = :host_id limit 1"),
+                {"host_id": host_id},
+            )
+            cal = res.first()
+            if cal and cal[0]:
+                calendar_id = int(cal[0])
+            else:
+                ins = await session.execute(
+                    text(
+                        """
+                        insert into public.calendars (topics, description, host_id)
+                        values (:topics::jsonb, :description, :host_id)
+                        returning id
+                        """
+                    ),
+                    {
+                        "topics": '["테스트"]',
+                        "description": "테스트 캘린더",
+                        "host_id": host_id,
+                    },
+                )
+                calendar_id = int(ins.scalar_one())
+
+            # time_slot 1개 생성 (weekdays는 JSONB list)
+            res = await session.execute(
+                text("""
+                    select id
+                    from public.time_slots
+                    where calendar_id = :calendar_id
+                      and start_time = '09:00'
+                      and end_time = '10:00'
+                    limit 1
+                """),
+                {"calendar_id": calendar_id},
+            )
+            slot_row = res.first()
+
+            if slot_row and slot_row[0]:
+                slot_id = int(slot_row[0])
+            else:
+                ins = await session.execute(
+                    text("""
+                        insert into public.time_slots (start_time, end_time, weekdays, is_active, calendar_id)
+                        values ('09:00', '10:00', :weekdays::jsonb, true, :calendar_id)
+                        returning id
+                    """),
+                    {
+                        "weekdays": "[0,1,2,3,4,5,6]",
+                        "calendar_id": calendar_id,
+                    },
+                )
+                slot_id = int(ins.scalar_one())
+            
+            await session.commit()
+
+            # 다시 pick
+            picked = await _pick_free_slot_and_date(session)
+            if picked is None:
+                raise AssertionError(
+                    "free_slot_and_date: seed 이후에도 30일 내 예약 가능한 slot/date를 찾지 못했습니다."
+                )
+
         return picked
+    
