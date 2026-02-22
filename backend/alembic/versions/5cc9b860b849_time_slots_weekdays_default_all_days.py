@@ -21,19 +21,16 @@ DEFAULT_WEEKDAYS_JSONB = "'[0,1,2,3,4,5,6]'::jsonb"
 
 def upgrade() -> None:
     """Upgrade schema."""
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+
+    if not insp.has_table("time_slots", schema="public"):
+        return
+
     # 컬럼 없으면 추가
     op.execute("""
     DO $$
     BEGIN
-      IF NOT EXISTS (
-        SELECT 1
-        FROM information_schema.tables
-        WHERE table_schema='public'
-          AND table_name='time_slots'
-      ) THEN
-        RETURN;
-      END IF;
-    
       IF NOT EXISTS (
         SELECT 1
         FROM information_schema.columns
@@ -50,13 +47,14 @@ def upgrade() -> None:
     # 기존 NULL 채우기
     op.execute(f"UPDATE public.time_slots SET weekdays={DEFAULT_WEEKDAYS_JSONB} WHERE weekdays IS NULL")
 
-    # default를 jsonb로 + not null
+    # default + not null
     op.alter_column(
         "time_slots",
         "weekdays",
         existing_type=postgresql.JSONB(astext_type=sa.Text()),
         nullable=False,
         server_default=sa.text(DEFAULT_WEEKDAYS_JSONB),
+        schema="public",
     )
 
 def downgrade() -> None:

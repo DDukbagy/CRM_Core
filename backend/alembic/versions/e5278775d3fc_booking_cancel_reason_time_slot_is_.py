@@ -17,10 +17,13 @@ down_revision: Union[str, Sequence[str], None] = '5cc9b860b849'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-
 def _column_names(table_name: str, schema: str = "public") -> set[str]:
     bind = op.get_bind()
     insp = sa.inspect(bind)
+
+    if not insp.has_table(table_name, schema=schema):
+        return set()
+
     cols = insp.get_columns(table_name, schema=schema)
     return {c["name"] for c in cols}
 
