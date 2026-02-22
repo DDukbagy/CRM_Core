@@ -1,7 +1,7 @@
 // frontend/src/app/forbidden/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { api } from "@/lib/axios";
@@ -15,10 +15,26 @@ type Me = {
 
 type Need = "ADMIN" | "INSTRUCTOR" | null;
 
-export default function ForbiddenPage() {
+function LoadingScreen() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="flex items-center gap-2 text-gray-700">
+        <Loader2 className="animate-spin" />
+        권한 확인 중...
+      </div>
+    </div>
+  );
+}
+
+function ForbiddenInner() {
   const router = useRouter();
   const params = useSearchParams();
-  const need = (params.get("need") as Need) ?? null;
+
+  const need = useMemo<Need>(() => {
+    const raw = params.get("need");
+    if (raw === "ADMIN" || raw === "INSTRUCTOR") return raw;
+    return null;
+  }, [params]);
 
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
@@ -90,16 +106,7 @@ export default function ForbiddenPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="flex items-center gap-2 text-gray-700">
-          <Loader2 className="animate-spin" />
-          권한 확인 중...
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <LoadingScreen />;
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
@@ -145,5 +152,13 @@ export default function ForbiddenPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ForbiddenPage() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <ForbiddenInner />
+    </Suspense>
   );
 }
