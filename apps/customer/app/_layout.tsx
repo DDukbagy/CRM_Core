@@ -1,24 +1,46 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
-
-import { useColorScheme } from '@/hooks/use-color-scheme';
-
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
+// app/_layout.tsx
+import { Stack, useRouter, useSegments } from "expo-router";
+import { useEffect, useState } from "react";
+import { getAccessToken } from "@/lib/api";
+import { View, ActivityIndicator } from "react-native";
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
+  const router = useRouter();
+  const segments = useSegments();
+  const [booting, setBooting] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      const token = await getAccessToken();
+      const inAuthGroup = segments[0] === "(auth)";
+
+      // 부팅 직후 라우팅 결정
+      if (token && inAuthGroup) router.replace("/(tabs)");
+      if (!token && !inAuthGroup) router.replace("/(auth)/login");
+
+      if (mounted) setBooting(false);
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [segments, router]);
+
+  if (booting) {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator />
+      </View>
+    );
+  }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    <Stack>
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+      <Stack.Screen name="modal" options={{ presentation: "modal", title: "Modal" }} />
+    </Stack>
   );
 }

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import List, Union, Any
 
-from pydantic import field_validator, Field, AliasChoices
+from pydantic import field_validator, Field, AliasChoices, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     SUPABASE_ANON_KEY: str
     SUPABASE_JWT_SECRET: str
     SUPABASE_JWT_AUDIENCE: str = "authenticated"
+
+    SECRET_KEY: SecretStr
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
 
     # Super Admin
     SUPER_ADMIN_USER_ID: str | None = None

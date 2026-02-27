@@ -54,7 +54,23 @@ async function proxyToUpstream(req: NextRequest, pathParts: string[]) {
   // 쿼리스트링 그대로 전달
   upstreamUrl.search = req.nextUrl.search;
 
-  const accessToken = await getAccessTokenFromCookies(req);
+  if (process.env.NODE_ENV === "production" && process.env.DEV_BEARER_TOKEN) {
+    throw new Error("DEV_BEARER_TOKEN is set in production. Remove it.");
+  }
+
+  const devBearer =
+    process.env.NODE_ENV !== "production" && process.env.ENABLE_DEV_BEARER === "1"
+      ? process.env.DEV_BEARER_TOKEN
+      : null;
+
+  const accessToken = (await getAccessTokenFromCookies(req)) ?? devBearer ?? null;
+
+  console.log("proxy auth debug:", {
+    nodeEnv: process.env.NODE_ENV,
+    enableDev: process.env.ENABLE_DEV_BEARER,
+    hasDevToken: !!process.env.DEV_BEARER_TOKEN,
+    accessTokenPrefix: accessToken?.slice?.(0, 12) ?? null,
+  });
 
   // 헤더 복사
   const headers = new Headers(req.headers);
@@ -63,10 +79,13 @@ async function proxyToUpstream(req: NextRequest, pathParts: string[]) {
   headers.delete("connection");
 
   if (accessToken) {
-    headers.set("authorization", `Bearer ${accessToken}`);
+    const v = accessToken.trim();
+    headers.set("authorization", v.toLowerCase().startsWith("bearer ") ? v : `Bearer ${v}`);
   } else {
     headers.delete("authorization");
   }
+
+  console.log("upstream auth header:", headers.get("authorization")?.slice(0, 30));
 
   // Body 전달(POST/PUT/PATCH/DELETE 등)
   const method = req.method.toUpperCase();
