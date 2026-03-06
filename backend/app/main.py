@@ -50,8 +50,8 @@ async def allow_options_preflight(request, call_next):
     return await call_next(request)
 
 # CORS
-cors_regex = getattr(settings, "CORS_ALLOW_ORIGIN_REGEX", None)
-cors_origins = getattr(settings, "CORS_ALLOW_ORIGINS", [])
+cors_regex = settings.CORS_ORIGIN_REGEX   # getattr로 잘못된 속성명 쓰던 버그 수정
+cors_origins = settings.cors_origins       # validator 거친 리스트 사용
 
 app.add_middleware(
     CORSMiddleware,

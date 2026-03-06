@@ -1,6 +1,6 @@
 // lib/api.ts
 import { config } from "./config";
-import { getAccessToken, clearAccessToken } from "./auth";
+import { supabase } from "./supabase";
 
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -33,7 +33,10 @@ export async function apiFetch<T>(
   };
 
   if (requireAuth) {
-    const token = await getAccessToken();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const token = session?.access_token;
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 
@@ -51,9 +54,8 @@ export async function apiFetch<T>(
     json = text;
   }
 
-  // 토큰 만료/비정상 시 정리
   if (res.status === 401) {
-    await clearAccessToken();
+    await supabase.auth.signOut();
   }
 
   if (!res.ok) {

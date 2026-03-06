@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     )
 
     CORS_ALLOW_ORIGINS: Union[str, List[str]] = Field(
-        default='["http://localhost:3000"]',
+        default='["http://localhost:3000","http://localhost:8081","http://localhost:19006"]',
         validation_alias=AliasChoices(
             "CORS_ALLOW_ORIGINS",
             "CORS_ORIGINS",
