@@ -14,13 +14,24 @@ import { useRouter } from "expo-router";
 import { apiFetch } from "@/lib/api";
 import type { UserRead, UserUpdate } from "@/types/api";
 
+const GENDER_OPTIONS = [
+  { label: "선택 안 함", value: null },
+  { label: "남성", value: "MALE" },
+  { label: "여성", value: "FEMALE" },
+  { label: "기타", value: "OTHER" },
+];
+
 export default function EditProfileScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
   const [displayName, setDisplayName] = useState("");
   const [username, setUsername] = useState("");
   const [phone, setPhone] = useState("");
+  const [birthDate, setBirthDate] = useState("");       // YYYY-MM-DD
+  const [gender, setGender] = useState<string | null>(null);
+  const [lessonPurpose, setLessonPurpose] = useState("");
 
   useEffect(() => {
     apiFetch<UserRead>("/users/me")
@@ -28,6 +39,9 @@ export default function EditProfileScreen() {
         setDisplayName(me.display_name ?? "");
         setUsername(me.username ?? "");
         setPhone(me.phone ?? "");
+        setBirthDate(me.birth_date ?? "");
+        setGender(me.gender ?? null);
+        setLessonPurpose(me.lesson_purpose ?? "");
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -38,12 +52,20 @@ export default function EditProfileScreen() {
       Alert.alert("확인", "이름을 입력해주세요.");
       return;
     }
+    // 생년월일 형식 검증 (입력한 경우)
+    if (birthDate && !/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) {
+      Alert.alert("확인", "생년월일은 YYYY-MM-DD 형식으로 입력해주세요.");
+      return;
+    }
     setSaving(true);
     try {
       const body: UserUpdate = {
         display_name: displayName.trim(),
         username: username.trim() || undefined,
         phone: phone.trim() || undefined,
+        birth_date: birthDate.trim() || null,
+        gender: gender,
+        lesson_purpose: lessonPurpose.trim() || null,
       };
       await apiFetch("/users/me", { method: "PATCH", body });
       Alert.alert("완료", "프로필이 수정되었습니다.");
@@ -62,6 +84,8 @@ export default function EditProfileScreen() {
 
   return (
     <ScrollView style={s.container} contentContainerStyle={{ padding: 20 }}>
+      <Text style={s.sectionTitle}>기본 정보</Text>
+
       <Text style={s.label}>이름 *</Text>
       <TextInput
         value={displayName}
@@ -88,6 +112,43 @@ export default function EditProfileScreen() {
         style={s.input}
       />
 
+      <Text style={[s.sectionTitle, { marginTop: 24 }]}>레슨 정보</Text>
+
+      <Text style={s.label}>생년월일</Text>
+      <TextInput
+        value={birthDate}
+        onChangeText={setBirthDate}
+        placeholder="YYYY-MM-DD"
+        keyboardType="numbers-and-punctuation"
+        style={s.input}
+        maxLength={10}
+      />
+
+      <Text style={s.label}>성별</Text>
+      <View style={s.genderRow}>
+        {GENDER_OPTIONS.map((opt) => (
+          <Pressable
+            key={String(opt.value)}
+            style={[s.genderBtn, gender === opt.value && s.genderBtnActive]}
+            onPress={() => setGender(opt.value)}
+          >
+            <Text style={[s.genderBtnTxt, gender === opt.value && s.genderBtnTxtActive]}>
+              {opt.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <Text style={s.label}>레슨 목적</Text>
+      <TextInput
+        value={lessonPurpose}
+        onChangeText={setLessonPurpose}
+        placeholder="예: 스코어 줄이기, 스윙 교정, 취미"
+        multiline
+        numberOfLines={2}
+        style={[s.input, { height: 72, textAlignVertical: "top" }]}
+      />
+
       <Pressable
         style={[s.saveBtn, saving && { opacity: 0.6 }]}
         onPress={handleSave}
@@ -102,6 +163,7 @@ export default function EditProfileScreen() {
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f9fafb" },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  sectionTitle: { fontSize: 12, fontWeight: "700", color: "#9ca3af", letterSpacing: 0.5, marginTop: 24, marginBottom: 4, textTransform: "uppercase" },
   label: { fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6, marginTop: 16 },
   input: {
     borderWidth: 1,
@@ -111,11 +173,21 @@ const s = StyleSheet.create({
     fontSize: 15,
     backgroundColor: "#fff",
   },
+  genderRow: { flexDirection: "row", gap: 8, marginTop: 4 },
+  genderBtn: {
+    flex: 1, paddingVertical: 10, borderRadius: 8,
+    borderWidth: 1, borderColor: "#d1d5db",
+    backgroundColor: "#fff", alignItems: "center",
+  },
+  genderBtnActive: { backgroundColor: "#1a1a1a", borderColor: "#1a1a1a" },
+  genderBtnTxt: { fontSize: 13, color: "#374151", fontWeight: "600" },
+  genderBtnTxtActive: { color: "#fff" },
   saveBtn: {
     marginTop: 32,
     padding: 14,
     backgroundColor: "#1a1a1a",
     borderRadius: 12,
+    marginBottom: 40,
   },
   saveBtnText: { color: "#fff", textAlign: "center", fontWeight: "700", fontSize: 15 },
 });

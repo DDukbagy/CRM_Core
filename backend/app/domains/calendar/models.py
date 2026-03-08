@@ -5,7 +5,7 @@ from enum import Enum
 
 from pydantic import AwareDatetime
 from sqlalchemy import Index, text, Text, Boolean
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy_utc import UtcDateTime
 from sqlmodel import Field, Relationship, SQLModel, func
 
@@ -118,6 +118,14 @@ class Booking(SQLModel, table=True):
 
     # 취소 사유
     cancel_reason: Optional[str] = Field(default=None, sa_type=Text, description="취소/거절 사유")
+
+    membership_id: Optional[UUID] = Field(
+        default=None,
+        sa_type=PGUUID(as_uuid=True),
+        foreign_key="memberships.id",
+        nullable=True,
+        description="차감할 멤버십 ID",
+    )
 
     time_slot_id: int = Field(foreign_key="time_slots.id")
     time_slot: TimeSlot = Relationship(back_populates="bookings")

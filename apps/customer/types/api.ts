@@ -10,6 +10,17 @@ export interface UserRead {
   phone: string | null;
   role: UserRole;
   manager_id: string | null;
+  // 강사 필드
+  instructor_tier: string | null;
+  instructor_location: string | null;
+  instructor_specialties: string | null;
+  instructor_bio: string | null;
+  career_years: number | null;
+  certifications: string | null;
+  // 고객 필드
+  birth_date: string | null;
+  gender: string | null;
+  lesson_purpose: string | null;
   created_at: string;
 }
 
@@ -17,10 +28,35 @@ export interface UserUpdate {
   display_name?: string;
   username?: string;
   phone?: string;
+  // 강사 프로필
+  instructor_location?: string | null;
+  instructor_specialties?: string | null;
+  instructor_bio?: string | null;
+  career_years?: number | null;
+  certifications?: string | null;
+  // 고객 프로필
+  birth_date?: string | null;
+  gender?: string | null;
+  lesson_purpose?: string | null;
 }
 
-export type BookingStatus = "REQUESTED" | "CONFIRMED" | "CANCELLED" | "COMPLETED";
-export type BookingType = "LESSON" | "CONSULTATION";
+export interface MembershipRead {
+  id: string;
+  customer_id: string;
+  instructor_id: string;
+  type: "TIMES" | "PERIOD";
+  total_count: number | null;
+  remaining_count: number | null;
+  started_at: string | null;
+  expires_at: string | null;
+  is_active: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type BookingStatus = "REQUESTED" | "CONFIRMED" | "CANCELLED" | "COMPLETED" | "NO_SHOW";
+export type BookingType = "LESSON";
 
 export interface BookingRead {
   id: number;
@@ -62,6 +98,38 @@ export interface AvailabilityResponse {
   days: AvailabilityDay[];
 }
 
+// ── 강사 매칭 ────────────────────────────────────────────────
+export type InstructorTier = "NORMAL" | "NAMED";
+export type MatchStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELLED";
+
+export interface InstructorPublicRead {
+  id: string;
+  display_name: string;
+  username: string;
+  instructor_tier: InstructorTier;
+  match_fee: number;
+  is_active: boolean;
+  location: string | null;
+  specialties: string[];
+  bio: string | null;
+}
+
+export type MatchRequestType = "MATCH" | "CONSULTATION";
+
+export interface MatchRequestRead {
+  id: string;
+  customer_id: string;
+  instructor_id: string;
+  request_type: MatchRequestType;
+  status: MatchStatus;
+  fee: number;
+  note: string | null;
+  instructor_name: string | null;
+  customer_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export type PostType = "NOTICE" | "COMMUNITY" | "FEEDBACK";
 export type PostStatus = "PUBLIC" | "MEMBERS" | "PRIVATE";
 
@@ -70,6 +138,16 @@ export interface PostMediaResponse {
   url: string;
   media_type: "IMAGE" | "VIDEO";
   sort_order: number;
+}
+
+export interface CommentRead {
+  id: string;
+  post_id: string;
+  user_id: string;
+  content: string;
+  parent_id: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface PostResponse {

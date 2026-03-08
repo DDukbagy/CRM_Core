@@ -39,9 +39,19 @@ try:
     # [Calendar]
     from app.domains.calendar.models import Calendar, TimeSlot
 
+    # [Instructor / Match]
+    from app.domains.instructor.models import MatchRequest  # noqa: F401
+
+    # [Membership]
+    from app.domains.membership.models import Membership  # noqa: F401
+
+    # [Payment]
+    from app.domains.payment.models import Payment  # noqa: F401
+
+    # [LessonNote]
+    from app.domains.calendar.lesson_note_models import LessonNote  # noqa: F401
+
     # from app.domains.posts.models import ...
-    # from app.domains.booking.models import ...
-    # from app.domains.match.models import ...
 
     # 메타데이터 통합
     if hasattr(Base, "metadata") and hasattr(SQLModel, "metadata"):

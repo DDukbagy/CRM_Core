@@ -184,6 +184,43 @@ class PostRepository:
         
         return post
 
+    # 피드용 벌크 카운트 주입 (N+1 없이 한 번에)
+    async def inject_counts(self, posts: List[Post], user_id: Optional[UUID] = None) -> List[Post]:
+        if not posts:
+            return posts
+        post_ids = [p.id for p in posts]
+
+        like_rows = await self.session.execute(
+            select(PostLike.post_id, func.count().label("cnt"))
+            .where(PostLike.post_id.in_(post_ids))
+            .group_by(PostLike.post_id)
+        )
+        like_map: dict[UUID, int] = {r.post_id: r.cnt for r in like_rows}
+
+        comment_rows = await self.session.execute(
+            select(Comment.post_id, func.count().label("cnt"))
+            .where(Comment.post_id.in_(post_ids))
+            .group_by(Comment.post_id)
+        )
+        comment_map: dict[UUID, int] = {r.post_id: r.cnt for r in comment_rows}
+
+        liked_set: set[UUID] = set()
+        if user_id:
+            liked_rows = await self.session.execute(
+                select(PostLike.post_id).where(
+                    PostLike.post_id.in_(post_ids),
+                    PostLike.user_id == user_id,
+                )
+            )
+            liked_set = {r.post_id for r in liked_rows}
+
+        for p in posts:
+            object.__setattr__(p, "like_count", like_map.get(p.id, 0))
+            object.__setattr__(p, "comment_count", comment_map.get(p.id, 0))
+            object.__setattr__(p, "is_liked", p.id in liked_set)
+
+        return posts
+
     # 알림 생성 (내부 메서드)
     async def create_notification(self, recipient_id: UUID, sender_id: UUID, n_type: NotificationType, post_id: UUID, content: str):
         new_notif = Notification(

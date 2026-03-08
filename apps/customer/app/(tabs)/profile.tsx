@@ -1,5 +1,5 @@
 // app/(tabs)/profile.tsx
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { View, Text, Pressable, Alert, ActivityIndicator, StyleSheet, Platform } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { apiFetch } from "@/lib/api";
@@ -17,15 +17,16 @@ export default function ProfileScreen() {
   const router = useRouter();
   const [user, setUser] = useState<UserRead | null>(null);
   const [loading, setLoading] = useState(true);
+  const initialLoaded = useRef(false);
 
   // 프로필 수정 후 돌아왔을 때 자동 갱신
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
+      if (!initialLoaded.current) setLoading(true);
       apiFetch<UserRead>("/users/me")
         .then(setUser)
         .catch((e) => console.error("프로필 로딩 실패:", e))
-        .finally(() => setLoading(false));
+        .finally(() => { setLoading(false); initialLoaded.current = true; });
     }, [])
   );
 
@@ -56,18 +57,27 @@ export default function ProfileScreen() {
         <Text style={s.role}>{roleLabel[user?.role ?? ""] ?? user?.role}</Text>
       </View>
 
-      {/* 정보 카드 */}
+      {/* 기본 정보 카드 */}
       <View style={s.infoCard}>
         <InfoRow label="이메일" value={user?.email ?? "-"} />
         <InfoRow label="사용자명" value={user?.username ?? "-"} />
         <InfoRow label="전화번호" value={user?.phone ?? "미등록"} />
         <InfoRow label="가입일" value={user?.created_at ? user.created_at.slice(0, 10) : "-"} />
-        {user?.manager_id ? (
-          <InfoRow label="담당 강사 ID" value={user.manager_id.slice(0, 8) + "..."} />
-        ) : (
-          <InfoRow label="담당 강사" value="미배정" />
-        )}
       </View>
+
+      {/* 레슨 정보 카드 */}
+      {(user?.birth_date || user?.gender || user?.lesson_purpose) && (
+        <View style={s.infoCard}>
+          {user?.birth_date && <InfoRow label="생년월일" value={user.birth_date} />}
+          {user?.gender && (
+            <InfoRow
+              label="성별"
+              value={user.gender === "MALE" ? "남성" : user.gender === "FEMALE" ? "여성" : "기타"}
+            />
+          )}
+          {user?.lesson_purpose && <InfoRow label="레슨 목적" value={user.lesson_purpose} />}
+        </View>
+      )}
 
       {/* 프로필 수정 */}
       <Pressable style={s.editBtn} onPress={() => router.push("/edit-profile" as any)}>

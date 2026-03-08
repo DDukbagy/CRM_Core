@@ -1,5 +1,5 @@
 // app/(tabs)/index.tsx
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -75,6 +75,7 @@ export default function HomeScreen() {
   const [monthBookings, setMonthBookings] = useState<BookingRead[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const initialLoaded = useRef(false);
 
   async function load() {
     try {
@@ -100,10 +101,14 @@ export default function HomeScreen() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+      initialLoaded.current = true;
     }
   }
 
-  useFocusEffect(useCallback(() => { load(); }, []));
+  useFocusEffect(useCallback(() => {
+    if (!initialLoaded.current) setLoading(true);
+    load();
+  }, []));
 
   if (loading) {
     return <View style={s.center}><ActivityIndicator size="large" /></View>;

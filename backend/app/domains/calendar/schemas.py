@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time
-from typing import Literal
+from typing import Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -107,7 +107,7 @@ class AvailabilityResponse(BaseModel):
     model_config = {"extra": "forbid"}
 
 
-BookingStatus = Literal["REQUESTED", "CONFIRMED", "CANCELLED", "COMPLETED"]
+BookingStatus = Literal["REQUESTED", "CONFIRMED", "CANCELLED", "COMPLETED", "NO_SHOW"]
 
 
 class BookingCreate(BaseModel):
@@ -118,7 +118,8 @@ class BookingCreate(BaseModel):
     when: date
     topic: str = Field(min_length=1)
     description: str | None = None
-    
+    membership_id: Optional[UUID] = None  # 차감할 멤버십 (선택)
+
     # 예약 타입 (기본값 LESSON, 휴무 등록 시 HOLIDAY)
     type: BookingType = BookingType.LESSON
 
@@ -136,12 +137,23 @@ class BookingRead(BaseModel):
     type: BookingType  # 타입 정보 포함
     description: str | None
     cancel_reason: str | None = None
+    membership_id: Optional[UUID] = None
     time_slot_id: int
     guest_id: UUID
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class BookingUpdateRequest(BaseModel):
+    """
+    게스트가 REQUESTED 예약의 주제/메모를 수정할 때 입력
+    """
+    topic: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = None
+
+    model_config = {"extra": "forbid"}
 
 
 class BookingCancelRequest(BaseModel):
@@ -155,10 +167,10 @@ class BookingCancelRequest(BaseModel):
 
 class BookingCancelResponse(BaseModel):
     """
-    예약 취소 응답(최소 응답 형태)
+    예약 취소/철회 응답(최소 응답 형태)
     """
     id: int
-    status: BookingStatus
+    status: str  # 서버 실제 값 그대로 반환
     cancel_reason: str | None = None
     updated_at: datetime
 
