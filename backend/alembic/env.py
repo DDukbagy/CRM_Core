@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from dotenv import load_dotenv
 
 # ----------------------------------------------------------------------
-# 1. 경로 설정 및 .env 로딩
+# 경로 설정 및 .env 로딩
 # ----------------------------------------------------------------------
 current_file = Path(__file__).resolve()
 project_root = current_file.parents[1]
@@ -22,36 +22,43 @@ env_path = project_root / ".env"
 load_dotenv(dotenv_path=env_path)
 
 # ----------------------------------------------------------------------
-# 2. 모델 등록 (수정됨)
+# 모델 등록
 # ----------------------------------------------------------------------
 try:
     from app.core.config import settings
-    
-    # SQLModel과 기존 Base 가져오기
+
     from sqlmodel import SQLModel
-    from app.db.base import Base  # app/db/base.py의 Base 클래스
+    from app.db.base import Base
+    import app.db.models
 
-    # 모든 도메인 모델 Import
-    # 여기서 불러와야 Alembic이 테이블 존재를 알 수 있습니다.
-    
-    # [Account]
-    from app.domains.account.models import User
-    
+    # 모델 import
+
+    # [Users]
+    from app.domains.users.models import User
+
     # [Calendar]
-    from app.domains.calendar.models import Calendar, TimeSlot, Booking
-    
-    # [Posts]
-    from app.domains.posts.models import Post, MatchRequest, Comment, PostMedia, PostLike, Notification
+    from app.domains.calendar.models import Calendar, TimeSlot
 
-    # 3. 메타데이터 통합 (중요!)
-    # User(Base)와 MatchRequest(SQLModel)가 서로 다른 부모를 가질 경우를 대비해
-    # Base의 테이블 정보를 SQLModel로 복사합니다.
+    # [Instructor / Match]
+    from app.domains.instructor.models import MatchRequest  # noqa: F401
+
+    # [Membership]
+    from app.domains.membership.models import Membership  # noqa: F401
+
+    # [Payment]
+    from app.domains.payment.models import Payment  # noqa: F401
+
+    # [LessonNote]
+    from app.domains.calendar.lesson_note_models import LessonNote  # noqa: F401
+
+    # from app.domains.posts.models import ...
+
+    # 메타데이터 통합
     if hasattr(Base, "metadata") and hasattr(SQLModel, "metadata"):
         for name, table in Base.metadata.tables.items():
             if name not in SQLModel.metadata.tables:
                 table.to_metadata(SQLModel.metadata)
 
-    # 통합된 메타데이터 사용
     target_metadata = SQLModel.metadata
 
 except ImportError as e:
@@ -60,7 +67,7 @@ except ImportError as e:
     raise e
 
 # ----------------------------------------------------------------------
-# 3. DB URL 확인 (디버깅)
+# DB URL 확인 (디버깅)
 # ----------------------------------------------------------------------
 db_url = settings.ASYNC_DATABASE_URL
 if db_url:
@@ -70,7 +77,7 @@ else:
     print("❌ ERROR: settings.ASYNC_DATABASE_URL is empty!")
 
 # ----------------------------------------------------------------------
-# 4. Alembic 설정 (Standard)
+# Alembic 설정 (Standard)
 # ----------------------------------------------------------------------
 config = context.config
 

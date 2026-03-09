@@ -212,6 +212,7 @@ async def list_my_posts(
 )
 async def public_feed(
     session: AsyncSession = Depends(get_session),
+    user: CurrentUser | None = Depends(get_current_user_optional),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ):
@@ -224,7 +225,12 @@ async def public_feed(
         .offset(offset)
     )
     res = await session.execute(stmt)
-    posts = res.scalars().all()
+    posts = list(res.scalars().all())
+
+    user_id = UUID(str(user.id)) if user else None
+    repo = PostRepository(session)
+    posts = await repo.inject_counts(posts, user_id)
+
     return [_inject_presigned_urls(p) for p in posts]
 
 # 게시물 상세 조회

@@ -41,27 +41,36 @@ def jwks_url_from_issuer(issuer: str) -> str:
     # Supabase JWT docs: iss + "/.well-known/jwks.json"
     return f"{_rstrip(issuer)}/.well-known/jwks.json"  # :contentReference[oaicite:5]{index=5}
 
-
 def _peek_header(token: str) -> dict:
-    header_b64 = token.split(".")[0].encode("utf-8")
-    header_json = base64url_decode(header_b64)
-    return json.loads(header_json)
+    # "Bearer xxx" 형태로 들어오면 방어
+    if token.lower().startswith("bearer "):
+        token = token.split(" ", 1)[1].strip()
 
+    try:
+        header_part = token.split(".")[0]
+        header_b64 = header_part.encode("utf-8")
+        header_json = base64url_decode(header_b64)
+        return json.loads(header_json)
+    except Exception as e:
+        # SupabaseJWTError로 변환
+        raise SupabaseJWTError("Invalid token header") from e
 
 async def _fetch_jwks(jwks_url: str) -> dict:
     now = time.time()
     if _jwks_cache.jwks and (now - _jwks_cache.fetched_at) < _jwks_cache.ttl_seconds:
         return _jwks_cache.jwks
 
-    async with httpx.AsyncClient(timeout=5.0) as client:
-        r = await client.get(jwks_url)
-        r.raise_for_status()
-        jwks = r.json()
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.get(jwks_url)
+            r.raise_for_status()
+            jwks = r.json()
+    except Exception as e:
+        raise SupabaseJWTError(f"Failed to fetch JWKS: {jwks_url}") from e
 
     _jwks_cache.jwks = jwks
     _jwks_cache.fetched_at = now
     return jwks
-
 
 def _select_jwk(jwks: dict, kid: str) -> dict:
     for k in jwks.get("keys", []):
@@ -78,18 +87,14 @@ async def verify_supabase_access_token(
     issuer_override: Optional[str] = None,
     audience: str = "authenticated",
 ) -> Dict[str, Any]:
-    """
-    운영형 검증:
-    - 토큰 헤더 alg가 HS256이 아니면 JWKS로 검증
-    - HS256이면 jwt_secret로 검증(전환/레거시 대응)
-    """
     issuer = issuer_from_supabase_url(supabase_url, issuer_override)
-    header = _peek_header(token)
-    alg = header.get("alg")
-    kid = header.get("kid")
 
     try:
-        # 1) 비대칭(권장) : RS256/ES256 등 -> JWKS
+        header = _peek_header(token)
+        alg = header.get("alg")
+        kid = header.get("kid")
+
+        # 비대칭 : RS256/ES256 등 -> JWKS
         if alg and alg != "HS256":
             jwks = await _fetch_jwks(jwks_url_from_issuer(issuer))
             if not kid:
@@ -105,7 +110,7 @@ async def verify_supabase_access_token(
                 options={"verify_exp": True, "verify_iss": True, "verify_aud": True},
             )
 
-        # 2) HS256(legacy/shared secret)
+        # HS256(legacy/shared secret)
         if not jwt_secret:
             raise SupabaseJWTError("JWT secret is required for HS256 verification")
 
@@ -121,4 +126,7 @@ async def verify_supabase_access_token(
     except ExpiredSignatureError as e:
         raise SupabaseJWTExpired("Token expired") from e
     except JWTError as e:
+        raise SupabaseJWTError("Invalid token") from e
+    except Exception as e:
+        # base64 decode(binascii), httpx timeout, key parse 등 "JWTError로 안 잡히는" 예외도 401로 떨어지게 래핑
         raise SupabaseJWTError("Invalid token") from e

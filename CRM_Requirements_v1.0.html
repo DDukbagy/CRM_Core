@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GOLF CRM v1.0 - Final Proposal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Outfit:wght@400;600;800&display=swap');
+        
+        :root {
+            --bg-warm: #fdfbf7;
+            --primary: #4f46e5;
+            --primary-light: #eef2ff;
+            --accent: #f59e0b;
+        }
+
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: var(--bg-warm);
+            color: #1f2937;
+            scroll-behavior: smooth;
+        }
+
+        .font-outfit { font-family: 'Outfit', sans-serif; }
+
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            height: 300px;
+        }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; animation: slideUp 0.5s ease-out; }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Flow Visualization Styles */
+        .flow-node {
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 2px solid transparent;
+        }
+        .flow-node.active {
+            border-color: var(--primary);
+            background-color: white;
+            box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.2);
+            transform: scale(1.05);
+        }
+        .flow-line {
+            height: 2px;
+            background: #e5e7eb;
+            position: relative;
+            overflow: hidden;
+        }
+        .flow-line::after {
+            content: '';
+            position: absolute;
+            left: 0; top: 0; height: 100%; width: 0;
+            background: var(--primary);
+            transition: width 0.6s ease;
+        }
+        .flow-line.active::after { width: 100%; }
+
+        /* Calendar Styles */
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+        }
+        .calendar-day {
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .day-booked { background-color: #fee2e2; color: #ef4444; cursor: not-allowed; text-decoration: line-through; }
+        .day-available { background-color: #f3f4f6; color: #374151; }
+        .day-available:hover { background-color: #eef2ff; color: #4f46e5; }
+        .day-selected { background-color: #4f46e5 !important; color: white !important; font-weight: bold; }
+
+        /* Match Card Styles */
+        .match-card {
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+        .match-card:hover { transform: translateY(-4px); }
+        .match-card.selected { border-color: var(--primary); background-color: var(--primary-light); }
+
+        /* Proposal Section Styles */
+        .proposal-nav-item {
+            cursor: pointer;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            color: #6b7280;
+            transition: all 0.2s;
+        }
+        .proposal-nav-item:hover, .proposal-nav-item.active {
+            background-color: #eef2ff;
+            color: #4f46e5;
+            font-weight: 600;
+        }
+        .proposal-section {
+            scroll-margin-top: 100px;
+            padding-bottom: 60px;
+            border-bottom: 1px solid #f3f4f6;
+            margin-bottom: 60px;
+        }
+
+        /* Architecture Flow Styles */
+        .flow-diagram-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #f8fafc;
+            padding: 40px;
+            border-radius: 20px;
+            border: 1px solid #e2e8f0;
+            overflow-x: auto;
+        }
+        .flow-step {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+            min-width: 120px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+            position: relative;
+        }
+        .flow-step h5 { font-size: 0.9rem; font-weight: 800; color: #475569; margin-bottom: 4px; }
+        .flow-step p { font-size: 0.75rem; color: #64748b; }
+        .flow-arrow { flex: 1; height: 2px; background: #cbd5e1; position: relative; margin: 0 10px; min-width: 40px; }
+        .flow-arrow::after {
+            content: '►'; position: absolute; right: -6px; top: -7px; color: #cbd5e1; font-size: 10px;
+        }
+
+        /* New Clean UI Mockup Style */
+        .clean-ui {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
+            aspect-ratio: 9/18;
+            max-width: 220px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+        }
+        .clean-header { height: 12px; background: #f1f5f9; border-bottom: 1px solid #e2e8f0; }
+        .clean-body { padding: 16px; flex: 1; display: flex; flex-direction: column; gap: 8px; }
+        .clean-bar { height: 8px; background: #f1f5f9; border-radius: 4px; width: 100%; }
+        .clean-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; }
+        .clean-btn { margin-top: auto; height: 32px; background: #4f46e5; border-radius: 8px; width: 100%; }
+    </style>
+</head>
+<body class="min-h-screen">
+
+    <!-- Global Navigation -->
+    <nav class="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center h-16">
+            <div class="flex items-center space-x-2">
+                <span class="text-2xl font-black font-outfit text-indigo-600">GOLF CRM</span>
+                <span class="text-xs font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full uppercase">v1.0 Final</span>
+            </div>
+            <div class="hidden md:flex space-x-8 text-sm font-bold text-gray-500">
+                <button onclick="switchSection('hero')" class="hover:text-indigo-600 transition">홈</button>
+                <button onclick="switchSection('proposal')" class="hover:text-indigo-600 transition">기획서 읽기</button>
+                <button onclick="switchSection('preview')" class="hover:text-indigo-600 transition">기능 미리보기</button>
+            </div>
+            <button onclick="switchSection('preview')" class="bg-indigo-600 text-white px-5 py-2 rounded-full text-sm font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition font-outfit">PREVIEW START</button>
+        </div>
+    </nav>
+
+    <!-- SECTION 1: HERO (Home) - KEEP ORIGINAL -->
+    <section id="section-hero" class="tab-content active py-24">
+        <div class="max-w-5xl mx-auto px-4 text-center">
+            <div class="inline-block px-4 py-1.5 bg-indigo-50 text-indigo-600 rounded-full text-xs font-bold mb-6 tracking-widest uppercase">Premium Golf Management</div>
+            <h2 class="text-5xl md:text-7xl font-black font-outfit text-gray-900 leading-tight mb-8">
+                The Next Level of<br><span class="text-indigo-600">Golf Lesson CRM</span>
+            </h2>
+            <p class="text-xl text-gray-500 mb-12 max-w-2xl mx-auto leading-relaxed">
+                강사와 고객의 유기적 매칭부터 자동화된 예약 시스템까지,<br>골프 비즈니스의 모든 여정을 시각화합니다.
+            </p>
+            <div class="flex flex-col sm:flex-row justify-center gap-4 mb-20">
+                <button onclick="switchSection('proposal')" class="px-10 py-5 bg-white border border-gray-200 rounded-2xl font-bold shadow-sm hover:shadow-md transition">기획서 상세 읽기</button>
+                <button onclick="switchSection('preview')" class="px-10 py-5 bg-gray-900 text-white rounded-2xl font-bold shadow-xl hover:bg-black transition">기능 시뮬레이션</button>
+            </div>
+
+            <!-- Restored UI: Hero Footer Cards -->
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div class="p-4 bg-white rounded-2xl shadow-sm border border-gray-50 hover:border-indigo-200 transition">
+                    <span class="block text-2xl mb-2">📸</span>
+                    <span class="text-xs font-bold text-gray-700">피드백 게시물</span>
+                </div>
+                <div class="p-4 bg-white rounded-2xl shadow-sm border border-gray-50 hover:border-indigo-200 transition">
+                    <span class="block text-2xl mb-2">🗨️</span>
+                    <span class="text-xs font-bold text-gray-700">모임 톡방</span>
+                </div>
+                <div class="p-4 bg-white rounded-2xl shadow-sm border border-gray-50 hover:border-indigo-200 transition">
+                    <span class="block text-2xl mb-2">📅</span>
+                    <span class="text-xs font-bold text-gray-700">하이브리드 예약</span>
+                </div>
+                <div class="p-4 bg-white rounded-2xl shadow-sm border border-gray-50 hover:border-indigo-200 transition">
+                    <span class="block text-2xl mb-2">🔄</span>
+                    <span class="text-xs font-bold text-gray-700">캘린더 연동</span>
+                </div>
+                <div class="p-4 bg-white rounded-2xl shadow-sm border border-gray-50 hover:border-indigo-200 transition">
+                    <span class="block text-2xl mb-2">🏆</span>
+                    <span class="text-xs font-bold text-gray-700">프로 매칭</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 2: PLANNING PROPOSAL -->
+    <section id="section-proposal" class="tab-content py-12">
+        <div class="max-w-7xl mx-auto px-4 flex flex-col md:flex-row gap-8">
+            <!-- Sidebar Navigation -->
+            <div class="md:w-64 flex-shrink-0">
+                <div class="sticky top-24 bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+                    <h4 class="font-bold text-gray-900 mb-4 px-2">기획서 목차</h4>
+                    <ul class="space-y-1">
+                        <li class="proposal-nav-item" onclick="scrollToProp('prop-summary')">1. 요약 (Summary)</li>
+                        <li class="proposal-nav-item" onclick="scrollToProp('prop-goals')">2. 목표 (Goals)</li>
+                        <li class="proposal-nav-item" onclick="scrollToProp('prop-market')">3. 골프 산업 현황</li>
+                        <li class="proposal-nav-item" onclick="scrollToProp('prop-growth')">4. 성장 가능성</li>
+                        <li class="proposal-nav-item" onclick="scrollToProp('prop-arch')">5. 시스템 구조 아키텍쳐</li>
+                        <li class="proposal-nav-item" onclick="scrollToProp('prop-func')">6. 시스템 기능 상세</li>
+                        <li class="proposal-nav-item" onclick="scrollToProp('prop-risk')">7. 리스크 및 대응</li>
+                        <li class="proposal-nav-item" onclick="scrollToProp('prop-cost')">8. 예상 운영비</li>
+                        <li class="proposal-nav-item" onclick="scrollToProp('prop-ops')">9. 운영 프로세스</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="flex-1">
+                <div class="bg-white rounded-3xl p-8 md:p-12 border border-gray-100 shadow-sm">
+                    
+                    <!-- 1. Summary -->
+                    <div id="prop-summary" class="proposal-section">
+                        <h3 class="text-2xl font-bold text-gray-900 mb-6 flex items-center"><span class="text-indigo-600 mr-2">01.</span> 요약 (Summary)</h3>
+                        <p class="text-gray-600 leading-relaxed mb-8">
+                            본 프로젝트는 파편화된 골프 레슨 시장을 통합하는 <strong>B2C CRM 플랫폼</strong>입니다. 강사에게는 효율적인 회원 관리와 마케팅 도구를, 고객에게는 검증된 프로 매칭과 커뮤니티 경험을 제공합니다. 
+                            단순 예약 앱을 넘어, <strong>'모임(Community)'</strong>과 <strong>'피드백(Feedback)'</strong>을 핵심 가치로 삼아 지속 가능한 골프 라이프스타일 생태계를 구축합니다.
+                        </p>
+                        <!-- Added Content from v0.8 as requested -->
+                        <div class="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                            <h4 class="font-bold text-sm text-gray-500 uppercase mb-3">핵심 가치 제안 (Key Value Proposition)</h4>
+                            <ul class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm font-bold text-gray-800">
+                                <li class="flex items-center"><span class="w-2 h-2 bg-indigo-500 rounded-full mr-2"></span>커뮤니티 중심 연결</li>
+                                <li class="flex items-center"><span class="w-2 h-2 bg-indigo-500 rounded-full mr-2"></span>투명한 매칭 및 비용</li>
+                                <li class="flex items-center"><span class="w-2 h-2 bg-indigo-500 rounded-full mr-2"></span>데이터 기반 레슨 관리</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- 2. Goals (Restored v0.7 Korean) -->
+                    <div id="prop-goals" class="proposal-section">
+                        <h3 class="text-2xl font-bold text-gray-900 mb-4 flex items-center"><span class="text-indigo-600 mr-2">02.</span> 목표 (Goals)</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="bg-gray-50 p-6 rounded-2xl">
+                                <span class="block text-sm font-bold text-gray-500 uppercase">Short-term (Q1-Q2)</span>
+                                <span class="block text-xl font-black text-gray-900 mt-2">활성 유저 10,000명 달성</span>
+                                <p class="text-sm text-gray-600 mt-1">네임드 프로 50명 확보 및 모임 활성화</p>
+                            </div>
+                            <div class="bg-indigo-50 p-6 rounded-2xl">
+                                <span class="block text-sm font-bold text-indigo-500 uppercase">Long-term (Y1)</span>
+                                <span class="block text-xl font-black text-indigo-900 mt-2">재방문율 30% 유지</span>
+                                <p class="text-sm text-indigo-700 mt-1">국내 1위 골프 레슨 매칭 플랫폼 도약</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 3. Market Research (Merged v0.8 & v0.9) -->
+                    <div id="prop-market" class="proposal-section">
+                        <h3 class="text-2xl font-bold text-gray-900 mb-6 flex items-center"><span class="text-indigo-600 mr-2">03.</span> 골프 산업 현황</h3>
+                        
+                        <div class="mb-8 p-6 bg-gray-50 rounded-2xl border border-gray-100">
+                            <h4 class="font-bold text-lg mb-2">📈 대한민국 골프 시장 규모 22조 원 돌파</h4>
+                            <p class="text-sm text-gray-600 mb-4 leading-relaxed">
+                                '2024 한국골프산업백서'에 따르면 국내 골프 시장 규모는 <strong>22조 4천억 원</strong>에 달하며, 골프 인구는 약 <strong>700만 명</strong>으로 추산됩니다. 
+                                특히 팬데믹 이후 2030 'MZ세대'의 유입이 115만 명 이상으로 급증하며 디지털 친화적인 서비스 수요가 폭발하고 있습니다.
+                            </p>
+                            <div class="chart-container" style="height: 250px;">
+                                <canvas id="marketChart"></canvas>
+                            </div>
+                            <p class="text-xs text-right text-gray-400 mt-2">* 자료: 2024 한국골프산업백서, 통계청 (재구성)</p>
+                        </div>
+
+                        <!-- Restored Grid from v0.8 -->
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div class="p-5 bg-red-50 rounded-2xl border border-red-100">
+                                <span class="text-2xl mb-2 block">📉</span>
+                                <h5 class="font-bold text-red-800 mb-2">시장 문제점 (Pain Point)</h5>
+                                <p class="text-xs text-red-700 leading-relaxed">
+                                    레슨비의 불투명성,<br>
+                                    낙후된 예약 관리(수기/전화),<br>
+                                    강사 검증 정보 부족
+                                </p>
+                            </div>
+                            <div class="p-5 bg-blue-50 rounded-2xl border border-blue-100">
+                                <span class="text-2xl mb-2 block">🤝</span>
+                                <h5 class="font-bold text-blue-800 mb-2">커뮤니티 니즈</h5>
+                                <p class="text-xs text-blue-700 leading-relaxed">
+                                    '조인' 문화 확산,<br>
+                                    동호회 및 소셜 니즈 증가,<br>
+                                    정보 공유(장비/레슨) 갈증
+                                </p>
+                            </div>
+                            <div class="p-5 bg-green-50 rounded-2xl border border-green-100">
+                                <span class="text-2xl mb-2 block">🚀</span>
+                                <h5 class="font-bold text-green-800 mb-2">기회 요인 (Opportunity)</h5>
+                                <p class="text-xs text-green-700 leading-relaxed">
+                                    모바일 네이티브 세대를 위한<br>
+                                    UI/UX 중심의 통합 플랫폼<br>
+                                    부재 (Blue Ocean)
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 4. Growth Potential (Visualized) -->
+                    <div id="prop-growth" class="proposal-section">
+                        <h3 class="text-2xl font-bold text-gray-900 mb-6 flex items-center"><span class="text-indigo-600 mr-2">04.</span> 성장 가능성</h3>
+                        <p class="text-sm text-gray-600 mb-6">초기 레슨 매칭 시장 진입을 시작으로, 골프 라이프스타일 전반을 아우르는 슈퍼앱으로의 확장 로드맵입니다.</p>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <!-- Phase 1 -->
+                            <div class="p-6 border border-indigo-100 bg-indigo-50 rounded-2xl relative overflow-hidden">
+                                <div class="absolute -right-4 -top-4 w-16 h-16 bg-indigo-100 rounded-full"></div>
+                                <span class="text-xs font-bold text-indigo-500 uppercase tracking-widest">Phase 1</span>
+                                <h5 class="text-xl font-black text-indigo-900 mt-2">레슨 & 매칭</h5>
+                                <p class="text-xs text-indigo-700 mt-2">검증된 프로 매칭과 레슨 관리로 초기 유저(Lock-in) 확보</p>
+                            </div>
+                            <!-- Phase 2 -->
+                            <div class="p-6 border border-gray-200 bg-white rounded-2xl relative overflow-hidden">
+                                <span class="text-xs font-bold text-gray-400 uppercase tracking-widest">Phase 2</span>
+                                <h5 class="text-xl font-black text-gray-800 mt-2">예약 & 커뮤니티</h5>
+                                <p class="text-xs text-gray-500 mt-2">연습장/스크린 예약 연동 및 동호회 활성화로 트래픽 증대</p>
+                            </div>
+                            <!-- Phase 3 -->
+                            <div class="p-6 border border-gray-200 bg-white rounded-2xl relative overflow-hidden">
+                                <span class="text-xs font-bold text-gray-400 uppercase tracking-widest">Phase 3</span>
+                                <h5 class="text-xl font-black text-gray-800 mt-2">AI & Commerce</h5>
+                                <p class="text-xs text-gray-500 mt-2">영상 분석 AI 코칭 구독 모델 및 중고 거래 마켓 도입</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 5. Architecture (With Image Placeholder) -->
+                    <div id="prop-arch" class="proposal-section">
+                        <h3 class="text-2xl font-bold text-gray-900 mb-6 flex items-center"><span class="text-indigo-600 mr-2">05.</span> 시스템 구조 아키텍쳐</h3>
+                        
+                        <!-- User's Image Placeholder -->
+                        <div class="w-full h-80 bg-gray-100 rounded-2xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center mb-10 text-gray-400 relative hover:bg-gray-50 transition cursor-pointer">
+                            <span class="text-5xl mb-3">🖼️</span>
+                            <span class="font-bold text-lg">[시스템 아키텍처 이미지 삽입 영역]</span>
+                            <span class="text-xs mt-2">사용자님이 보유하신 아키텍처 이미지를 이 위치에 삽입하세요.</span>
+                            <span class="text-[10px] mt-1 text-gray-300">(img 태그 src 속성에 이미지 경로 입력)</span>
+                        </div>
+
+                        <h4 class="font-bold text-gray-800 mb-4">데이터 서비스 흐름도 (Service Flow)</h4>
+                        <div class="flow-diagram-container">
+                            <div class="flow-step">
+                                <h5>사용자 (User)</h5>
+                                <p>모바일 웹 / 앱</p>
+                            </div>
+                            <div class="flow-arrow"></div>
+                            <div class="flow-step">
+                                <h5>부하 분산 (LB)</h5>
+                                <p>AWS ELB</p>
+                            </div>
+                            <div class="flow-arrow"></div>
+                            <div class="flow-step" style="background: #4f46e5; color: white; border:none;">
+                                <h5 style="color:white;">API 서버</h5>
+                                <p style="color:#c7d2fe;">FastAPI (Python)</p>
+                            </div>
+                            <div class="flow-arrow"></div>
+                            <div class="flow-step">
+                                <h5>데이터베이스</h5>
+                                <p>PostgreSQL</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 6. Functions (Improved UI Mocks) -->
+                    <div id="prop-func" class="proposal-section">
+                        <h3 class="text-2xl font-bold text-gray-900 mb-6 flex items-center"><span class="text-indigo-600 mr-2">06.</span> 시스템 기능 상세</h3>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                            <!-- UI 1 -->
+                            <div class="text-center">
+                                <div class="clean-ui mb-4">
+                                    <div class="clean-header"></div>
+                                    <div class="clean-body">
+                                        <div class="flex justify-between items-center mb-2">
+                                            <span class="text-[10px] font-bold">2026.02</span>
+                                            <span class="w-4 h-4 bg-gray-200 rounded-full"></span>
+                                        </div>
+                                        <div class="grid grid-cols-7 gap-1">
+                                            <div class="w-full aspect-square bg-gray-100 rounded"></div>
+                                            <div class="w-full aspect-square bg-indigo-500 rounded"></div>
+                                            <div class="w-full aspect-square bg-gray-100 rounded"></div>
+                                        </div>
+                                        <div class="clean-card mt-2">
+                                            <div class="w-1/2 h-2 bg-gray-300 rounded mb-1"></div>
+                                            <div class="w-1/3 h-2 bg-gray-200 rounded"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <h4 class="font-bold text-sm">하이브리드 캘린더</h4>
+                                <p class="text-xs text-gray-500 mt-1">레슨과 연습장 타석 동시 관리</p>
+                            </div>
+
+                            <!-- UI 2 -->
+                            <div class="text-center">
+                                <div class="clean-ui mb-4">
+                                    <div class="clean-header"></div>
+                                    <div class="clean-body">
+                                        <div class="clean-card flex items-center gap-2">
+                                            <div class="w-6 h-6 bg-indigo-200 rounded-full"></div>
+                                            <div class="w-2/3 h-2 bg-gray-200 rounded"></div>
+                                        </div>
+                                        <div class="clean-card flex items-center gap-2">
+                                            <div class="w-6 h-6 bg-gray-200 rounded-full"></div>
+                                            <div class="w-1/2 h-2 bg-gray-200 rounded"></div>
+                                        </div>
+                                        <div class="clean-btn mt-auto flex items-center justify-center text-[8px] text-white">채팅 참여하기</div>
+                                    </div>
+                                </div>
+                                <h4 class="font-bold text-sm">모임 톡방</h4>
+                                <p class="text-xs text-gray-500 mt-1">지역 기반 골프 커뮤니티</p>
+                            </div>
+
+                            <!-- UI 3 -->
+                            <div class="text-center">
+                                <div class="clean-ui mb-4">
+                                    <div class="clean-header"></div>
+                                    <div class="clean-body">
+                                        <div class="w-full h-24 bg-gray-800 rounded-lg flex items-center justify-center text-white text-xs">▶ VIDEO</div>
+                                        <div class="w-full h-2 bg-gray-200 rounded mt-2"></div>
+                                        <div class="w-2/3 h-2 bg-gray-200 rounded"></div>
+                                        <div class="mt-auto flex justify-end">
+                                            <span class="text-[8px] bg-green-100 text-green-600 px-2 py-1 rounded-full">공개됨</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <h4 class="font-bold text-sm">피드백 시스템</h4>
+                                <p class="text-xs text-gray-500 mt-1">프라이빗/공개 설정 지원</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 7. Risks (Table with Tags) -->
+                    <div id="prop-risk" class="proposal-section">
+                        <h3 class="text-2xl font-bold text-gray-900 mb-6 flex items-center"><span class="text-indigo-600 mr-2">07.</span> 리스크 및 대응 전략</h3>
+                        <div class="overflow-hidden border border-gray-200 rounded-xl">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">리스크 (Risk)</th>
+                                        <th class="px-6 py-3 text-center text-xs font-bold text-gray-500 uppercase">등급</th>
+                                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">대응 전략 (Solution)</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white divide-y divide-gray-200 text-sm">
+                                    <tr>
+                                        <td class="px-6 py-4 font-bold text-gray-800">채팅방 내 불법/도박 홍보</td>
+                                        <td class="px-6 py-4 text-center"><span class="px-2 py-1 bg-red-100 text-red-600 rounded text-xs font-bold">HIGH</span></td>
+                                        <td class="px-6 py-4 text-gray-600">금칙어 필터링 봇 적용, 신고 3회 누적 시 자동 계정 정지.</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 font-bold text-gray-800">레슨 당일 취소 및 노쇼</td>
+                                        <td class="px-6 py-4 text-center"><span class="px-2 py-1 bg-orange-100 text-orange-600 rounded text-xs font-bold">MID</span></td>
+                                        <td class="px-6 py-4 text-gray-600">24시간 전 환불 불가 약관 동의 필수화, 예약금 제도 도입.</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 font-bold text-gray-800">프로 자격 사칭</td>
+                                        <td class="px-6 py-4 text-center"><span class="px-2 py-1 bg-yellow-100 text-yellow-600 rounded text-xs font-bold">LOW</span></td>
+                                        <td class="px-6 py-4 text-gray-600">협회 자격증 사본 제출 및 관리자 승인 후 프로필 '인증 뱃지' 부여.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 8. Cost (Detailed Calculation) -->
+                    <div id="prop-cost" class="proposal-section">
+                        <h3 class="text-2xl font-bold text-gray-900 mb-6 flex items-center"><span class="text-indigo-600 mr-2">08.</span> 예상 운영비 시뮬레이션</h3>
+                        <p class="text-sm text-gray-500 mb-6">※ AWS 서울 리전, 카카오 비즈메시지, 토스페이먼츠(2.5%) 요금 기준 상세 산출</p>
+                        
+                        <div class="overflow-x-auto bg-white border border-gray-200 rounded-xl">
+                            <table class="min-w-full text-sm text-left">
+                                <thead class="bg-gray-50 text-gray-700 font-bold text-xs uppercase">
+                                    <tr>
+                                        <th class="px-6 py-3">항목</th>
+                                        <th class="px-6 py-3">상세 산출 근거</th>
+                                        <th class="px-6 py-3">User 1,000명</th>
+                                        <th class="px-6 py-3">User 10,000명</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100">
+                                    <tr>
+                                        <td class="px-6 py-4 font-bold">서버 인프라 (AWS)</td>
+                                        <td class="px-6 py-4 text-xs text-gray-500">EC2(t3.small) 2대, RDS, S3<br>트래픽 비용 포함</td>
+                                        <td class="px-6 py-4">₩ 154,000</td>
+                                        <td class="px-6 py-4">₩ 1,250,000</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 font-bold">알림톡 (Kakao)</td>
+                                        <td class="px-6 py-4 text-xs text-gray-500">건당 7.5원 기준<br>인당 월 15건 발송 가정</td>
+                                        <td class="px-6 py-4">₩ 112,500</td>
+                                        <td class="px-6 py-4">₩ 1,125,000</td>
+                                    </tr>
+                                    <tr class="bg-blue-50">
+                                        <td class="px-6 py-4 font-bold text-blue-900">PG 수수료 예시</td>
+                                        <td class="px-6 py-4 text-xs text-blue-700">결제액의 2.5% (매출 차감)<br>인당 10만원 결제 가정</td>
+                                        <td class="px-6 py-4 font-bold text-blue-600">₩ 2,500,000<br><span class="text-[10px] font-normal">(매출 1억 기준)</span></td>
+                                        <td class="px-6 py-4 font-bold text-blue-600">₩ 25,000,000<br><span class="text-[10px] font-normal">(매출 10억 기준)</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 font-bold">기타 (솔루션)</td>
+                                        <td class="px-6 py-4 text-xs text-gray-500">도메인, SMS, 채널톡 등</td>
+                                        <td class="px-6 py-4">₩ 50,000</td>
+                                        <td class="px-6 py-4">₩ 200,000</td>
+                                    </tr>
+                                    <tr class="bg-gray-900 text-white font-bold">
+                                        <td class="px-6 py-4">순수 운영비 합계</td>
+                                        <td class="px-6 py-4 text-xs text-gray-400">(PG 수수료 제외, 서버+알림+기타)</td>
+                                        <td class="px-6 py-4">약 ₩ 316,500</td>
+                                        <td class="px-6 py-4">약 ₩ 2,575,000</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 9. Ops Process (Requested Format) -->
+                    <div id="prop-ops" class="proposal-section">
+                        <h3 class="text-2xl font-bold text-gray-900 mb-6 flex items-center"><span class="text-indigo-600 mr-2">09.</span> 출시 후 운영 프로세스</h3>
+                        <div class="space-y-4">
+                            <!-- Item 1 -->
+                            <div class="flex items-start p-4 border border-gray-100 rounded-xl bg-gray-50">
+                                <div class="text-3xl mr-4">🛡️</div>
+                                <div>
+                                    <h5 class="font-bold text-gray-800 mb-1">프로 검증 (Verification)</h5>
+                                    <p class="text-sm text-gray-600">협회(KPGA/KLPGA) 자격증 전수 조사 및 등록 승인.</p>
+                                    <p class="text-sm text-gray-600">1차 서류 심사 합격자에 한해 2차 비대면 인터뷰 진행.</p>
+                                </div>
+                            </div>
+                            <!-- Item 2 -->
+                            <div class="flex items-start p-4 border border-gray-100 rounded-xl bg-gray-50">
+                                <div class="text-3xl mr-4">📞</div>
+                                <div>
+                                    <h5 class="font-bold text-gray-800 mb-1">CS & Monitoring</h5>
+                                    <p class="text-sm text-gray-600">채널톡 기반 평일 09시~18시 실시간 고객 응대.</p>
+                                    <p class="text-sm text-gray-600">주간 노쇼율 및 환불 분쟁 건 집중 모니터링 및 중재.</p>
+                                </div>
+                            </div>
+                            <!-- Item 3 -->
+                            <div class="flex items-start p-4 border border-gray-100 rounded-xl bg-gray-50">
+                                <div class="text-3xl mr-4">📊</div>
+                                <div>
+                                    <h5 class="font-bold text-gray-800 mb-1">Data-Driven Update</h5>
+                                    <p class="text-sm text-gray-600">월간 활성 유저(MAU) 및 재방문율(Retention) 데이터 분석.</p>
+                                    <p class="text-sm text-gray-600">유저 피드백을 기반으로 2주 단위 기능 개선 스프린트 진행.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 3: SYSTEM PREVIEW (Interactive) - KEEP ORIGINAL -->
+    <section id="section-preview" class="tab-content py-16">
+        <div class="max-w-7xl mx-auto px-4">
+            <div class="flex flex-col md:flex-row justify-between items-end mb-12 gap-6">
+                <div>
+                    <h3 class="text-4xl font-black text-gray-900">기능 미리보기</h3>
+                    <p class="text-gray-500 mt-2">v0.6 신규 모듈: 모임 채팅 시뮬레이션이 추가되었습니다.</p>
+                </div>
+                <div class="flex p-1.5 bg-gray-100 rounded-2xl overflow-x-auto">
+                    <button onclick="switchModule('posts')" class="mod-btn px-6 py-2.5 text-xs font-bold rounded-xl bg-white shadow-sm text-indigo-600 whitespace-nowrap">게시물 & 피드백</button>
+                    <button onclick="switchModule('resv')" class="mod-btn px-6 py-2.5 text-xs font-bold rounded-xl text-gray-500 whitespace-nowrap">예약 시스템</button>
+                    <button onclick="switchModule('match')" class="mod-btn px-6 py-2.5 text-xs font-bold rounded-xl text-gray-500 whitespace-nowrap">고객 매칭 UI</button>
+                    <button onclick="switchModule('chat')" class="mod-btn px-6 py-2.5 text-xs font-bold rounded-xl text-gray-500 whitespace-nowrap">모임 채팅 (NEW)</button>
+                </div>
+            </div>
+
+            <!-- MODULE 1 -->
+            <div id="mod-posts" class="preview-module space-y-8">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div class="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
+                        <h4 class="font-bold text-lg mb-6">시나리오 컨트롤러</h4>
+                        <div class="space-y-6">
+                            <div>
+                                <label class="block text-[10px] font-black text-gray-400 uppercase mb-2">작성자</label>
+                                <select id="post-author" onchange="runPostLogic()" class="w-full p-3 bg-gray-50 rounded-xl border-none text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none">
+                                    <option value="instructor">강사 (프로)</option>
+                                    <option value="customer">고객 (회원)</option>
+                                </select>
+                            </div>
+                            <div id="post-type-container">
+                                <label class="block text-[10px] font-black text-gray-400 uppercase mb-2">게시물 종류</label>
+                                <select id="post-type" onchange="runPostLogic()" class="w-full p-3 bg-gray-50 rounded-xl border-none text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none">
+                                    <option value="feedback">고객 피드백</option>
+                                    <option value="promo">프로모션</option>
+                                </select>
+                            </div>
+                            <div id="consent-container" class="p-4 bg-amber-50 rounded-2xl border border-amber-100">
+                                <label class="flex items-center space-x-3 cursor-pointer">
+                                    <input type="checkbox" id="consent-check" onchange="runPostLogic()" class="w-5 h-5 text-indigo-600 rounded-lg">
+                                    <span class="text-sm font-bold text-amber-900">고객 공개 동의</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="lg:col-span-2 bg-slate-50 p-8 rounded-3xl border border-slate-200">
+                        <h4 class="font-bold text-lg mb-10 text-slate-700">노출 로직 시각화 플로우</h4>
+                        <div class="flex flex-col md:flex-row items-center justify-between gap-4">
+                            <div id="fn-start" class="flow-node w-32 p-4 rounded-2xl bg-white shadow-sm text-center">
+                                <span class="text-[10px] font-bold text-gray-400 uppercase">Input</span>
+                                <div class="font-bold text-sm">게시물 작성</div>
+                            </div>
+                            <div class="flex-1 flow-line h-0.5" id="fl-1"></div>
+                            <div id="fn-check" class="flow-node w-32 p-4 rounded-2xl bg-white shadow-sm text-center">
+                                <span class="text-[10px] font-bold text-gray-400 uppercase">Logic</span>
+                                <div class="font-bold text-sm">조건 검증</div>
+                            </div>
+                            <div class="flex-1 flow-line h-0.5" id="fl-2"></div>
+                            <div id="fn-result" class="flow-node w-32 p-4 rounded-2xl bg-white shadow-sm text-center">
+                                <span class="text-[10px] font-bold text-gray-400 uppercase">Outcome</span>
+                                <div id="flow-result-text" class="font-bold text-sm">처리 중...</div>
+                            </div>
+                        </div>
+                        <div class="mt-12 p-8 bg-white rounded-3xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-center">
+                            <span id="logic-icon" class="text-5xl mb-4">🔒</span>
+                            <h5 id="logic-title" class="text-xl font-bold text-gray-900">비공개 처리</h5>
+                            <p id="logic-desc" class="text-sm text-gray-500 max-w-xs mt-2">조건이 충족되지 않아 본인과 대상자만 볼 수 있습니다.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODULE 2 -->
+            <div id="mod-resv" class="preview-module hidden space-y-8">
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                    <div class="lg:col-span-5 bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
+                        <div class="flex justify-between items-center mb-6">
+                            <h4 class="font-bold text-lg">2026년 2월 예약 현황</h4>
+                            <div class="flex gap-2">
+                                <div class="flex items-center text-[10px] font-bold text-gray-400"><span class="w-2 h-2 bg-gray-200 rounded-full mr-1"></span> 가능</div>
+                                <div class="flex items-center text-[10px] font-bold text-red-400"><span class="w-2 h-2 bg-red-100 rounded-full mr-1"></span> 불가</div>
+                            </div>
+                        </div>
+                        <div class="calendar-grid mb-4" id="calendar-root"></div>
+                        <div class="p-4 bg-blue-50 rounded-2xl">
+                            <p class="text-[11px] text-blue-700 leading-relaxed font-bold">
+                                * 주말(토/일)은 이미 예약이 가득 차 있어 선택이 불가능한 상태입니다 (예외 로직 적용).
+                            </p>
+                        </div>
+                    </div>
+                    <div class="lg:col-span-7 bg-indigo-900 rounded-3xl p-10 text-white flex flex-col justify-center">
+                        <h4 class="text-2xl font-black mb-8 text-indigo-300 font-outfit">REAL-TIME SYNC</h4>
+                        <div class="space-y-6">
+                            <div class="p-6 bg-white/10 rounded-2xl border border-white/20 flex items-center justify-between">
+                                <div class="flex items-center">
+                                    <div class="w-10 h-10 bg-indigo-500 rounded-xl flex items-center justify-center font-bold mr-4 text-lg">🏢</div>
+                                    <div>
+                                        <span class="block text-[10px] text-indigo-300 font-bold uppercase">Facility Sync</span>
+                                        <span class="font-bold">연습장 타석 자동 예약</span>
+                                    </div>
+                                </div>
+                                <span id="sync-facility" class="text-xs font-bold text-gray-400 uppercase tracking-widest">Waiting</span>
+                            </div>
+                            <div class="p-6 bg-white/10 rounded-2xl border border-white/20 flex items-center justify-between">
+                                <div class="flex items-center">
+                                    <div class="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center font-bold mr-4 text-lg">📅</div>
+                                    <div>
+                                        <span class="block text-[10px] text-orange-300 font-bold uppercase">Calendar Push</span>
+                                        <span class="font-bold">내 캘린더 자동 동기화</span>
+                                    </div>
+                                </div>
+                                <span id="sync-calendar" class="text-xs font-bold text-gray-400 uppercase tracking-widest">Waiting</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODULE 3 -->
+            <div id="mod-match" class="preview-module hidden space-y-8">
+                <div class="mb-8">
+                    <h4 class="text-xl font-bold mb-2">고객 맞춤 프로 찾기</h4>
+                    <p class="text-sm text-gray-500">고객이 앱에서 프로를 조회하고 매칭을 요청할 때 보게 되는 화면입니다.</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div onclick="selectPro('normal')" id="pro-normal" class="match-card bg-white p-6 rounded-3xl border-2 border-transparent shadow-sm cursor-pointer group">
+                        <div class="flex justify-between items-start mb-4">
+                            <div class="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center text-3xl">👤</div>
+                            <span class="px-3 py-1 bg-gray-100 text-gray-400 text-[10px] font-black rounded-full uppercase font-outfit">Normal</span>
+                        </div>
+                        <h5 class="text-lg font-bold text-gray-800">김철수 프로</h5>
+                        <div class="flex items-center text-xs text-amber-500 font-bold mt-1">★ 4.2 <span class="text-gray-400 font-normal ml-2">(12 리뷰)</span></div>
+                        <div class="mt-6 pt-6 border-t border-gray-50">
+                            <div class="flex justify-between text-xs mb-2">
+                                <span class="text-gray-400">매칭 수수료</span>
+                                <span class="font-bold text-indigo-600">0원 (무료)</span>
+                            </div>
+                            <p class="text-[10px] text-gray-400">* 프로가 등록비를 지불한 상태입니다.</p>
+                        </div>
+                    </div>
+                    <div onclick="selectPro('named')" id="pro-named" class="match-card bg-white p-6 rounded-3xl border-2 border-transparent shadow-sm cursor-pointer group">
+                        <div class="flex justify-between items-start mb-4">
+                            <div class="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center text-3xl">🌟</div>
+                            <span class="px-3 py-1 bg-indigo-600 text-white text-[10px] font-black rounded-full uppercase font-outfit">Named</span>
+                        </div>
+                        <h5 class="text-lg font-bold text-gray-800">이영희 프로</h5>
+                        <div class="flex items-center text-xs text-amber-500 font-bold mt-1">★ 4.9 <span class="text-gray-400 font-normal ml-2">(156 리뷰)</span></div>
+                        <div class="mt-6 pt-6 border-t border-gray-50">
+                            <div class="flex justify-between text-xs mb-2">
+                                <span class="text-gray-400">매칭 수수료</span>
+                                <span class="font-bold text-red-500">5,000원</span>
+                            </div>
+                            <p class="text-[10px] text-gray-400">* 네임드 프로 예약 시 고객 매칭 비용이 발생합니다.</p>
+                        </div>
+                    </div>
+                    <div class="bg-gray-900 rounded-3xl p-8 text-white flex flex-col justify-center">
+                        <h6 class="text-indigo-400 font-bold text-xs uppercase tracking-widest mb-4 font-outfit">Match Summary</h6>
+                        <div id="match-summary">
+                            <p class="text-gray-500 italic">프로를 선택하여 상세 매칭 로직을 확인하세요.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODULE 4 -->
+            <div id="mod-chat" class="preview-module hidden space-y-8">
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                    <div class="lg:col-span-4 bg-white p-6 rounded-3xl border border-gray-100 shadow-sm overflow-hidden flex flex-col h-[500px]">
+                        <h4 class="font-bold text-lg mb-4 px-2">모임 톡방 목록</h4>
+                        <div class="flex-1 overflow-y-auto space-y-2 pr-2">
+                            <div class="p-4 bg-indigo-50 border-l-4 border-indigo-600 rounded-r-xl flex items-center">
+                                <div class="w-10 h-10 bg-indigo-200 rounded-full flex items-center justify-center mr-3 font-bold text-indigo-600">G</div>
+                                <div class="flex-1">
+                                    <span class="block text-sm font-bold text-gray-800">강남 주말 라운딩 모임</span>
+                                    <span class="text-[10px] text-gray-500">오늘 오후 2:30에 메시지</span>
+                                </div>
+                                <span class="bg-indigo-600 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">3</span>
+                            </div>
+                            <div class="p-4 hover:bg-gray-50 rounded-xl transition cursor-pointer flex items-center">
+                                <div class="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center mr-3 font-bold text-gray-500">B</div>
+                                <div class="flex-1">
+                                    <span class="block text-sm font-bold text-gray-800">초보 골퍼 친목방</span>
+                                    <span class="text-[10px] text-gray-500">어제 오후 8:12</span>
+                                </div>
+                            </div>
+                            <div class="p-4 hover:bg-gray-50 rounded-xl transition cursor-pointer flex items-center">
+                                <div class="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center mr-3 font-bold text-gray-500">S</div>
+                                <div class="flex-1">
+                                    <span class="block text-sm font-bold text-gray-800">스크린 골프 정기 번개</span>
+                                    <span class="text-[10px] text-gray-500">2일 전</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="lg:col-span-8 bg-slate-100 rounded-3xl border border-slate-200 shadow-inner flex flex-col h-[500px] overflow-hidden">
+                        <div class="p-4 bg-white border-b border-slate-200 flex justify-between items-center">
+                            <span class="font-bold text-slate-700">강남 주말 라운딩 모임 (12)</span>
+                            <button class="text-slate-400 hover:text-indigo-600">☰</button>
+                        </div>
+                        <div class="flex-1 p-6 overflow-y-auto flex flex-col" id="chat-messages">
+                            <div class="chat-bubble chat-left">이번 주 일요일 오전 10시 라운딩 가능하신 분 계신가요?</div>
+                            <div class="chat-bubble chat-left">저요! 이번 주 몸 상태 좋네요 ㅎㅎ</div>
+                            <div class="chat-bubble chat-right">저도 참석하겠습니다! 인원 다 찬 건가요?</div>
+                            <div id="chat-auto-event" class="hidden animate-bounce mt-4 self-center bg-white shadow-md border border-indigo-100 px-4 py-2 rounded-full text-xs text-indigo-600 font-bold flex items-center">
+                                <span class="mr-2">📅</span> 모임 일정이 감지되었습니다. 캘린더에 등록할까요?
+                            </div>
+                        </div>
+                        <div class="p-4 bg-white flex gap-2 border-t border-slate-200">
+                            <button onclick="triggerChatEvent()" class="p-2 bg-indigo-50 text-indigo-600 rounded-xl text-lg hover:bg-indigo-100 transition">📅</button>
+                            <input type="text" placeholder="메시지를 입력하세요..." class="flex-1 p-3 bg-slate-50 border-none rounded-xl text-sm focus:ring-0 outline-none">
+                            <button class="px-5 py-2 bg-indigo-600 text-white font-bold rounded-xl text-sm">전송</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-100 py-12 mt-12">
+        <div class="max-w-7xl mx-auto px-4 flex flex-col md:flex-row justify-between items-center text-gray-400 text-sm">
+            <p>© 2026 CRM Project Concept v1.0</p>
+            <div class="flex space-x-6 mt-4 md:mt-0 font-outfit uppercase font-bold text-[10px] tracking-widest">
+                <a href="#" class="hover:text-indigo-600">Pipeline</a>
+                <a href="#" class="hover:text-indigo-600">API Docs</a>
+                <a href="#" class="hover:text-indigo-600">Status</a>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Navigation Logic
+        function switchSection(id) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.getElementById('section-' + id).classList.add('active');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            
+            if(id === 'proposal') {
+                setTimeout(renderMarketChart, 100);
+            }
+        }
+
+        function scrollToProp(id) {
+            document.getElementById(id).scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function switchModule(id) {
+            document.querySelectorAll('.preview-module').forEach(el => el.classList.add('hidden'));
+            document.getElementById('mod-' + id).classList.remove('hidden');
+            
+            document.querySelectorAll('.mod-btn').forEach(b => {
+                b.classList.remove('bg-white', 'shadow-sm', 'text-indigo-600');
+                b.classList.add('text-gray-500');
+            });
+            event.currentTarget.classList.add('bg-white', 'shadow-sm', 'text-indigo-600');
+            event.currentTarget.classList.remove('text-gray-500');
+            
+            if(id === 'resv') renderCalendar();
+        }
+
+        // --- Market Chart (Real Data Ref) ---
+        function renderMarketChart() {
+            const ctx = document.getElementById('marketChart').getContext('2d');
+            if(window.marketChartInstance) window.marketChartInstance.destroy();
+            window.marketChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['2022', '2023', '2024', '2025(E)'],
+                    datasets: [{
+                        label: '골프 시장 규모 (조 원)',
+                        data: [18.2, 20.6, 22.4, 24.1],
+                        backgroundColor: '#4f46e5',
+                        borderRadius: 8,
+                        yAxisID: 'y'
+                    }, {
+                        label: 'MZ세대 유입 비중 (%)',
+                        data: [15, 22, 31, 38],
+                        type: 'line',
+                        borderColor: '#f59e0b',
+                        borderWidth: 3,
+                        yAxisID: 'y1'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true, grid: { display: false }, title: {display: true, text: '시장 규모 (조 원)'} },
+                        y1: { position: 'right', grid: { display: false }, min: 0, max: 100, title: {display: true, text: 'MZ 비중 (%)'} }
+                    },
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+        }
+
+        // Module 1: Post Logic
+        function runPostLogic() {
+            const author = document.getElementById('post-author').value;
+            const type = document.getElementById('post-type').value;
+            const consent = document.getElementById('consent-check').checked;
+            
+            const typeCont = document.getElementById('post-type-container');
+            const consentCont = document.getElementById('consent-container');
+            
+            if(author === 'customer') {
+                typeCont.style.opacity = '0.4';
+                typeCont.style.pointerEvents = 'none';
+                consentCont.style.display = 'none';
+            } else {
+                typeCont.style.opacity = '1';
+                typeCont.style.pointerEvents = 'auto';
+                consentCont.style.display = (type === 'feedback') ? 'block' : 'none';
+            }
+
+            resetFlow();
+            setTimeout(() => activateNode('fn-start'), 100);
+            setTimeout(() => activateLine('fl-1'), 400);
+            setTimeout(() => activateNode('fn-check'), 800);
+            setTimeout(() => activateLine('fl-2'), 1200);
+            setTimeout(() => {
+                activateNode('fn-result');
+                showResult(author, type, consent);
+            }, 1600);
+        }
+
+        function resetFlow() {
+            document.querySelectorAll('.flow-node').forEach(n => n.classList.remove('active'));
+            document.querySelectorAll('.flow-line').forEach(l => l.classList.remove('active'));
+        }
+        function activateNode(id) { document.getElementById(id).classList.add('active'); }
+        function activateLine(id) { document.getElementById(id).classList.add('active'); }
+
+        function showResult(author, type, consent) {
+            const resText = document.getElementById('flow-result-text');
+            const resIcon = document.getElementById('logic-icon');
+            const resTitle = document.getElementById('logic-title');
+            const resDesc = document.getElementById('logic-desc');
+
+            if (author === 'customer') {
+                resText.innerText = 'Public';
+                resIcon.innerText = '📢';
+                resTitle.innerText = '전체 공개 (후기)';
+                resDesc.innerText = '고객이 작성한 강사 후기는 신뢰를 위해 전체 공개됩니다.';
+            } else if (type === 'promo') {
+                resText.innerText = 'Public';
+                resIcon.innerText = '🚀';
+                resTitle.innerText = '전체 공개 (홍보)';
+                resDesc.innerText = '프로의 마케팅 게시물은 모든 사용자에게 노출됩니다.';
+            } else {
+                if (consent) {
+                    resText.innerText = 'Public';
+                    resIcon.innerText = '✅';
+                    resTitle.innerText = '전체 공개 (동의)';
+                    resDesc.innerText = '고객의 동의를 얻은 피드백입니다. 브랜딩에 기여합니다.';
+                } else {
+                    resText.innerText = 'Private';
+                    resIcon.innerText = '🔒';
+                    resTitle.innerText = '비공개 (1:1)';
+                    resDesc.innerText = '동의가 없는 피드백은 고객과 강사 본인에게만 노출됩니다.';
+                }
+            }
+        }
+
+        // Module 2: Calendar
+        function renderCalendar() {
+            const root = document.getElementById('calendar-root');
+            root.innerHTML = '';
+            const daysInMonth = 28;
+            for(let i=1; i<=daysInMonth; i++) {
+                const dayEl = document.createElement('div');
+                dayEl.innerText = i;
+                const isWeekend = (i % 7 === 0 || i % 7 === 1 && i !== 1); 
+                if(isWeekend) {
+                    dayEl.className = 'calendar-day day-booked';
+                } else {
+                    dayEl.className = 'calendar-day day-available';
+                    dayEl.onclick = () => selectDate(dayEl);
+                }
+                root.appendChild(dayEl);
+            }
+        }
+
+        function selectDate(el) {
+            document.querySelectorAll('.calendar-day').forEach(d => d.classList.remove('day-selected'));
+            el.classList.add('day-selected');
+            const facility = document.getElementById('sync-facility');
+            const calendar = document.getElementById('sync-calendar');
+            facility.innerText = 'BOOKED';
+            facility.className = 'text-xs font-bold text-green-400 uppercase tracking-widest';
+            calendar.innerText = 'SYNCED';
+            calendar.className = 'text-xs font-bold text-orange-400 uppercase tracking-widest';
+        }
+
+        // Module 3: Matching
+        function selectPro(tier) {
+            document.querySelectorAll('.match-card').forEach(c => c.classList.remove('selected'));
+            document.getElementById('pro-' + tier).classList.add('selected');
+            const summary = document.getElementById('match-summary');
+            if(tier === 'normal') {
+                summary.innerHTML = `
+                    <div class="space-y-4">
+                        <span class="text-indigo-400 font-bold"># 일반 프로 매칭</span>
+                        <p class="text-sm">고객 부담 비용: <span class="text-green-400 font-bold">0원 (무료)</span></p>
+                        <p class="text-xs text-gray-400">프로가 지불한 입점 등록비를 통해 서비스가 운영됩니다.</p>
+                        <button class="w-full py-3 bg-indigo-600 rounded-xl font-bold mt-4 shadow-lg shadow-indigo-100">무료 상담 신청</button>
+                    </div>
+                `;
+            } else {
+                summary.innerHTML = `
+                    <div class="space-y-4">
+                        <span class="text-indigo-400 font-bold"># 네임드 프로 매칭</span>
+                        <p class="text-sm">매칭 서비스 이용료: <span class="text-red-400 font-bold">5,000원</span></p>
+                        <p class="text-xs text-gray-400">검증된 프로를 직접 매칭받기 위해 고객이 소정의 비용을 부담합니다.</p>
+                        <button class="w-full py-3 bg-white text-gray-900 rounded-xl border border-gray-200 font-bold mt-4 shadow-lg">결제 및 상담 신청</button>
+                    </div>
+                `;
+            }
+        }
+
+        // Module 4: Chat Interaction
+        function triggerChatEvent() {
+            const eventToast = document.getElementById('chat-auto-event');
+            eventToast.classList.remove('hidden');
+            setTimeout(() => {
+                const msgBox = document.getElementById('chat-messages');
+                const sysMsg = document.createElement('div');
+                sysMsg.className = "self-center my-4 px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-[10px] font-bold";
+                sysMsg.innerText = "📅 시스템: 2월 22일 일요일 라운딩 일정이 확정되었습니다.";
+                msgBox.appendChild(sysMsg);
+                eventToast.classList.add('hidden');
+                msgBox.scrollTo({ top: msgBox.scrollHeight, behavior: 'smooth' });
+            }, 2000);
+        }
+
+        window.onload = () => {
+            runPostLogic();
+        };
+    </script>
+</body>
+</html>

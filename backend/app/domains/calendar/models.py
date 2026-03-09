@@ -4,13 +4,13 @@ from uuid import UUID
 from enum import Enum
 
 from pydantic import AwareDatetime
-from sqlalchemy import Index, text, Text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Index, text, Text, Boolean
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy_utc import UtcDateTime
 from sqlmodel import Field, Relationship, SQLModel, func
 
 if TYPE_CHECKING:
-    from app.domains.account.models import User
+    from app.domains.users.models import User
 
 # 예약 타입 정의 (일반 레슨 / 휴무)
 class BookingType(str, Enum):
@@ -32,6 +32,7 @@ class Calendar(SQLModel, table=True):
     )
 
     time_slots: List["TimeSlot"] = Relationship(back_populates="calendar")
+    blocks: List["CalendarBlock"] = Relationship(back_populates="calendar")
 
     created_at: Optional[AwareDatetime] = Field(
         default=None,
@@ -58,6 +59,15 @@ class TimeSlot(SQLModel, table=True):
     end_time: time
 
     weekdays: List[int] = Field(sa_type=JSONB, description="예약 가능한 요일들(월0~일6)")
+
+    # 전체 슬롯 ON/OFF
+    is_active: bool = Field(
+        default=True,
+        nullable=False,
+        sa_type=Boolean,
+        description="활성 여부",
+        sa_column_kwargs={"server_default": text("true")},
+    )
 
     calendar_id: int = Field(foreign_key="calendars.id")
     calendar: Calendar = Relationship(back_populates="time_slots")
@@ -101,14 +111,65 @@ class Booking(SQLModel, table=True):
     # 예약 타입 (기본값: LESSON)
     type: BookingType = Field(default=BookingType.LESSON, description="LESSON / HOLIDAY")
     
-    status: str = Field(default="CONFIRMED", description="CONFIRMED / CANCELLED / COMPLETED")
+    # REQUESTED
+    status: str = Field(default="REQUESTED", description="REQUESTED / CONFIRMED / CANCELLED / COMPLETED")
+
     description: Optional[str] = Field(default=None, sa_type=Text, description="예약 설명")
+
+    # 취소 사유
+    cancel_reason: Optional[str] = Field(default=None, sa_type=Text, description="취소/거절 사유")
+
+    membership_id: Optional[UUID] = Field(
+        default=None,
+        sa_type=PGUUID(as_uuid=True),
+        foreign_key="memberships.id",
+        nullable=True,
+        description="차감할 멤버십 ID",
+    )
 
     time_slot_id: int = Field(foreign_key="time_slots.id")
     time_slot: TimeSlot = Relationship(back_populates="bookings")
 
     guest_id: UUID = Field(foreign_key="users.id")
     guest: "User" = Relationship(back_populates="bookings")
+
+    created_at: Optional[AwareDatetime] = Field(
+        default=None,
+        nullable=False,
+        sa_type=UtcDateTime,
+        sa_column_kwargs={"server_default": func.now()},
+    )
+    updated_at: Optional[AwareDatetime] = Field(
+        default=None,
+        nullable=False,
+        sa_type=UtcDateTime,
+        sa_column_kwargs={
+            "server_default": func.now(),
+            "onupdate": lambda: datetime.now(timezone.utc),
+        },
+    )
+
+
+class CalendarBlock(SQLModel, table=True):
+    """
+    특정 기간 동안 예약을 막는 예외일(휴무/휴가/공휴일) 블록
+    - start_date ~ end_date (inclusive)
+    """
+    __tablename__ = "calendar_blocks"
+    __table_args__ = (
+        Index("ix_calendar_blocks_calendar_id", "calendar_id"),
+        Index("ix_calendar_blocks_range", "calendar_id", "start_date", "end_date"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+
+    calendar_id: int = Field(foreign_key="calendars.id")
+    calendar: Calendar = Relationship(back_populates="blocks")
+
+    start_date: date
+    end_date: date
+
+    reason: Optional[str] = Field(default=None, sa_type=Text, description="블록 사유")
 
     created_at: Optional[AwareDatetime] = Field(
         default=None,

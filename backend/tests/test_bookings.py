@@ -67,3 +67,43 @@ async def test_cancel_then_rebook_allowed(client, free_slot_and_date, db_conn_an
 
     rebook = await client.post("/bookings", json=payload)
     assert rebook.status_code == 201, rebook.text
+
+async def test_withdraw_requested_booking_success(client, free_slot_and_date):
+    """REQUESTED 상태의 예약은 withdraw로 철회할 수 있어야 한다."""
+    slot_id, d = free_slot_and_date
+
+    payload = {
+        "time_slot_id": slot_id,
+        "when": d.isoformat(),
+        "topic": "요청철회 테스트",
+    }
+
+    created = await client.post("/bookings", json=payload)
+    assert created.status_code == 201, created.text
+    booking_id = created.json().get("id")
+    assert booking_id is not None
+
+    res = await client.patch(f"/bookings/{booking_id}/withdraw", json={"reason": "사정이 생김"})
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["status"] == "CANCELLED"
+
+
+async def test_cancel_requested_booking_should_fail(client, free_slot_and_date):
+    """REQUESTED 상태의 예약은 cancel이 아니라 withdraw로만 처리되어야 한다."""
+    slot_id, d = free_slot_and_date
+
+    payload = {
+        "time_slot_id": slot_id,
+        "when": d.isoformat(),
+        "topic": "REQUESTED cancel 차단 테스트",
+    }
+
+    created = await client.post("/bookings", json=payload)
+    assert created.status_code == 201, created.text
+    booking_id = created.json().get("id")
+    assert booking_id is not None
+
+    res = await client.patch(f"/bookings/{booking_id}/cancel", json={"reason": "취소"})
+    assert res.status_code == 400, res.text
+

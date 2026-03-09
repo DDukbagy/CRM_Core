@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import List, Union, Any
 
-from pydantic import field_validator, Field, AliasChoices
+from pydantic import field_validator, Field, AliasChoices, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -25,9 +25,33 @@ class Settings(BaseSettings):
     SUPABASE_JWT_SECRET: str
     SUPABASE_JWT_AUDIENCE: str = "authenticated"
 
+    SECRET_KEY: SecretStr
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
+
+    # Super Admin
+    SUPER_ADMIN_USER_ID: str | None = None
+    SUPER_ADMIN_EMAIL: str | None = None
+
+    CORS_ORIGIN_REGEX: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "CORS_ORIGIN_REGEX",
+            "CORS_ALLOW_ORIGIN_REGEX",
+            "CORS_REGEX",
+            "cors_origin_regex",
+        ),
+    )
+
     CORS_ALLOW_ORIGINS: Union[str, List[str]] = Field(
-        default='["http://localhost:3000","http://localhost:5173","http://127.0.0.1:3000","http://127.0.0.1:5173"]',
-        validation_alias=AliasChoices("CORS_ALLOW_ORIGINS", "CORS_ORIGINS"),
+        default='["http://localhost:3000","http://localhost:8081","http://localhost:19006"]',
+        validation_alias=AliasChoices(
+            "CORS_ALLOW_ORIGINS",
+            "CORS_ORIGINS",
+            "CORS_ORIGIN",
+            "cors_origins",
+            "cors_origin",
+        ),
     )
 
     @field_validator("CORS_ALLOW_ORIGINS", mode="before")
