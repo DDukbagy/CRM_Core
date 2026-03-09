@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import Text, Boolean
+from sqlalchemy import Text, Boolean, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy_utc import UtcDateTime
 from sqlmodel import SQLModel, Field, func
@@ -21,7 +21,7 @@ class LessonNote(SQLModel, table=True):
         default=None,
         primary_key=True,
         sa_type=PGUUID(as_uuid=True),
-        sa_column_kwargs={"server_default": "gen_random_uuid()"},
+        sa_column_kwargs={"server_default": text("gen_random_uuid()")},
     )
 
     booking_id: int = Field(
