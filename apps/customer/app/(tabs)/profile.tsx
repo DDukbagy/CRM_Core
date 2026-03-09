@@ -79,6 +79,12 @@ export default function ProfileScreen() {
         </View>
       )}
 
+      {/* 수강권 현황 */}
+      <Pressable style={s.menuBtn} onPress={() => router.push("/membership" as any)}>
+        <Text style={s.menuBtnText}>수강권 현황</Text>
+        <Text style={s.menuArrow}>›</Text>
+      </Pressable>
+
       {/* 프로필 수정 */}
       <Pressable style={s.editBtn} onPress={() => router.push("/edit-profile" as any)}>
         <Text style={s.editBtnText}>프로필 수정</Text>
@@ -113,6 +119,9 @@ const s = StyleSheet.create({
   row: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#f3f4f6" },
   rowLabel: { fontSize: 14, color: "#6b7280" },
   rowValue: { fontSize: 14, color: "#111", fontWeight: "500", maxWidth: "60%", textAlign: "right" },
+  menuBtn: { marginHorizontal: 16, marginTop: 8, padding: 14, backgroundColor: "#fff", borderRadius: 12, flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderWidth: 1, borderColor: "#e5e7eb" },
+  menuBtnText: { color: "#374151", fontWeight: "600", fontSize: 15 },
+  menuArrow: { color: "#9ca3af", fontSize: 20, lineHeight: 22 },
   editBtn: { marginHorizontal: 16, marginTop: 8, padding: 14, backgroundColor: "#f3f4f6", borderRadius: 12 },
   editBtnText: { textAlign: "center", color: "#374151", fontWeight: "600", fontSize: 15 },
   logoutBtn: { marginHorizontal: 16, marginTop: 8, padding: 14, backgroundColor: "#fee2e2", borderRadius: 12 },

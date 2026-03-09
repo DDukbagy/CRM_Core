@@ -47,8 +47,8 @@ export default function SchedulePage() {
         throw new Error(body?.error?.message || `HTTP ${res.status}`);
       }
       setSlots(Array.isArray(body) ? body : []);
-    } catch (e: any) {
-      setError(e?.message || "Failed to load time-slots");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to load time-slots");
       setSlots([]);
     } finally {
       setLoading(false);

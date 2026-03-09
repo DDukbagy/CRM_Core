@@ -446,6 +446,7 @@ async def reject_match(
         id=mr.id,
         customer_id=mr.customer_id,
         instructor_id=mr.instructor_id,
+        request_type=getattr(mr, "request_type", "MATCH"),
         status=mr.status,
         fee=mr.fee,
         note=mr.note,
@@ -542,4 +543,110 @@ async def assign_customer(
         "customer_id": str(customer_id),
         "manager_id": str(user.id),
         "message": "담당 고객으로 등록되었습니다.",
+    }
+
+
+# ── 출석 / 통계 ─────────────────────────────────────────────
+
+@router.get("/me/stats")
+async def get_my_stats(
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(require_role({"INSTRUCTOR", "ADMIN"})),
+):
+    """강사 대시보드용 통계: 담당 고객 수, 예약 현황, 출석률"""
+    instructor_id = UUID(str(user.id))
+
+    # 담당 고객 수
+    cust_res = await session.execute(
+        select(User).where(
+            and_(User.manager_id == instructor_id, User.is_active == True)
+        )
+    )
+    customer_count = len(cust_res.scalars().all())
+
+    # 전체 예약 상태별 집계
+    booking_res = await session.execute(
+        select(Booking.status, text("count(*) AS cnt"))
+        .join(User, Booking.guest_id == User.id)
+        .where(User.manager_id == instructor_id)
+        .group_by(Booking.status)
+    )
+    booking_counts: dict[str, int] = {}
+    for row in booking_res:
+        booking_counts[row.status] = row.cnt
+
+    total_bookings = sum(booking_counts.values())
+    completed = booking_counts.get("COMPLETED", 0)
+    no_show   = booking_counts.get("NO_SHOW", 0)
+    confirmed = booking_counts.get("CONFIRMED", 0)
+    requested = booking_counts.get("REQUESTED", 0)
+    cancelled = booking_counts.get("CANCELLED", 0)
+
+    attended_base = completed + no_show
+    attendance_rate = round(completed / attended_base * 100, 1) if attended_base > 0 else None
+
+    return {
+        "customer_count": customer_count,
+        "booking_counts": {
+            "total":     total_bookings,
+            "completed": completed,
+            "no_show":   no_show,
+            "confirmed": confirmed,
+            "requested": requested,
+            "cancelled": cancelled,
+        },
+        "attendance_rate": attendance_rate,  # None if no completed/no_show data yet
+    }
+
+
+@router.get("/me/stats/customer/{customer_id}")
+async def get_customer_stats(
+    customer_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(require_role({"INSTRUCTOR", "ADMIN"})),
+):
+    """특정 고객의 출석 통계 (담당 강사만 조회 가능)"""
+    instructor_id = UUID(str(user.id))
+
+    # 해당 고객이 담당 고객인지 확인
+    cust_res = await session.execute(
+        select(User).where(
+            and_(
+                User.id == customer_id,
+                User.manager_id == instructor_id,
+                User.is_active == True,
+            )
+        )
+    )
+    customer = cust_res.scalar_one_or_none()
+    if not customer:
+        raise HTTPException(status_code=404, detail="담당 고객을 찾을 수 없습니다.")
+
+    # 상태별 집계
+    booking_res = await session.execute(
+        select(Booking.status, text("count(*) AS cnt"))
+        .where(Booking.guest_id == customer_id)
+        .group_by(Booking.status)
+    )
+    booking_counts: dict[str, int] = {}
+    for row in booking_res:
+        booking_counts[row.status] = row.cnt
+
+    completed = booking_counts.get("COMPLETED", 0)
+    no_show   = booking_counts.get("NO_SHOW", 0)
+    attended_base = completed + no_show
+    attendance_rate = round(completed / attended_base * 100, 1) if attended_base > 0 else None
+
+    return {
+        "customer_id": str(customer_id),
+        "customer_name": customer.display_name,
+        "booking_counts": {
+            "total":     sum(booking_counts.values()),
+            "completed": completed,
+            "no_show":   no_show,
+            "confirmed": booking_counts.get("CONFIRMED", 0),
+            "requested": booking_counts.get("REQUESTED", 0),
+            "cancelled": booking_counts.get("CANCELLED", 0),
+        },
+        "attendance_rate": attendance_rate,
     }
