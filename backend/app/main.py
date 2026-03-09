@@ -13,11 +13,13 @@ from app.core.config import settings
 from app.db.session import get_session
 
 from app.domains.calendar.router import router as calendar_router
+from app.domains.calendar.lesson_note_router import router as lesson_note_router
 from app.core.exceptions import register_exception_handlers
 from app.core.middleware import RequestLoggingMiddleware
 from app.domains.auth.router import router as auth_router
 from app.domains.instructor.router import router as instructor_router
-from app.domains.posts.router import router as posts_router
+from app.domains.membership.router import router as membership_router
+from app.domains.payment.router import router as payment_router
 from app.domains.posts.router import router as posts_router
 from app.domains.users.router import router as users_router
 from app.api.health import router as health_router
@@ -50,8 +52,8 @@ async def allow_options_preflight(request, call_next):
     return await call_next(request)
 
 # CORS
-cors_regex = getattr(settings, "CORS_ALLOW_ORIGIN_REGEX", None)
-cors_origins = getattr(settings, "CORS_ALLOW_ORIGINS", [])
+cors_regex = settings.CORS_ORIGIN_REGEX   # getattr로 잘못된 속성명 쓰던 버그 수정
+cors_origins = settings.cors_origins       # validator 거친 리스트 사용
 
 app.add_middleware(
     CORSMiddleware,
@@ -70,5 +72,8 @@ async def root():
 
 app.include_router(auth_router)
 app.include_router(calendar_router)
+app.include_router(lesson_note_router)
+app.include_router(membership_router)
+app.include_router(payment_router)
 app.include_router(posts_router)
 app.include_router(users_router)

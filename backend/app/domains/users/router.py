@@ -144,6 +144,27 @@ async def update_my_account(
         user.email = data["email"]
     if "display_name" in data and data["display_name"] is not None:
         user.display_name = data["display_name"]
+    if "phone" in data:
+        user.phone = data["phone"]
+    # 강사 프로필 필드
+    if "instructor_location" in data:
+        user.instructor_location = data["instructor_location"]
+    if "instructor_specialties" in data:
+        user.instructor_specialties = data["instructor_specialties"]
+    if "instructor_bio" in data:
+        user.instructor_bio = data["instructor_bio"]
+    if "career_years" in data:
+        user.career_years = data["career_years"]
+    if "certifications" in data:
+        user.certifications = data["certifications"]
+
+    # 고객 프로필 필드
+    if "birth_date" in data:
+        user.birth_date = data["birth_date"]
+    if "gender" in data:
+        user.gender = data["gender"]
+    if "lesson_purpose" in data:
+        user.lesson_purpose = data["lesson_purpose"]
 
     try:
         session.add(user)
@@ -239,11 +260,11 @@ async def get_user_detail(
 async def create_user(
     user_in: UserCreate,
     session: AsyncSession = Depends(get_session),
-    current_user: CurrentUser = Depends(get_current_user)
+    current_user: CurrentUser = Depends(require_role({"ADMIN", "INSTRUCTOR"})),
 ):
     """
-    [신규 고객 등록]
-    - 보안 검사(Depends) 없이 누구나 등록 가능하게 열어두었습니다.
+    [신규 고객 등록] ADMIN 또는 INSTRUCTOR만 호출 가능.
+    강사는 CUSTOMER만 등록 가능하며 자동으로 담당 강사로 지정됨.
     """
     # UUID 생성
     new_id = uuid4()

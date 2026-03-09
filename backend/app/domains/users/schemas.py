@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, date
 from uuid import UUID
 from typing import Optional, List
 from pydantic import BaseModel, EmailStr, ConfigDict
@@ -22,6 +22,20 @@ class UserRead(BaseModel):
     status: str = "ACTIVE"
 
     manager_id: UUID | None = None
+
+    # 강사 전용 필드
+    instructor_tier: str | None = None
+    instructor_location: str | None = None
+    instructor_specialties: str | None = None
+    instructor_bio: str | None = None
+    career_years: int | None = None
+    certifications: str | None = None
+
+    # 고객 전용 필드
+    birth_date: date | None = None
+    gender: str | None = None
+    lesson_purpose: str | None = None
+
     is_active: bool = True
     created_at: datetime
     updated_at: datetime
@@ -49,6 +63,19 @@ class UserUpdate(BaseModel):
     username: str | None = None
     email: EmailStr | None = None
     display_name: str | None = None
+    phone: str | None = None
+
+    # 강사 프로필 필드 (INSTRUCTOR 역할에서만 의미 있음)
+    instructor_location: str | None = None
+    instructor_specialties: str | None = None
+    instructor_bio: str | None = None
+    career_years: int | None = None
+    certifications: str | None = None
+
+    # 고객 프로필 필드
+    birth_date: date | None = None
+    gender: str | None = None
+    lesson_purpose: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 

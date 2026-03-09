@@ -29,6 +29,7 @@ from app.domains.calendar.schemas import (
     TimeSlotUpdate,
     TimeSlotWeekdaysPatch,
     BookingCancelRequest,
+    BookingUpdateRequest,
 )
 
 router = APIRouter()
@@ -402,10 +403,32 @@ async def create_booking(
     if existing.scalar_one_or_none():
         _raise_slot_already_booked(time_slot_id=data.time_slot_id, when=data.when)
 
+    # 멤버십 연결 시 유효성 검증
+    membership_id_to_use = None
+    if data.membership_id and data.type == BookingType.LESSON:
+        from app.domains.membership.models import Membership as MembershipModel
+        mem_res = await session.execute(
+            select(MembershipModel).where(MembershipModel.id == data.membership_id)
+        )
+        membership = mem_res.scalar_one_or_none()
+        if not membership:
+            raise HTTPException(status_code=404, detail="Membership not found")
+        if membership.customer_id != guest_id:
+            raise HTTPException(status_code=403, detail="Membership does not belong to you")
+        if not membership.is_active:
+            raise HTTPException(status_code=400, detail="수강권이 비활성 상태입니다.")
+        if membership.type == "TIMES" and (membership.remaining_count or 0) <= 0:
+            raise HTTPException(status_code=400, detail="잔여 횟수가 없습니다.")
+        from datetime import date as date_type
+        if membership.type == "PERIOD" and membership.expires_at and membership.expires_at < date_type.today():
+            raise HTTPException(status_code=400, detail="수강권이 만료되었습니다.")
+        membership_id_to_use = data.membership_id
+
     booking = Booking(
         when=data.when,
         topic=data.topic,
         description=data.description,
+        membership_id=membership_id_to_use,
         time_slot_id=data.time_slot_id,
         guest_id=guest_id,
         status=initial_status,
@@ -566,6 +589,38 @@ async def decline_booking_as_host(
     return booking
 
 
+@bk_router.patch("/{booking_id}", response_model=BookingRead)
+async def update_booking_as_guest(
+    booking_id: int,
+    body: BookingUpdateRequest,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(require_role({"CUSTOMER", "ADMIN"})),
+):
+    """REQUESTED 상태인 예약의 주제/메모를 수정합니다."""
+    user_id = UUID(str(user.id))
+
+    res = await session.execute(select(Booking).where(Booking.id == booking_id))
+    booking = res.scalar_one_or_none()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if booking.guest_id != user_id:
+        raise HTTPException(status_code=403, detail="Only the guest can modify this booking")
+
+    if booking.status != "REQUESTED":
+        raise HTTPException(status_code=400, detail="Only REQUESTED bookings can be modified")
+
+    if body.topic is not None:
+        booking.topic = body.topic
+    if "description" in body.model_fields_set:
+        booking.description = body.description
+
+    session.add(booking)
+    await session.commit()
+    await session.refresh(booking)
+    return booking
+
+
 @bk_router.patch("/{booking_id}/cancel", response_model=BookingCancelResponse)
 async def cancel_booking_as_guest(
     booking_id: int,
@@ -716,6 +771,102 @@ async def cancel_booking_as_host(
     await session.commit()
     await session.refresh(booking)
     return BookingCancelResponse(id=booking.id, status=booking.status, updated_at=booking.updated_at)
+
+
+@cal_router.patch("/me/bookings/{booking_id}/complete", response_model=BookingRead)
+async def complete_booking_as_host(
+    booking_id: int,
+    session: AsyncSession = Depends(get_session),
+    host: CurrentUser = Depends(require_role({"INSTRUCTOR", "ADMIN"})),
+):
+    """
+    출석 완료 처리: CONFIRMED -> COMPLETED
+    - 멤버십(TIMES 타입) 연결된 경우 remaining_count 자동 차감
+    """
+    from app.domains.membership.models import Membership as MembershipModel
+
+    host_id = UUID(str(host.id))
+    host_role = ((getattr(host, "role", None) or "").strip()).upper()
+
+    res = await session.execute(select(Booking).where(Booking.id == booking_id))
+    booking = res.scalar_one_or_none()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    # 강사는 본인 캘린더 예약만
+    if host_role != "ADMIN":
+        ts_res = await session.execute(select(TimeSlot).where(TimeSlot.id == booking.time_slot_id))
+        ts = ts_res.scalar_one_or_none()
+        if not ts:
+            raise HTTPException(status_code=404, detail="TimeSlot not found")
+        cal_res = await session.execute(select(Calendar).where(Calendar.id == ts.calendar_id))
+        calendar = cal_res.scalar_one_or_none()
+        if not calendar or UUID(str(calendar.host_id)) != host_id:
+            raise HTTPException(status_code=403, detail="You can complete bookings only in your calendar")
+
+    if booking.status == "COMPLETED":
+        return booking
+    if booking.status != "CONFIRMED":
+        raise HTTPException(status_code=400, detail=f"Only CONFIRMED bookings can be completed (current: {booking.status})")
+
+    booking.status = "COMPLETED"
+    session.add(booking)
+
+    # 멤버십 차감 (TIMES 타입)
+    if booking.membership_id:
+        mem_res = await session.execute(
+            select(MembershipModel).where(MembershipModel.id == booking.membership_id)
+        )
+        membership = mem_res.scalar_one_or_none()
+        if membership and membership.type == "TIMES" and membership.remaining_count is not None:
+            membership.remaining_count = max(0, membership.remaining_count - 1)
+            if membership.remaining_count == 0:
+                membership.is_active = False
+            session.add(membership)
+
+    await session.commit()
+    await session.refresh(booking)
+    return booking
+
+
+@cal_router.patch("/me/bookings/{booking_id}/no-show", response_model=BookingRead)
+async def no_show_booking_as_host(
+    booking_id: int,
+    session: AsyncSession = Depends(get_session),
+    host: CurrentUser = Depends(require_role({"INSTRUCTOR", "ADMIN"})),
+):
+    """
+    노쇼 처리: CONFIRMED -> NO_SHOW
+    - 멤버십 차감 여부는 정책에 따라 강사가 직접 결정 (자동 차감 없음)
+    """
+    host_id = UUID(str(host.id))
+    host_role = ((getattr(host, "role", None) or "").strip()).upper()
+
+    res = await session.execute(select(Booking).where(Booking.id == booking_id))
+    booking = res.scalar_one_or_none()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if host_role != "ADMIN":
+        ts_res = await session.execute(select(TimeSlot).where(TimeSlot.id == booking.time_slot_id))
+        ts = ts_res.scalar_one_or_none()
+        if not ts:
+            raise HTTPException(status_code=404, detail="TimeSlot not found")
+        cal_res = await session.execute(select(Calendar).where(Calendar.id == ts.calendar_id))
+        calendar = cal_res.scalar_one_or_none()
+        if not calendar or UUID(str(calendar.host_id)) != host_id:
+            raise HTTPException(status_code=403, detail="You can mark no-show only in your calendar")
+
+    if booking.status == "NO_SHOW":
+        return booking
+    if booking.status != "CONFIRMED":
+        raise HTTPException(status_code=400, detail=f"Only CONFIRMED bookings can be marked NO_SHOW (current: {booking.status})")
+
+    booking.status = "NO_SHOW"
+    session.add(booking)
+    await session.commit()
+    await session.refresh(booking)
+    return booking
 
 
 # 스마트폰 캘린더용 .ics 파일 다운로드

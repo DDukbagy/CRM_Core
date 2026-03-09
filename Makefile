@@ -33,7 +33,7 @@ NAME ?= crm-backend
 .PHONY: help
 help: ## Show this help
 	@echo "Available targets:"
-	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_.-]+:.*##/ {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_]+:.*##/ {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 .PHONY: _require
 _require:
@@ -61,6 +61,14 @@ frontend: ## Run Next.js dev server (auto cd if needed, clear .next cache)
 		npm run dev; \
 	fi
 
+.PHONY: cweb
+cweb: ## Run customer Expo app in browser (web)
+	@cd apps/customer && npx expo start --web
+
+.PHONY: ctunnel
+ctunnel: ## Run customer Expo app with tunnel (QR code for real device)
+	@cd apps/customer && npx expo start --tunnel
+
 .PHONY: server
 server: ## Run backend server (reload)
 	@cd backend && poetry run uvicorn $(APP) --reload --host $(HOST) --port $(PORT)
@@ -69,8 +77,8 @@ server: ## Run backend server (reload)
 verify: ## One-click verify (auto start server if needed + tokens + flow)
 	@cd backend && ./scripts/verify.sh
 
-.PHONY: verify-setup
-verify-setup: ## chmod +x scripts/verify.sh (first time only)
+.PHONY: verifysetup
+verifysetup: ## chmod +x scripts/verify.sh (first time only)
 	@cd backend && chmod +x scripts/verify.sh
 
 # -----------------------------
@@ -87,47 +95,56 @@ flow: ## Run flow (assumes server is running and tokens are available inside scr
 # -----------------------------
 # Docker (dev/prod)
 # -----------------------------
-.PHONY: docker-dev-build
-docker-dev-build: ## Build dev image (Dockerfile.dev)
+.PHONY: ddbuild
+ddbuild: ## Build dev Docker image (Dockerfile.dev)
 	@cd backend && docker build -f Dockerfile.dev -t $(DEV_IMAGE) .
 
-.PHONY: docker-dev-run
-docker-dev-run: ## Run dev image on :8000 using .env
+.PHONY: ddrun
+ddrun: ## Run dev Docker image on :8000 using .env
 	@cd backend && docker run --rm -p $(PORT):8000 --env-file $(ENV_FILE) $(DEV_IMAGE)
 
-.PHONY: docker-prod-build
-docker-prod-build: ## Build prod image (Dockerfile)
+.PHONY: dpbuild
+dpbuild: ## Build prod Docker image (Dockerfile)
 	@cd backend && docker build -t $(PROD_IMAGE) .
 
-.PHONY: docker-prod-run
-docker-prod-run: ## Run prod image on :8000 using .env
+.PHONY: dprun
+dprun: ## Run prod Docker image on :8000 using .env
 	@cd backend && docker run --rm -p $(PORT):8000 --env-file $(ENV_FILE) $(PROD_IMAGE)
+
+.PHONY: dps
+dps: ## List containers filtered by name (usage: make dps NAME=crm-backend)
+	docker ps -a --filter name=$(NAME)
+
+.PHONY: dstop
+dstop: ## Stop container by ID or name (usage: make dstop ID=<container_id_or_name>)
+	@$(call require_var,ID)
+	docker stop "$(ID)"
 
 # -----------------------------
 # Alembic migrations
 # -----------------------------
-.PHONY: mig-new
-mig-new: ## Create new migration (usage: make mig-new M="message")
+.PHONY: mignew
+mignew: ## Create new migration (usage: make mignew M="message")
 	@$(call require_var,M)
 	@cd backend && poetry run alembic revision --autogenerate -m "$(M)"
 
-.PHONY: mig-up
-mig-up: ## Upgrade to head
+.PHONY: migup
+migup: ## Upgrade to head
 	@cd backend && poetry run alembic upgrade head
 
-.PHONY: mig-current
-mig-current: ## Show current migration
+.PHONY: migcur
+migcur: ## Show current migration
 	@cd backend && poetry run alembic current
 
-.PHONY: mig-heads
-mig-heads: ## Show heads
+.PHONY: migheads
+migheads: ## Show heads
 	@cd backend && poetry run alembic heads
 
 # -----------------------------
 # CI trigger
 # -----------------------------
-.PHONY: ci-trigger
-ci-trigger: ## Trigger CI with empty commit (then push)
+.PHONY: citrigger
+citrigger: ## Trigger CI with empty commit (then push)
 	git commit --allow-empty -m "chore: trigger ci"
 	git push
 
@@ -146,78 +163,72 @@ grep: ## Search string (usage: make grep Q="text")
 # -----------------------------
 # AWS tools install/check
 # -----------------------------
-.PHONY: aws-tools
-aws-tools: ## Install AWS tools via script
+.PHONY: awstools
+awstools: ## Install AWS tools via script
 	@cd backend && ./scripts/install_aws_tools.sh
 
-.PHONY: aws-check
-aws-check: ## Check aws/copilot versions (and hint PATH if missing)
+.PHONY: awscheck
+awscheck: ## Check aws/copilot versions (and hint PATH if missing)
 	@set -e; \
 	if command -v aws >/dev/null 2>&1; then aws --version; else echo "aws: command not found (try: export PATH=\"$$HOME/.local/bin:$$PATH\")"; fi; \
 	if command -v copilot >/dev/null 2>&1; then copilot --version; else echo "copilot: command not found (try: export PATH=\"$$HOME/.local/bin:$$PATH\")"; fi
 
-# -----------------------------
-# Docker process helpers
-# -----------------------------
-.PHONY: docker-ps
-docker-ps: ## List containers filtered by name (usage: make docker-ps NAME=crm-backend)
-	docker ps -a --filter name=$(NAME)
-
-.PHONY: docker-stop
-docker-stop: ## Stop container by ID or name (usage: make docker-stop ID=<container_id_or_name>)
-	@$(call require_var,ID)
-	docker stop "$(ID)"
-
-.PHONY: aws-whoami
-aws-whoami: ## Check current AWS identity
+.PHONY: awswho
+awswho: ## Check current AWS identity
 	aws sts get-caller-identity
 
-.PHONY: copilot-envs
-copilot-envs: ## List copilot environments
+# -----------------------------
+# Copilot
+# -----------------------------
+.PHONY: cpenvs
+cpenvs: ## List copilot environments
 	@cd backend && copilot env ls
 
-.PHONY: copilot-status-staging
-copilot-status-staging: ## Show staging service status
+.PHONY: stgstatus
+stgstatus: ## Show staging service status
 	@cd backend && copilot svc status --name api --env staging
 
-.PHONY: copilot-status-prod
-copilot-status-prod: ## Show prod service status
+.PHONY: prodstatus
+prodstatus: ## Show prod service status
 	@cd backend && copilot svc status --name api --env prod
 
-.PHONY: copilot-deploy-staging
-copilot-deploy-staging: ## Manually deploy to staging
+.PHONY: stgdeploy
+stgdeploy: ## Manually deploy to staging
 	@cd backend && copilot svc deploy --name api --env staging
 
-.PHONY: copilot-deploy-prod
-copilot-deploy-prod: ## Manually deploy to prod (use with caution)
+.PHONY: proddeploy
+proddeploy: ## Manually deploy to prod (use with caution)
 	@cd backend && copilot svc deploy --name api --env prod
 
-.PHONY: copilot-logs-staging
-copilot-logs-staging: ## Follow staging logs
+.PHONY: stglogs
+stglogs: ## Follow staging logs
 	@cd backend && copilot svc logs --name api --env staging --follow
 
-.PHONY: copilot-logs-prod
-copilot-logs-prod: ## Follow prod logs
+.PHONY: prodlogs
+prodlogs: ## Follow prod logs
 	@cd backend && copilot svc logs --name api --env prod --follow
 
-.PHONY: copilot-exec-staging
-copilot-exec-staging: ## Exec into staging task
+.PHONY: stgexec
+stgexec: ## Exec into staging task
 	@cd backend && copilot svc exec --name api --env staging
 
-.PHONY: check-db
-check-db: ## Check database connection status
+# -----------------------------
+# DB helpers
+# -----------------------------
+.PHONY: checkdb
+checkdb: ## Check database connection status
 	@cd backend && poetry run python -m scripts.check_db_connection
 
-.PHONY: check-schema
-check-schema: ## Verify if database tables and columns are created correctly
+.PHONY: checkschema
+checkschema: ## Verify if database tables and columns are created correctly
 	@cd backend && poetry run python -m scripts.check_schema
 
-.PHONY: reset-db
-reset-db: ## db reset
+.PHONY: resetdb
+resetdb: ## db reset
 	@cd backend && poetry run python -m scripts.reset_db
 
-.PHONY: smoke-booking
-smoke-booking:
+.PHONY: smokebook
+smokebook: ## Run smoke booking test
 	@set -e; \
 	if [ -f "backend/scripts/smoke_booking.sh" ]; then \
 		bash backend/scripts/smoke_booking.sh; \
@@ -227,6 +238,9 @@ smoke-booking:
 		exit 1; \
 	fi
 
+# -----------------------------
+# Release / Branch / Rollback
+# -----------------------------
 .PHONY: release
 release: ## Interactive: switch to main, pull, tag & push; then return to previous ref
 	@set -e; \
@@ -243,8 +257,8 @@ release: ## Interactive: switch to main, pull, tag & push; then return to previo
 		else \
 			git switc
 
-.PHONY: branch-reset
-branch-reset: ## Switch to staging, pull latest, delete local+remote branch, create new branch (interactive)
+.PHONY: breset
+breset: ## Switch to staging, pull latest, delete local+remote branch, create new branch (interactive)
 	@bash -eu -o pipefail -c '\
 		# 1. 현재 상태 확인 및 Main 브랜치 동기화 \
 		echo "==> Current branch:"; \
@@ -312,8 +326,8 @@ branch-reset: ## Switch to staging, pull latest, delete local+remote branch, cre
 		echo "Done. Now on branch: $$(git rev-parse --abbrev-ref HEAD)"; \
 	'
 
-.PHONY: rollback-dry
-rollback-dry: ## [Safe] Simulate rollback: Show file changes without modifying anything
+.PHONY: rollbackdry
+rollbackdry: ## [Safe] Simulate rollback: Show file changes without modifying anything
 	@bash -eu -o pipefail -c '\
 		echo "🔍 [DRY RUN] checking rollback diff..."; \
 		# 1. Main 최신화 (변경사항 없이 확인만) \
@@ -383,8 +397,11 @@ rollback: ## [Danger] Rollback Main branch to specific Tag/Commit (Triggers Depl
 		echo "✅ Rollback initiated successfully!"; \
 	'
 
-.PHONY: alarms-prod-dim
-alarms-prod-dim: ## Print PROD ALB/TG suffix (for CloudWatch dimensions)
+# -----------------------------
+# CloudWatch alarm dimensions
+# -----------------------------
+.PHONY: alarmprod
+alarmprod: ## Print PROD ALB/TG suffix (for CloudWatch dimensions)
 	@bash -eu -o pipefail -c '\
 		STACK_NAME="$$(aws cloudformation list-stacks \
 		  --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE UPDATE_ROLLBACK_COMPLETE \
@@ -407,8 +424,8 @@ alarms-prod-dim: ## Print PROD ALB/TG suffix (for CloudWatch dimensions)
 		echo "PROD_TG_SUFFIX=$$PROD_TG_SUFFIX"; \
 	'
 
-.PHONY: alarms-stg-dim
-alarms-stg-dim: ## Print STAGING ALB/TG suffix (for CloudWatch dimensions)
+.PHONY: alarmstg
+alarmstg: ## Print STAGING ALB/TG suffix (for CloudWatch dimensions)
 	@bash -eu -o pipefail -c '\
 		STACK_NAME="$$(aws cloudformation list-stacks \
 		  --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE UPDATE_ROLLBACK_COMPLETE \

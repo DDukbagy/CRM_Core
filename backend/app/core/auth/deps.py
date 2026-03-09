@@ -3,6 +3,9 @@ from __future__ import annotations
 import base64
 import json
 import secrets
+import os
+import hashlib
+import logging
 from dataclasses import dataclass
 from typing import Optional, Any
 from urllib.parse import unquote
@@ -24,10 +27,15 @@ from app.core.auth.supabase_jwt import (
     verify_supabase_access_token,
 )
 from app.domains.users.models import User
-from app.security import SECRET_KEY as LOCAL_SECRET_KEY, ALGORITHM as LOCAL_ALGORITHM
 
 bearer = HTTPBearer(auto_error=False)
 bearer_optional = HTTPBearer(auto_error=False)
+
+logger = logging.getLogger("auth")
+
+# local HS256 JWT (backend issued token) verification settings
+LOCAL_SECRET_KEY = settings.SECRET_KEY.get_secret_value()
+LOCAL_ALGORITHM = settings.ALGORITHM
 
 
 @dataclass
@@ -123,23 +131,28 @@ def _get_supabase_cookie_access_token(request: Request) -> Optional[str]:
                 return token
     return None
 
+
 # Token verification
 def _verify_local_hs256_token(token: str) -> dict:
-    """
-    (옵션) /users/login/access-token 등에서 발급한 로컬 HS256 JWT 검증
-    - 현재 프론트는 Supabase를 쓰지만, “간섭 최소/전환 대비”로 fallback 유지
-    """
     if not LOCAL_SECRET_KEY:
+        logger.error("local jwt verify: missing LOCAL_SECRET_KEY")
         raise HTTPException(status_code=401, detail="Invalid token")
+
+    key = LOCAL_SECRET_KEY
+    alg = LOCAL_ALGORITHM
+
+    # 키 자체는 노출 금지: 길이/해시만
+    key_sig = hashlib.sha256(key.encode("utf-8")).hexdigest()[:8]
+    logger.info("local jwt verify: alg=%s key_len=%s key_sig=%s token_prefix=%s",
+                alg, len(key), key_sig, token[:10])
+
     try:
         payload = jose_jwt.decode(token, LOCAL_SECRET_KEY, algorithms=[LOCAL_ALGORITHM])
-    except JWTError:
+        logger.info("local jwt verify: ok sub=%s", payload.get("sub"))
+        return payload
+    except Exception as e:
+        logger.exception("local jwt verify: FAIL (%s)", type(e).__name__)
         raise HTTPException(status_code=401, detail="Invalid token")
-
-    if not payload.get("sub"):
-        raise HTTPException(status_code=401, detail="Invalid token: missing sub")
-
-    return payload
 
 
 async def verify_any_access_token(token: str) -> dict:

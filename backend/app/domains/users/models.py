@@ -1,9 +1,9 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from typing import TYPE_CHECKING, Optional, List
 from uuid import UUID
 
 from pydantic import EmailStr, AwareDatetime
-from sqlalchemy import UniqueConstraint, String
+from sqlalchemy import UniqueConstraint, String, Text, SmallInteger, Date
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlmodel import SQLModel, Field, Relationship, func
 from sqlalchemy_utc import UtcDateTime
@@ -55,6 +55,71 @@ class User(SQLModel, table=True):
         sa_type=PGUUID(as_uuid=True),
         foreign_key="users.id",
         description="담당 강사/관리자 ID"
+    )
+
+    instructor_tier: Optional[str] = Field(
+        default="NORMAL",
+        sa_type=String(10),
+        nullable=True,
+        description="강사 등급: NORMAL(무료 매칭) | NAMED(유료 매칭)",
+    )
+
+    instructor_location: Optional[str] = Field(
+        default=None,
+        sa_type=String(50),
+        nullable=True,
+        description="강사 활동 지역",
+    )
+
+    instructor_specialties: Optional[str] = Field(
+        default=None,
+        sa_type=String(255),
+        nullable=True,
+        description="레슨 스타일/전문 분야 (콤마 구분)",
+    )
+
+    instructor_bio: Optional[str] = Field(
+        default=None,
+        sa_type=Text,
+        nullable=True,
+        description="강사 소개글",
+    )
+
+    # ── 강사 추가 정보 ────────────────────────────
+    career_years: Optional[int] = Field(
+        default=None,
+        sa_type=SmallInteger,
+        nullable=True,
+        description="강사 경력 연수",
+    )
+
+    certifications: Optional[str] = Field(
+        default=None,
+        sa_type=Text,
+        nullable=True,
+        description="강사 자격증 (콤마 구분)",
+    )
+
+    # ── 고객 추가 정보 ────────────────────────────
+    birth_date: Optional[date] = Field(
+        default=None,
+        sa_type=Date,
+        nullable=True,
+        description="고객 생년월일",
+    )
+
+    gender: Optional[str] = Field(
+        default=None,
+        sa_type=String(10),
+        nullable=True,
+        description="성별 (MALE / FEMALE / OTHER)",
+    )
+
+    lesson_purpose: Optional[str] = Field(
+        default=None,
+        sa_type=Text,
+        nullable=True,
+        description="레슨 목적/목표",
     )
 
     is_active: bool = Field(

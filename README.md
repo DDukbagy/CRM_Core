@@ -1,9 +1,3 @@
-# 해결 할 일
-1. 파일복구
-2. env 값
-3. branch 복구
-4. 여러가지 해결
-
 # 🏢 CRM Core System
 
 이 프로젝트는 기업용 CRM 시스템의 모노레포(Monorepo)입니다.
