@@ -23,14 +23,23 @@ const HOUR_H = 64;
 const TIME_LABEL_W = 52;
 
 const STATUS_COLOR: Record<string, string> = {
-  REQUESTED: "#f59e0b", CONFIRMED: "#10b981", CANCELLED: "#ef4444", COMPLETED: "#6b7280",
+  REQUESTED: "#f59e0b", CONFIRMED: "#10b981", CANCEL_REQUESTED: "#f97316",
+  CANCELLED: "#ef4444", COMPLETED: "#6b7280",
 };
 const STATUS_LABEL: Record<string, string> = {
-  REQUESTED: "신청됨", CONFIRMED: "확정", CANCELLED: "취소됨", COMPLETED: "완료",
+  REQUESTED: "신청됨", CONFIRMED: "확정", CANCEL_REQUESTED: "취소 신청중",
+  CANCELLED: "취소됨", COMPLETED: "완료",
 };
 const CHIP_BG: Record<string, string> = {
-  REQUESTED: "#fff7ed", CONFIRMED: "#f0fdf4", CANCELLED: "#fef2f2", COMPLETED: "#f9fafb",
+  REQUESTED: "#fff7ed", CONFIRMED: "#f0fdf4", CANCEL_REQUESTED: "#fff7ed",
+  CANCELLED: "#fef2f2", COMPLETED: "#f9fafb",
 };
+
+function bookingLabel(b: BookingRead): string {
+  if (b.status === "REQUESTED") return "신청 대기중";
+  if (b.status === "CANCELLED") return b.cancel_reason ?? "취소됨";
+  return b.topic ?? "";
+}
 
 function toDateStr(y: number, m: number, d: number) {
   return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
@@ -83,7 +92,7 @@ function MonthGrid({
           {week.map((day, di) => {
             if (!day) return <View key={di} style={mg.cell} />;
             const ds = toDateStr(year, month, day);
-            const bk = bookings.filter(b => b.when === ds && b.status !== "CANCELLED");
+            const bk = bookings.filter(b => b.when === ds);
             const isToday = ds === today;
             const isSelected = ds === selectedDate;
             return (
@@ -96,7 +105,7 @@ function MonthGrid({
                 {bk.slice(0, 2).map(b => (
                   <View key={b.id} style={[mg.chip, { backgroundColor: CHIP_BG[b.status] }]}>
                     <Text style={[mg.chipTxt, { color: STATUS_COLOR[b.status] }]} numberOfLines={1}>
-                      {b.topic}
+                      {bookingLabel(b)}
                     </Text>
                   </View>
                 ))}
@@ -147,11 +156,23 @@ function DayPanel({
 }) {
   const [slotPickerVisible, setSlotPickerVisible] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
+  const isToday = date === today;
   const isPast = date < today;
 
+  // 중복 시간대 제거 + 시간순 정렬
+  const seen = new Set<string>();
+  const uniqueSlots = slots
+    .filter(s => {
+      const key = `${s.start_time}-${s.end_time}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => a.start_time.localeCompare(b.start_time));
+
   function handleBookingPress() {
-    if (slots.length === 1) {
-      onAddSlot(slots[0]);
+    if (uniqueSlots.length === 1) {
+      onAddSlot(uniqueSlots[0]);
     } else {
       setSlotPickerVisible(v => !v);
     }
@@ -173,14 +194,14 @@ function DayPanel({
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-        {bookings.length === 0 && slots.length === 0 ? (
+        {bookings.length === 0 && uniqueSlots.length === 0 ? (
           <Text style={dp.empty}>이 날은 예약 내역이 없습니다</Text>
         ) : null}
 
         {bookings.map(b => (
           <Pressable key={b.id} style={[dp.row, { borderLeftColor: STATUS_COLOR[b.status] }]} onPress={() => onSelectBooking(b)}>
             <View style={{ flex: 1 }}>
-              <Text style={dp.topic}>{b.topic}</Text>
+              <Text style={dp.topic}>{bookingLabel(b)}</Text>
               <Text style={dp.meta}>{b.type === "LESSON" ? "레슨" : "상담"}</Text>
             </View>
             <View style={[dp.badge, { backgroundColor: STATUS_COLOR[b.status] + "20" }]}>
@@ -192,11 +213,11 @@ function DayPanel({
         ))}
 
         {/* 시간대 선택 (슬롯 여러 개일 때 펼침) */}
-        {slotPickerVisible && slots.length > 1 && (
+        {slotPickerVisible && uniqueSlots.length > 1 && (
           <>
             <Text style={dp.slotTitle}>시간대 선택</Text>
             <View style={dp.slotsRow}>
-              {slots.map(slot => (
+              {uniqueSlots.map(slot => (
                 <Pressable key={slot.time_slot_id} style={dp.slotChip} onPress={() => { setSlotPickerVisible(false); onAddSlot(slot); }}>
                   <Text style={dp.slotTime}>{fmtTime(slot.start_time)}</Text>
                   <Text style={dp.slotSub}>~ {fmtTime(slot.end_time)}</Text>
@@ -212,11 +233,15 @@ function DayPanel({
         <View style={dp.bookBtnDisabled}>
           <Text style={dp.bookBtnTxtDisabled}>지난 날짜입니다</Text>
         </View>
+      ) : isToday ? (
+        <View style={dp.bookBtnDisabled}>
+          <Text style={dp.bookBtnTxtDisabled}>당일 예약은 불가능합니다</Text>
+        </View>
       ) : !managerId ? (
         <View style={dp.bookBtnDisabled}>
           <Text style={dp.bookBtnTxtDisabled}>담당 강사가 지정되지 않았습니다</Text>
         </View>
-      ) : slots.length === 0 ? (
+      ) : uniqueSlots.length === 0 ? (
         <View style={dp.bookBtnDisabled}>
           <Text style={dp.bookBtnTxtDisabled}>강사의 레슨 없는 날입니다</Text>
         </View>
@@ -474,7 +499,6 @@ export default function ScheduleScreen() {
   // 예약 신청 모달
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<AvailabilitySlot | null>(null);
-  const [topic, setTopic] = useState("");
   const [descText, setDescText] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -546,19 +570,23 @@ export default function ScheduleScreen() {
   }
 
   function openBookingModal(slot: AvailabilitySlot) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (selectedDate <= today) {
+      Alert.alert("알림", "당일 및 지난 날짜는 예약 신청이 불가합니다.");
+      return;
+    }
     setSelectedSlot(slot);
-    setTopic(""); setDescText("");
+    setDescText("");
     setModalVisible(true);
   }
 
   async function submitBooking() {
-    if (!topic.trim()) { Alert.alert("확인", "수업 주제를 입력해주세요."); return; }
     if (!selectedSlot || !selectedDate) return;
     setSubmitting(true);
     try {
       const body: BookingCreate = {
         time_slot_id: selectedSlot.time_slot_id,
-        when: selectedDate, topic: topic.trim(),
+        when: selectedDate,
         description: descText.trim() || undefined, type: "LESSON",
       };
       await apiFetch("/bookings", { method: "POST", body });
@@ -591,8 +619,8 @@ export default function ScheduleScreen() {
         />
         <BookingModal
           visible={modalVisible} slot={selectedSlot} date={selectedDate}
-          topic={topic} desc={descText} submitting={submitting}
-          onTopic={setTopic} onDesc={setDescText}
+          desc={descText} submitting={submitting}
+          onDesc={setDescText}
           onClose={() => setModalVisible(false)} onSubmit={submitBooking}
         />
         <BookingDetailModal
@@ -643,7 +671,7 @@ export default function ScheduleScreen() {
         <Animated.View style={[s.panelOverlay, { transform: [{ translateY: panelAnim }] }]}>
           <DayPanel
             date={selectedDate}
-            bookings={myBookings.filter(b => b.when === selectedDate && b.status !== "CANCELLED")}
+            bookings={myBookings.filter(b => b.when === selectedDate)}
             slots={availability[selectedDate] ?? []}
             managerId={managerId}
             onAddSlot={(slot) => openBookingModal(slot)}
@@ -656,8 +684,8 @@ export default function ScheduleScreen() {
 
       <BookingModal
         visible={modalVisible} slot={selectedSlot} date={selectedDate}
-        topic={topic} desc={descText} submitting={submitting}
-        onTopic={setTopic} onDesc={setDescText}
+        desc={descText} submitting={submitting}
+        onDesc={setDescText}
         onClose={() => setModalVisible(false)} onSubmit={submitBooking}
       />
       <BookingDetailModal
@@ -680,10 +708,10 @@ export default function ScheduleScreen() {
 }
 
 // ─── 예약 신청 모달 (공통) ───────────────────────────────
-function BookingModal({ visible, slot, date, topic, desc, submitting, onTopic, onDesc, onClose, onSubmit }: {
+function BookingModal({ visible, slot, date, desc, submitting, onDesc, onClose, onSubmit }: {
   visible: boolean; slot: AvailabilitySlot | null; date: string;
-  topic: string; desc: string; submitting: boolean;
-  onTopic: (v: string) => void; onDesc: (v: string) => void;
+  desc: string; submitting: boolean;
+  onDesc: (v: string) => void;
   onClose: () => void; onSubmit: () => void;
 }) {
   return (
@@ -696,13 +724,11 @@ function BookingModal({ visible, slot, date, topic, desc, submitting, onTopic, o
               {date} · {fmtTime(slot.start_time)} ~ {fmtTime(slot.end_time)}
             </Text>
           )}
-          <Text style={bm.label}>수업 주제 *</Text>
-          <TextInput value={topic} onChangeText={onTopic} placeholder="예: 드라이버 자세 교정" style={bm.input} />
-          <Text style={bm.label}>메모 (선택)</Text>
+          <Text style={bm.label}>강사에게 메모</Text>
           <TextInput
             value={desc} onChangeText={onDesc}
-            placeholder="강사에게 전달할 내용" multiline numberOfLines={3}
-            style={[bm.input, { height: 80, textAlignVertical: "top" }]}
+            placeholder="전달할 내용을 자유롭게 입력하세요" multiline numberOfLines={4}
+            style={[bm.input, { height: 100, textAlignVertical: "top" }]}
           />
           <View style={bm.btns}>
             <Pressable style={bm.cancelBtn} onPress={onClose}>
@@ -767,6 +793,7 @@ function BookingDetailModal({ visible, booking, slotTimeMap, instructorName, onC
   const slot = slotTimeMap[booking.time_slot_id];
   const canWithdraw = booking.status === "REQUESTED";
   const canCancel = booking.status === "CONFIRMED";
+  const canCancelRequest = booking.status === "CANCEL_REQUESTED";
   const canEdit = booking.status === "REQUESTED";
 
   function startEdit() {
@@ -799,9 +826,30 @@ function BookingDetailModal({ visible, booking, slotTimeMap, instructorName, onC
     setSubmitting(true);
     try {
       const res = await apiFetch<{ id: number; status: string; updated_at: string }>(endpoint, { method: "PATCH" });
-      onCancelled(res.id);
+      if (res.status === "CANCELLED") {
+        // 철회(withdraw) → 완전 취소
+        onCancelled(res.id);
+      } else {
+        // 취소 신청(cancel) → CANCEL_REQUESTED 상태로 UI 갱신
+        Alert.alert("알림", "취소 신청이 완료되었습니다.\n강사 승인 후 취소됩니다.");
+        onUpdated({ ...booking!, status: res.status as BookingRead["status"], updated_at: res.updated_at });
+      }
     } catch (e: any) {
-      Alert.alert("오류", e?.message ?? "처리에 실패했습니다.");
+      const msg = (e as any)?.body?.error?.message ?? (e as any)?.body?.detail ?? e?.message ?? "처리에 실패했습니다.";
+      Alert.alert("오류", typeof msg === "string" ? msg : JSON.stringify(msg));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleWithdrawCancel() {
+    setSubmitting(true);
+    try {
+      const res = await apiFetch<BookingRead>(`/bookings/${booking!.id}/withdraw-cancel`, { method: "PATCH" });
+      onUpdated(res);
+    } catch (e: any) {
+      const msg = (e as any)?.body?.error?.message ?? (e as any)?.body?.detail ?? e?.message ?? "처리에 실패했습니다.";
+      Alert.alert("오류", typeof msg === "string" ? msg : JSON.stringify(msg));
     } finally {
       setSubmitting(false);
     }
@@ -884,6 +932,20 @@ function BookingDetailModal({ visible, booking, slotTimeMap, instructorName, onC
                 </Pressable>
               )}
 
+              {canCancelRequest && (
+                <>
+                  <View style={dm.cancelRequestedBox}>
+                    <Text style={dm.cancelRequestedTxt}>취소 신청 중입니다 — 강사 승인 대기</Text>
+                  </View>
+                  <Pressable
+                    style={[dm.withdrawCancelBtn, submitting && { opacity: 0.6 }]}
+                    onPress={handleWithdrawCancel}
+                    disabled={submitting}
+                  >
+                    <Text style={dm.withdrawCancelTxt}>{submitting ? "처리 중..." : "취소 신청 철회"}</Text>
+                  </Pressable>
+                </>
+              )}
               {(canCancel || canWithdraw) && (
                 <Pressable
                   style={[dm.actionBtn, submitting && { opacity: 0.6 }]}
@@ -891,7 +953,7 @@ function BookingDetailModal({ visible, booking, slotTimeMap, instructorName, onC
                   disabled={submitting}
                 >
                   <Text style={dm.actionTxt}>
-                    {submitting ? "처리 중..." : canWithdraw ? "신청 철회" : "예약 취소"}
+                    {submitting ? "처리 중..." : canWithdraw ? "신청 철회" : "취소 신청"}
                   </Text>
                 </Pressable>
               )}
@@ -926,6 +988,10 @@ const dm = StyleSheet.create({
   editBtnTxt: { textAlign: "center", color: "#1d4ed8", fontWeight: "700", fontSize: 15 },
   actionBtn: { backgroundColor: "#fee2e2", padding: 14, borderRadius: 12 },
   actionTxt: { textAlign: "center", color: "#ef4444", fontWeight: "700", fontSize: 15 },
+  cancelRequestedBox: { backgroundColor: "#fff7ed", borderWidth: 1, borderColor: "#f97316", borderRadius: 12, padding: 14, marginBottom: 8 },
+  cancelRequestedTxt: { textAlign: "center", color: "#c2410c", fontWeight: "600", fontSize: 14 },
+  withdrawCancelBtn: { backgroundColor: "#f3f4f6", padding: 14, borderRadius: 12, marginBottom: 10 },
+  withdrawCancelTxt: { textAlign: "center", color: "#374151", fontWeight: "700", fontSize: 15 },
   editForm: { gap: 0 },
   editLabel: { fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6, marginTop: 16 },
   editInput: { borderWidth: 1, borderColor: "#d1d5db", borderRadius: 10, padding: 12, fontSize: 15, backgroundColor: "#fff" },

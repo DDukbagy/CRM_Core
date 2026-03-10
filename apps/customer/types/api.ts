@@ -55,13 +55,13 @@ export interface MembershipRead {
   updated_at: string;
 }
 
-export type BookingStatus = "REQUESTED" | "CONFIRMED" | "CANCELLED" | "COMPLETED" | "NO_SHOW";
+export type BookingStatus = "REQUESTED" | "CONFIRMED" | "CANCEL_REQUESTED" | "CANCELLED" | "COMPLETED" | "NO_SHOW";
 export type BookingType = "LESSON";
 
 export interface BookingRead {
   id: number;
   when: string; // date string YYYY-MM-DD
-  topic: string;
+  topic: string | null;
   status: BookingStatus;
   type: BookingType;
   description: string | null;
@@ -75,7 +75,7 @@ export interface BookingRead {
 export interface BookingCreate {
   time_slot_id: number;
   when: string; // date string YYYY-MM-DD
-  topic: string;
+  topic?: string;
   description?: string;
   type?: BookingType;
 }
