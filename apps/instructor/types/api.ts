@@ -37,16 +37,19 @@ export interface MembershipRead {
   updated_at: string;
 }
 
+export type BookingStatus = "REQUESTED" | "CONFIRMED" | "CANCEL_REQUESTED" | "CANCELLED" | "COMPLETED" | "NO_SHOW";
+
 export interface BookingRead {
   id: number;
   when: string;
   topic: string | null;
   description: string | null;
-  status: string;
+  status: BookingStatus;
   type: string;
   guest_id: string;
   time_slot_id: number;
   membership_id: string | null;
+  cancel_reason: string | null;
   created_at: string;
   updated_at: string;
 }
