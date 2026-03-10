@@ -1,0 +1,4 @@
+# env 파일 (실제 값이 담긴 파일 - 절대 커밋 금지)
+.env
+.env.*
+!.env.example
