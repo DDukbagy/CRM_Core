@@ -1,50 +1,78 @@
-# Welcome to your Expo app 👋
+# Customer App — 고객 모바일 앱 (Expo)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+CRM Core의 고객용 모바일 앱입니다.
+Expo + React Native + Expo Router + Supabase Auth 기반.
+iOS·Android·Web(브라우저) 모두 지원합니다.
 
-## Get started
+---
 
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Quick Start
 
 ```bash
-npm run reset-project
+cd apps/customer
+npm install
+npx expo start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+터미널 출력에서 플랫폼을 선택합니다.
+- `i` → iOS 시뮬레이터
+- `a` → Android 에뮬레이터
+- `w` → 웹 브라우저
 
-## Learn more
+---
 
-To learn more about developing your project with Expo, look at the following resources:
+## 환경변수
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+`.env.local` 파일을 생성합니다.
 
-## Join the community
+```
+EXPO_PUBLIC_API_BASE_URL=http://localhost:8000
+EXPO_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+```
 
-Join our community of developers creating universal apps.
+---
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## 기술 스택
+
+| 역할 | 라이브러리 |
+|------|-----------|
+| 프레임워크 | Expo SDK · React Native |
+| 라우팅 | Expo Router (파일 기반) |
+| 인증 | Supabase Auth (signInWithPassword) |
+| 세션 유지 | AsyncStorage |
+| API | 공통 `lib/api.ts` (Supabase 세션 토큰 자동 첨부) |
+
+---
+
+## 앱 구조
+
+```
+app/
+├── (auth)/          # 로그인·회원가입 (인증 없이 접근 가능)
+│   └── login.tsx
+├── (tabs)/          # 메인 탭 (인증 필요)
+│   ├── index.tsx    # 홈 (오늘 예약)
+│   ├── schedule.tsx # 스케줄 (강사 슬롯 + 예약 신청)
+│   ├── bookings.tsx # 내 예약 목록 + 취소/철회
+│   ├── match.tsx    # 강사 매칭·상담 신청
+│   └── profile.tsx  # 내 정보·로그아웃
+├── membership.tsx   # 수강권 현황
+└── _layout.tsx      # 인증 상태 → 라우팅 제어
+
+lib/
+├── supabase.ts      # Supabase 클라이언트 (AsyncStorage 세션)
+└── api.ts           # API 클라이언트 (토큰 자동 첨부)
+
+types/
+└── api.ts           # API 응답 타입 정의
+```
+
+---
+
+## 주요 기능
+
+- **예약**: 강사 가용 슬롯 조회 → 예약 신청 → 취소/철회
+- **매칭**: 강사 목록 조회 → MATCH·CONSULTATION 요청
+- **수강권**: 횟수제(TIMES)/기간제(PERIOD) 멤버십 현황
+- **내 정보**: 프로필 확인 및 로그아웃

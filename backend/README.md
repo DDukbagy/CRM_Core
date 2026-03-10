@@ -1,115 +1,117 @@
-# crm_backend
+# Backend — FastAPI
+
+CRM Core의 백엔드 서버입니다.
+FastAPI(async) + SQLModel + PostgreSQL(AsyncPG) + Alembic 기반.
+
+---
 
 ## Quick Start
 
 ```bash
 # 최초 1회
-authmod +x scripts/verify.sh
+chmod +x scripts/verify.sh
 make verify
 ```
 
-* 서버가 꺼져 있으면 자동 실행
-* 토큰 발급 → 플로우 실행까지 원클릭
+- 서버가 꺼져 있으면 자동 실행
+- 토큰 발급 → 플로우 실행까지 원클릭
+
+---
 
 ## Common Commands
 
 ```bash
-make server         # 개발 서버 실행
-make verify         # 원클릭 검증
-make tokens         # 테스트 토큰 발급
-make flow           # 플로우 실행
-make test           # 테스트 실행
-make release        # release 배포 실행
-make rollback       # rollback 실행
-make rollback-dry   # dry rollback 실행
-make branch-reset   # branch 리셋
+make server              # 개발 서버 실행
+make test                # 테스트 실행
+make verify              # 원클릭 검증 (서버 + 토큰 + 플로우)
+make tokens              # 테스트 토큰 발급
+make flow                # 플로우 실행
+make release             # 스테이징 배포
+make rollback            # 롤백
+make rollback-dry        # 롤백 시뮬레이션
+make branch-reset        # 브랜치 리셋
+make copilot-logs-staging  # 스테이징 로그
+make copilot-logs-prod     # 운영 로그
 ```
 
 ---
 
-# 운영 & 배포 가이드 
+## 로컬 개발 환경 설정
 
-## 🚀 배포 프로세스 (Deployment Pipeline)
-
-**"Code Push → Test → Staging Deploy → Main Merge → Prod Deploy"**
-
-### 1️⃣ 개발 단계 (Development)
-1. **작업 브랜치 생성**
-   - 작업 브랜치 생성
-2. **코드 작성 및 푸시**
-   - 작업 후 `git commit` → `git push`
-3. **PR 생성 및 테스트**
-   - GitHub에서 PR 생성 (`feature` → `staging`)
-   - **CI (Test)** 자동 실행
-
-### 2️⃣ 스테이징 배포 (Staging)
-4. **Staging 병합 (Merge)**
-   - CI 통과 시 `staging` 브랜치로 Merge
-5. **자동 배포 (Deploy Staging)**
-   - Merge 즉시 **Deploy Staging** 워크플로우 실행(deploy 안에 CI 포함)
-   - 배포 성공 시 **"Release: Staging to Main"** PR 자동 생성
-
-### 3️⃣ 운영 배포 (Production)
-6. **Main 병합 (Merge to Main)**
-   - 자동 생성된 PR 확인 후 **Merge** 버튼 클릭
-7. **자동 배포 (Deploy Prod)**
-   - Main Merge 즉시 **Deploy Prod** 워크플로우 실행(deploy 안에 CI 포함)
-8. **배포 완료**
-   - 🚀 Production 환경 배포 완료
-
----
-
-## 운영 환경 구성
-
-* dev: 로컬 / Codespace 개발
-* staging: AWS 리허설 환경
-* prod: 실제 운영 환경
-
----
-
-## 중요한 운영 원칙
-
-* CI 실패 상태에서는 절대 merge하지 않는다
-* staging 확인 없이 prod 배포하지 않는다
-* prod 배포는 항상 승인 단계를 거친다
-
----
-
-## 수동 배포가 필요한 경우
-
-자동 배포가 실패했거나, 긴급 복구가 필요한 경우:
+**요구사항**: Python 3.11, Poetry, PostgreSQL 16
 
 ```bash
-make copilot-deploy-staging
-make copilot-deploy-prod
+# 의존성 설치
+cd backend
+poetry install
+
+# 환경변수 설정 (.env.example 참고)
+cp .env.example .env
+# DATABASE_URL, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_JWT_SECRET, SECRET_KEY 필수 설정
+
+# DB 마이그레이션
+poetry run alembic upgrade head
+
+# 서버 실행
+poetry run uvicorn app.main:app --reload
 ```
 
 ---
 
-## 로그 확인
+## 도메인 구조
+
+```
+app/domains/
+├── users/          # 사용자 관리 (RBAC 역할 포함)
+├── calendar/       # 캘린더·타임슬롯·예약·레슨노트
+├── instructor/     # 강사 관리·매칭 요청·출석 통계
+├── membership/     # 멤버십 (횟수제/기간제)
+└── payment/        # 결제 내역
+```
+
+각 도메인은 `models.py / schemas.py / router.py / repository.py` 구조를 따릅니다.
+
+---
+
+## 마이그레이션 (Alembic)
 
 ```bash
-make copilot-logs-staging
-make copilot-logs-prod
+# 새 마이그레이션 생성
+poetry run alembic revision --autogenerate -m "설명"
+
+# 최신으로 업그레이드
+poetry run alembic upgrade head
+
+# 히스토리 확인
+poetry run alembic history --verbose
 ```
 
----
-
-## 장애 대응 기본 체크리스트
-
-* CI 상태 확인
-* staging 상태 확인
-* 로그 확인
-* 환경변수/시크릿 확인
+**규칙**: 이미 공유/배포된 revision은 절대 수정하지 않는다.
+자세한 내용은 루트 `CLAUDE.md` 섹션 10 참고.
 
 ---
 
-## 문서 참고
+## 테스트
 
-* aws.md: AWS / Copilot 운영 상세 가이드
+```bash
+# 전체 테스트
+poetry run pytest
 
+# 특정 파일
+poetry run pytest tests/test_bookings.py -v
 
-자세한 내용은 아래 문서를 참고하세요.
+# 빠른 확인
+poetry run pytest tests/test_bookings.py -q
+```
 
-* 개발 명령어 모음: `docs/dev-runbook.md`
-* 문제 해결 모음: `docs/troubleshooting.md`
+테스트는 outer transaction + savepoint 방식으로 격리됩니다.
+각 테스트 후 DB 데이터가 자동 롤백되어 환경이 깨끗하게 유지됩니다.
+
+---
+
+## 참고 문서
+
+- `docs/dev-runbook.md` — 개발 명령어 모음
+- `docs/troubleshooting.md` — 문제 해결
+- `docs/aws.md` — AWS / Copilot 운영 가이드
+- 배포 파이프라인 → 루트 `README.md` 참고

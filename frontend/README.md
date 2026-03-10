@@ -1,36 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Frontend — 관리자 웹 (Next.js)
 
-## Getting Started
+CRM Core의 관리자용 웹 대시보드입니다.
+Next.js 16 (App Router) + React 19 + TanStack Query + Zustand + Tailwind CSS 기반.
 
-First, run the development server:
+---
+
+## Quick Start
 
 ```bash
+cd frontend
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`http://localhost:3000` 에서 확인합니다.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 환경변수
 
-## Learn More
+`.env.local` 파일을 생성하고 아래 변수를 설정합니다.
 
-To learn more about Next.js, take a look at the following resources:
+```
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+백엔드 URL은 `/api/[...path]` 프록시 경유 — 클라이언트에서 직접 호출하지 않습니다.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## 기술 스택
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| 역할 | 라이브러리 |
+|------|-----------|
+| 프레임워크 | Next.js 16 (App Router) |
+| UI | React 19 · Tailwind CSS |
+| 서버 상태 | TanStack Query |
+| 클라이언트 상태 | Zustand |
+| 인증 | Supabase Auth |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
+
+## API 호출 구조
+
+모든 백엔드 요청은 `/api/[...path]` 프록시를 통해 전달됩니다.
+클라이언트에서 백엔드 URL을 직접 사용하지 않습니다.
+
+```
+클라이언트 → /api/[...path] (Next.js 프록시) → FastAPI 백엔드
+```
+
+---
+
+## 주요 스크립트
+
+```bash
+npm run dev      # 개발 서버 (HMR)
+npm run build    # 프로덕션 빌드
+npm run lint     # ESLint 검사
+npm run start    # 프로덕션 서버
+```
+
+---
+
+## 폴더 구조
+
+```
+src/
+├── app/         # App Router 페이지 및 API 프록시 (/api/[...path])
+├── components/  # 공통 컴포넌트
+├── stores/      # Zustand 스토어
+└── lib/         # 공통 유틸
+```

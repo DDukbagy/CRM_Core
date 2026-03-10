@@ -122,6 +122,12 @@ class User(SQLModel, table=True):
         description="레슨 목적/목표",
     )
 
+    feedback_consent: bool = Field(
+        default=False,
+        nullable=False,
+        description="피드백 공개 동의 여부",
+    )
+
     is_active: bool = Field(
         default=True,
         nullable=False,

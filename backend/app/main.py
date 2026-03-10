@@ -22,6 +22,7 @@ from app.domains.membership.router import router as membership_router
 from app.domains.payment.router import router as payment_router
 from app.domains.posts.router import router as posts_router
 from app.domains.users.router import router as users_router
+from app.domains.content.router import router as content_router
 from app.api.health import router as health_router
 
 # ---- Logging: always emit app logs to stdout (works well in ECS/Copilot) ----
@@ -77,3 +78,4 @@ app.include_router(membership_router)
 app.include_router(payment_router)
 app.include_router(posts_router)
 app.include_router(users_router)
+app.include_router(content_router)
