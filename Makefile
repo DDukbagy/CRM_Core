@@ -69,6 +69,14 @@ cweb: ## Run customer Expo app in browser (web)
 ctunnel: ## Run customer Expo app with tunnel (QR code for real device)
 	@cd apps/customer && npx expo start --tunnel
 
+.PHONY: iweb
+iweb: ## Run instructor Expo app in browser (web)
+	@cd apps/instructor && npx expo start --web --port 8082
+
+.PHONY: itunnel
+itunnel: ## Run instructor Expo app with tunnel (QR code for real device)
+	@cd apps/instructor && npx expo start --tunnel
+
 .PHONY: server
 server: ## Run backend server (reload)
 	@cd backend && poetry run uvicorn $(APP) --reload --host $(HOST) --port $(PORT)
