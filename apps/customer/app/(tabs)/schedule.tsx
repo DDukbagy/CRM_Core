@@ -3,11 +3,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View, Text, ScrollView, Pressable, TextInput, Alert,
   ActivityIndicator, Modal, Animated, Dimensions, StyleSheet,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, AppState,
 } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { apiFetch } from "@/lib/api";
-import type { UserRead, BookingRead, AvailabilityResponse, AvailabilitySlot, BookingCreate } from "@/types/api";
+import type { UserRead, BookingRead, AvailabilityResponse, AvailabilitySlot, BookingCreate, CustomerPassRead } from "@/types/api";
 
 const { height: SCREEN_H, width: SCREEN_W } = Dimensions.get("window");
 const CELL_SIZE = Math.floor((SCREEN_W) / 7);
@@ -60,13 +60,14 @@ function fmtTime(t: string) { return t.slice(0, 5); }
 
 // ─── 1. 월간 달력 그리드 ─────────────────────────────────
 function MonthGrid({
-  year, month, bookings, availability, selectedDate, onSelect,
+  year, month, bookings, availability, selectedDate, onSelect, recurringOffDays,
 }: {
   year: number; month: number;
   bookings: BookingRead[];
   availability: Record<string, AvailabilitySlot[]>;
   selectedDate: string;
   onSelect: (d: string) => void;
+  recurringOffDays: number[];
 }) {
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -95,10 +96,13 @@ function MonthGrid({
             const bk = bookings.filter(b => b.when === ds);
             const isToday = ds === today;
             const isSelected = ds === selectedDate;
+            // di: 0=일,1=월,...,6=토 → Python weekday: (di+6)%7
+            const pyDay = (di + 6) % 7;
+            const isRecurringOff = recurringOffDays.includes(pyDay);
             return (
-              <Pressable key={di} style={mg.cell} onPress={() => onSelect(ds)}>
+              <Pressable key={di} style={[mg.cell, isRecurringOff && mg.offCell]} onPress={() => onSelect(ds)}>
                 <View style={[mg.numWrap, isToday && mg.todayWrap, isSelected && mg.selectedWrap]}>
-                  <Text style={[mg.num, di === 0 && mg.sun, di === 6 && mg.sat, (isToday || isSelected) && mg.whiteNum]}>
+                  <Text style={[mg.num, di === 0 && mg.sun, di === 6 && mg.sat, (isToday || isSelected) && mg.whiteNum, isRecurringOff && !isSelected && mg.offNum]}>
                     {day}
                   </Text>
                 </View>
@@ -110,6 +114,9 @@ function MonthGrid({
                   </View>
                 ))}
                 {bk.length > 2 && <Text style={mg.more}>+{bk.length - 2}</Text>}
+                {!availability[ds] && bk.length === 0 && isRecurringOff && (
+                  <Text style={mg.offTxt}>휴무</Text>
+                )}
                 {availability[ds] && bk.length === 0 && (
                   <View style={mg.dot} />
                 )}
@@ -139,25 +146,35 @@ const mg = StyleSheet.create({
   chipTxt: { fontSize: 9, fontWeight: "500" },
   more: { fontSize: 9, color: "#9ca3af" },
   dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: "#3b82f6", marginTop: 1 },
+  offCell: { backgroundColor: "#f9fafb" },
+  offNum: { color: "#d1d5db" },
+  offTxt: { fontSize: 9, color: "#d1d5db", fontWeight: "600", marginTop: 1 },
 });
 
-// ─── 2. 날짜별 이벤트 목록 패널 ──────────────────────────
+// ─── 2. 날짜별 패널 (타임라인 미리보기 + 수강권 기반 자동 슬롯 선택) ──────
 function DayPanel({
-  date, bookings, slots, managerId, onAddSlot, onExpand, onClose, onSelectBooking,
+  date, bookings, slots, managerId, activePass, onAddSlots, onExpand, onClose, onSelectBooking,
 }: {
   date: string;
   bookings: BookingRead[];
   slots: AvailabilitySlot[];
   managerId: string | null;
-  onAddSlot: (slot: AvailabilitySlot) => void;
+  activePass: CustomerPassRead | null;
+  onAddSlots: (slots: AvailabilitySlot[]) => void;
   onExpand: () => void;
   onClose: () => void;
   onSelectBooking: (b: BookingRead) => void;
 }) {
-  const [slotPickerVisible, setSlotPickerVisible] = useState(false);
+  const [selectedSlotIds, setSelectedSlotIds] = useState<Set<number>>(new Set());
   const today = new Date().toISOString().slice(0, 10);
   const isToday = date === today;
   const isPast = date < today;
+  const canBook = !isPast && !isToday && !!managerId;
+
+  // 하루에 하나만 예약 가능 (취소된 예약 제외)
+  const hasActiveBooking = bookings.some(
+    b => b.status !== "CANCELLED"
+  );
 
   // 중복 시간대 제거 + 시간순 정렬
   const seen = new Set<string>();
@@ -170,22 +187,49 @@ function DayPanel({
     })
     .sort((a, b) => a.start_time.localeCompare(b.start_time));
 
-  function handleBookingPress() {
-    if (uniqueSlots.length === 1) {
-      onAddSlot(uniqueSlots[0]);
-    } else {
-      setSlotPickerVisible(v => !v);
-    }
+  // 날짜가 바뀌면 선택 초기화
+  const prevDate = useRef(date);
+  if (prevDate.current !== date) {
+    prevDate.current = date;
+    selectedSlotIds.clear();
   }
+
+  // 수강권 기반 자동 슬롯 선택: 탭한 슬롯부터 duration_hours개 연속 선택
+  const slotsPerLesson = activePass?.duration_hours ?? 1;
+
+  function selectSlot(tappedId: number) {
+    const idx = uniqueSlots.findIndex(s => s.time_slot_id === tappedId);
+    if (idx === -1) return;
+    // 이미 선택된 슬롯을 탭하면 해제
+    if (selectedSlotIds.has(tappedId)) {
+      setSelectedSlotIds(new Set());
+      return;
+    }
+    // 연속 슬롯 선택
+    const toSelect = uniqueSlots.slice(idx, idx + slotsPerLesson);
+    setSelectedSlotIds(new Set(toSelect.map(s => s.time_slot_id)));
+  }
+
+  function handleBook() {
+    const toBook = uniqueSlots.filter(s => selectedSlotIds.has(s.time_slot_id));
+    if (toBook.length === 0) return;
+    onAddSlots(toBook);
+  }
+
+  const DAYS_KO_PANEL = ["일", "월", "화", "수", "목", "금", "토"];
+  const jsDay = new Date(date + "T00:00:00").getDay();
 
   return (
     <View style={dp.wrap}>
       <View style={dp.handle} />
       <View style={dp.header}>
-        <Text style={dp.dateTitle}>{date}</Text>
+        <View>
+          <Text style={dp.dateTitle}>{date}</Text>
+          <Text style={dp.dateSub}>{DAYS_KO_PANEL[jsDay]}요일</Text>
+        </View>
         <View style={dp.headerRight}>
           <Pressable style={dp.expandBtn} onPress={onExpand}>
-            <Text style={dp.expandTxt}>타임라인 →</Text>
+            <Text style={dp.expandTxt}>전체 →</Text>
           </Pressable>
           <Pressable onPress={onClose} style={{ marginLeft: 12 }}>
             <Text style={dp.closeTxt}>✕</Text>
@@ -194,60 +238,104 @@ function DayPanel({
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-        {bookings.length === 0 && uniqueSlots.length === 0 ? (
-          <Text style={dp.empty}>이 날은 예약 내역이 없습니다</Text>
-        ) : null}
-
-        {bookings.map(b => (
-          <Pressable key={b.id} style={[dp.row, { borderLeftColor: STATUS_COLOR[b.status] }]} onPress={() => onSelectBooking(b)}>
-            <View style={{ flex: 1 }}>
-              <Text style={dp.topic}>{bookingLabel(b)}</Text>
-              <Text style={dp.meta}>{b.type === "LESSON" ? "레슨" : "상담"}</Text>
-            </View>
-            <View style={[dp.badge, { backgroundColor: STATUS_COLOR[b.status] + "20" }]}>
-              <Text style={[dp.badgeTxt, { color: STATUS_COLOR[b.status] }]}>
-                {STATUS_LABEL[b.status]}
+        {/* 수강권 정보 카드 */}
+        {activePass && (
+          <View style={dp.passCard}>
+            <View style={dp.passLeft}>
+              <Text style={dp.passName}>{activePass.pass_name}</Text>
+              <Text style={dp.passMeta}>
+                회당 {activePass.duration_hours}시간 · 남은 {activePass.sessions_remaining}회
               </Text>
             </View>
-          </Pressable>
-        ))}
-
-        {/* 시간대 선택 (슬롯 여러 개일 때 펼침) */}
-        {slotPickerVisible && uniqueSlots.length > 1 && (
-          <>
-            <Text style={dp.slotTitle}>시간대 선택</Text>
-            <View style={dp.slotsRow}>
-              {uniqueSlots.map(slot => (
-                <Pressable key={slot.time_slot_id} style={dp.slotChip} onPress={() => { setSlotPickerVisible(false); onAddSlot(slot); }}>
-                  <Text style={dp.slotTime}>{fmtTime(slot.start_time)}</Text>
-                  <Text style={dp.slotSub}>~ {fmtTime(slot.end_time)}</Text>
-                </Pressable>
-              ))}
+            <View style={dp.passProgress}>
+              <Text style={dp.passProgressTxt}>
+                {activePass.sessions_used}/{activePass.sessions_total}회
+              </Text>
             </View>
+          </View>
+        )}
+
+        {/* 내 예약 현황 */}
+        {bookings.length > 0 && (
+          <>
+            <Text style={dp.sectionLabel}>내 예약</Text>
+            {bookings.map(b => (
+              <Pressable key={b.id} style={[dp.row, { borderLeftColor: STATUS_COLOR[b.status] }]} onPress={() => onSelectBooking(b)}>
+                <View style={{ flex: 1 }}>
+                  <Text style={dp.topic}>{bookingLabel(b)}</Text>
+                  <Text style={dp.meta}>{b.type === "LESSON" ? "레슨" : "상담"}</Text>
+                </View>
+                <View style={[dp.badge, { backgroundColor: STATUS_COLOR[b.status] + "20" }]}>
+                  <Text style={[dp.badgeTxt, { color: STATUS_COLOR[b.status] }]}>
+                    {STATUS_LABEL[b.status]}
+                  </Text>
+                </View>
+              </Pressable>
+            ))}
           </>
         )}
+
+        {/* 강사 스케줄 타임라인 미리보기 */}
+        {uniqueSlots.length > 0 ? (
+          <>
+            <Text style={dp.sectionLabel}>
+              {canBook && !hasActiveBooking
+                ? `시간 선택 (${slotsPerLesson > 1 ? `${slotsPerLesson}개 자동 선택` : "1개 선택"})`
+                : "강사 스케줄"}
+            </Text>
+            {uniqueSlots.map(slot => {
+              const isSelected = selectedSlotIds.has(slot.time_slot_id);
+              const interactive = canBook && !hasActiveBooking;
+              return (
+                <Pressable
+                  key={slot.time_slot_id}
+                  style={[dp.slotBlock, isSelected && dp.slotBlockSelected, !interactive && dp.slotBlockReadonly]}
+                  onPress={() => interactive && selectSlot(slot.time_slot_id)}
+                >
+                  <View style={[dp.slotIndicator, isSelected && dp.slotIndicatorOn]} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[dp.slotTimeMain, isSelected && dp.slotTimeMainOn]}>
+                      {fmtTime(slot.start_time)} ~ {fmtTime(slot.end_time)}
+                    </Text>
+                    <Text style={dp.slotAvail}>예약 가능</Text>
+                  </View>
+                  {interactive && (
+                    <View style={[dp.slotCheck, isSelected && dp.slotCheckOn]}>
+                      {isSelected && <Text style={dp.slotCheckTxt}>✓</Text>}
+                    </View>
+                  )}
+                </Pressable>
+              );
+            })}
+          </>
+        ) : (
+          <Text style={dp.empty}>
+            {!managerId ? "담당 강사가 지정되지 않았습니다" : "강사의 레슨 없는 날입니다"}
+          </Text>
+        )}
+        <View style={{ height: 8 }} />
       </ScrollView>
 
       {/* 예약 신청 버튼 */}
       {isPast ? (
-        <View style={dp.bookBtnDisabled}>
-          <Text style={dp.bookBtnTxtDisabled}>지난 날짜입니다</Text>
-        </View>
+        <View style={dp.bookBtnDisabled}><Text style={dp.bookBtnTxtDisabled}>지난 날짜입니다</Text></View>
       ) : isToday ? (
-        <View style={dp.bookBtnDisabled}>
-          <Text style={dp.bookBtnTxtDisabled}>당일 예약은 불가능합니다</Text>
-        </View>
+        <View style={dp.bookBtnDisabled}><Text style={dp.bookBtnTxtDisabled}>당일 예약은 불가능합니다</Text></View>
       ) : !managerId ? (
-        <View style={dp.bookBtnDisabled}>
-          <Text style={dp.bookBtnTxtDisabled}>담당 강사가 지정되지 않았습니다</Text>
-        </View>
+        <View style={dp.bookBtnDisabled}><Text style={dp.bookBtnTxtDisabled}>담당 강사가 지정되지 않았습니다</Text></View>
       ) : uniqueSlots.length === 0 ? (
-        <View style={dp.bookBtnDisabled}>
-          <Text style={dp.bookBtnTxtDisabled}>강사의 레슨 없는 날입니다</Text>
-        </View>
+        <View style={dp.bookBtnDisabled}><Text style={dp.bookBtnTxtDisabled}>강사의 레슨 없는 날입니다</Text></View>
+      ) : hasActiveBooking ? (
+        <View style={dp.bookBtnDisabled}><Text style={dp.bookBtnTxtDisabled}>이미 예약이 있습니다</Text></View>
+      ) : selectedSlotIds.size === 0 ? (
+        <View style={dp.bookBtnDisabled}><Text style={dp.bookBtnTxtDisabled}>시간을 선택해주세요</Text></View>
       ) : (
-        <Pressable style={dp.bookBtn} onPress={handleBookingPress}>
-          <Text style={dp.bookBtnTxt}>예약 신청</Text>
+        <Pressable style={dp.bookBtn} onPress={handleBook}>
+          <Text style={dp.bookBtnTxt}>
+            {selectedSlotIds.size > 1
+              ? `예약 신청 (${selectedSlotIds.size}시간 연속)`
+              : "예약 신청"}
+          </Text>
         </Pressable>
       )}
     </View>
@@ -266,10 +354,12 @@ const dp = StyleSheet.create({
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
   headerRight: { flexDirection: "row", alignItems: "center" },
   dateTitle: { fontSize: 16, fontWeight: "700", color: "#111" },
+  dateSub: { fontSize: 12, color: "#9ca3af", marginTop: 1 },
   expandBtn: { backgroundColor: "#f3f4f6", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
   expandTxt: { fontSize: 12, color: "#374151", fontWeight: "600" },
   closeTxt: { fontSize: 16, color: "#9ca3af" },
   empty: { textAlign: "center", color: "#9ca3af", fontSize: 14, marginTop: 24 },
+  sectionLabel: { fontSize: 12, fontWeight: "600", color: "#6b7280", marginBottom: 8, marginTop: 4 },
   row: {
     flexDirection: "row", alignItems: "center",
     borderLeftWidth: 3, paddingLeft: 10, paddingVertical: 10,
@@ -279,15 +369,35 @@ const dp = StyleSheet.create({
   meta: { fontSize: 12, color: "#9ca3af", marginTop: 2 },
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
   badgeTxt: { fontSize: 11, fontWeight: "600" },
-  slotTitle: { fontSize: 12, fontWeight: "600", color: "#9ca3af", marginTop: 12, marginBottom: 8 },
-  slotsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  slotChip: { backgroundColor: "#eff6ff", borderWidth: 1, borderColor: "#bfdbfe", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, alignItems: "center" },
-  slotTime: { color: "#1d4ed8", fontSize: 13, fontWeight: "700" },
-  slotSub: { color: "#3b82f6", fontSize: 10, marginTop: 1 },
-  bookBtn: { marginTop: 12, marginBottom: 4, backgroundColor: "#1a1a1a", borderRadius: 12, paddingVertical: 14, alignItems: "center" },
-  bookBtnDisabled: { marginTop: 12, marginBottom: 4, backgroundColor: "#f3f4f6", borderRadius: 12, paddingVertical: 14, alignItems: "center" },
+  slotBlock: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    backgroundColor: "#eff6ff", borderRadius: 10, padding: 12, marginBottom: 8,
+    borderWidth: 1.5, borderColor: "#bfdbfe",
+  },
+  slotBlockSelected: { backgroundColor: "#dbeafe", borderColor: "#3b82f6" },
+  slotBlockReadonly: { backgroundColor: "#f9fafb", borderColor: "#e5e7eb" },
+  slotIndicator: { width: 4, height: 32, borderRadius: 2, backgroundColor: "#bfdbfe" },
+  slotIndicatorOn: { backgroundColor: "#3b82f6" },
+  slotTimeMain: { fontSize: 15, fontWeight: "700", color: "#1d4ed8" },
+  slotTimeMainOn: { color: "#1e40af" },
+  slotAvail: { fontSize: 11, color: "#3b82f6", marginTop: 2 },
+  slotCheck: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: "#bfdbfe", alignItems: "center", justifyContent: "center" },
+  slotCheckOn: { backgroundColor: "#3b82f6", borderColor: "#3b82f6" },
+  slotCheckTxt: { color: "#fff", fontSize: 14, fontWeight: "700" },
+  bookBtn: { marginTop: 8, marginBottom: 4, backgroundColor: "#1a1a1a", borderRadius: 12, paddingVertical: 14, alignItems: "center" },
+  bookBtnDisabled: { marginTop: 8, marginBottom: 4, backgroundColor: "#f3f4f6", borderRadius: 12, paddingVertical: 14, alignItems: "center" },
   bookBtnTxt: { color: "#fff", fontSize: 15, fontWeight: "700" },
   bookBtnTxtDisabled: { color: "#9ca3af", fontSize: 14 },
+  passCard: {
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: "#f0fdf4", borderRadius: 10, padding: 10, marginBottom: 10,
+    borderWidth: 1, borderColor: "#bbf7d0",
+  },
+  passLeft: { flex: 1 },
+  passName: { fontSize: 13, fontWeight: "700", color: "#15803d" },
+  passMeta: { fontSize: 11, color: "#16a34a", marginTop: 2 },
+  passProgress: { paddingHorizontal: 10, paddingVertical: 4, backgroundColor: "#dcfce7", borderRadius: 8 },
+  passProgressTxt: { fontSize: 12, fontWeight: "700", color: "#15803d" },
 });
 
 // ─── 3. 타임라인 뷰 ─────────────────────────────────────
@@ -474,6 +584,7 @@ const tl = StyleSheet.create({
 
 // ─── 메인 화면 ───────────────────────────────────────────
 export default function ScheduleScreen() {
+  const router = useRouter();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
@@ -481,9 +592,11 @@ export default function ScheduleScreen() {
 
   const [managerId, setManagerId] = useState<string | null>(null);
   const [instructorName, setInstructorName] = useState<string | null>(null);
+  const [instructorRecurringOffDays, setInstructorRecurringOffDays] = useState<number[]>([]);
   const [availability, setAvailability] = useState<Record<string, AvailabilitySlot[]>>({});
   const [slotTimeMap, setSlotTimeMap] = useState<Record<number, { start_time: string; end_time: string }>>({});
   const [myBookings, setMyBookings] = useState<BookingRead[]>([]);
+  const [activePass, setActivePass] = useState<CustomerPassRead | null>(null);
   const [loading, setLoading] = useState(true);
   const initialLoaded = useRef(false);
   const [detailBooking, setDetailBooking] = useState<BookingRead | null>(null);
@@ -491,14 +604,19 @@ export default function ScheduleScreen() {
   // 누적 슬롯 시간 정보 (월 이동해도 유지)
   const slotTimeAccum = useRef<Record<number, { start_time: string; end_time: string }>>({});
   const managerIdRef = useRef<string | null>(null);
+  const yearRef = useRef(year);
+  const monthRef = useRef(month);
+  yearRef.current = year;
+  monthRef.current = month;
 
   const [selectedDate, setSelectedDate] = useState("");
   const [panelVisible, setPanelVisible] = useState(false);
   const panelAnim = useRef(new Animated.Value(0)).current;
+  const afterCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 예약 신청 모달
   const [modalVisible, setModalVisible] = useState(false);
-  const [selectedSlot, setSelectedSlot] = useState<AvailabilitySlot | null>(null);
+  const [selectedSlots, setSelectedSlots] = useState<AvailabilitySlot[]>([]);
   const [descText, setDescText] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -526,19 +644,25 @@ export default function ScheduleScreen() {
 
   async function load() {
     try {
-      const [me, bookings] = await Promise.all([
+      const [me, bookings, passes] = await Promise.all([
         apiFetch<UserRead>("/users/me"),
         apiFetch<BookingRead[]>("/bookings/me"),
+        apiFetch<CustomerPassRead[]>("/passes/me").catch(() => [] as CustomerPassRead[]),
       ]);
       setManagerId(me.manager_id ?? null);
       managerIdRef.current = me.manager_id ?? null;
       setMyBookings(Array.isArray(bookings) ? bookings : []);
+      const p = Array.isArray(passes) ? passes.find(p => p.status === "ACTIVE") ?? null : null;
+      setActivePass(p);
 
       if (me.manager_id) {
         apiFetch<UserRead>(`/users/${me.manager_id}`)
-          .then(i => { if (i?.display_name) setInstructorName(i.display_name); })
+          .then(i => {
+            if (i?.display_name) setInstructorName(i.display_name);
+            setInstructorRecurringOffDays(i?.recurring_off_days ?? []);
+          })
           .catch(() => {});
-        await loadAvailability(me.manager_id, year, month);
+        await loadAvailability(me.manager_id, yearRef.current, monthRef.current);
       }
     } catch (e) { console.error("스케줄 로딩 실패:", e); }
     finally { setLoading(false); initialLoaded.current = true; }
@@ -548,6 +672,33 @@ export default function ScheduleScreen() {
     if (!initialLoaded.current) setLoading(true);
     load();
   }, []));
+
+  // loadAvailability를 ref로 유지 — 클로저 stale 방지
+  const loadAvailabilityRef = useRef(loadAvailability);
+  loadAvailabilityRef.current = loadAvailability;
+
+  // 탭 전환 or 앱 foreground 복귀 시 availability 재조회
+  useEffect(() => {
+    const refresh = () => {
+      if (managerIdRef.current) {
+        loadAvailabilityRef.current(managerIdRef.current, yearRef.current, monthRef.current);
+      }
+    };
+    // Web: 브라우저 탭 전환
+    if (typeof document !== "undefined") {
+      const handler = () => { if (document.visibilityState === "visible") refresh(); };
+      document.addEventListener("visibilitychange", handler);
+      // Native fallback: AppState
+      const sub = AppState.addEventListener("change", (s) => { if (s === "active") refresh(); });
+      return () => {
+        document.removeEventListener("visibilitychange", handler);
+        sub.remove();
+      };
+    } else {
+      const sub = AppState.addEventListener("change", (s) => { if (s === "active") refresh(); });
+      return () => sub.remove();
+    }
+  }, []);
 
   // 월 변경 시 해당 월 availability 재요청
   const isFirstRender = useRef(true);
@@ -563,34 +714,45 @@ export default function ScheduleScreen() {
     setPanelVisible(true);
     panelAnim.setValue(PANEL_H);
     Animated.spring(panelAnim, { toValue: 0, useNativeDriver: true, tension: 65, friction: 11 }).start();
+    if (managerIdRef.current) {
+      loadAvailability(managerIdRef.current, yearRef.current, monthRef.current);
+    }
   }
-  function closePanel() {
+  function closePanel(onDone?: () => void) {
+    if (afterCloseTimer.current) clearTimeout(afterCloseTimer.current);
     Animated.timing(panelAnim, { toValue: PANEL_H, duration: 240, useNativeDriver: true })
-      .start(() => setPanelVisible(false));
+      .start(() => { setPanelVisible(false); onDone?.(); });
   }
 
-  function openBookingModal(slot: AvailabilitySlot) {
+  function openBookingModal(slots: AvailabilitySlot[]) {
     const today = new Date().toISOString().slice(0, 10);
     if (selectedDate <= today) {
       Alert.alert("알림", "당일 및 지난 날짜는 예약 신청이 불가합니다.");
       return;
     }
-    setSelectedSlot(slot);
+    if (slots.length === 0) return;
+    setSelectedSlots(slots);
     setDescText("");
     setModalVisible(true);
   }
 
   async function submitBooking() {
-    if (!selectedSlot || !selectedDate) return;
+    if (selectedSlots.length === 0 || !selectedDate) return;
     setSubmitting(true);
     try {
-      const body: BookingCreate = {
-        time_slot_id: selectedSlot.time_slot_id,
-        when: selectedDate,
-        description: descText.trim() || undefined, type: "LESSON",
-      };
-      await apiFetch("/bookings", { method: "POST", body });
-      Alert.alert("완료", "예약이 신청되었습니다.\n강사 수락 후 확정됩니다.");
+      await Promise.all(selectedSlots.map(slot => {
+        const body: BookingCreate = {
+          time_slot_id: slot.time_slot_id,
+          when: selectedDate,
+          description: descText.trim() || undefined,
+          type: "LESSON",
+        };
+        return apiFetch("/bookings", { method: "POST", body });
+      }));
+      const msg = selectedSlots.length > 1
+        ? `${selectedSlots.length}개 시간 예약이 신청되었습니다.\n강사 수락 후 확정됩니다.`
+        : "예약이 신청되었습니다.\n강사 수락 후 확정됩니다.";
+      Alert.alert("완료", msg);
       setModalVisible(false);
       load();
     } catch (e: any) {
@@ -614,11 +776,11 @@ export default function ScheduleScreen() {
           bookings={myBookings} availability={availability} slotTimeMap={slotTimeMap}
           onSelectDate={(d) => setSelectedDate(d)}
           onBack={() => { setViewMode("month"); openPanel(selectedDate); }}
-          onAddSlot={(slot) => openBookingModal(slot)}
+          onAddSlot={(slot) => openBookingModal([slot])}
           onSelectBooking={(b) => setDetailBooking(b)}
         />
         <BookingModal
-          visible={modalVisible} slot={selectedSlot} date={selectedDate}
+          visible={modalVisible} slots={selectedSlots} date={selectedDate}
           desc={descText} submitting={submitting}
           onDesc={setDescText}
           onClose={() => setModalVisible(false)} onSubmit={submitBooking}
@@ -655,7 +817,12 @@ export default function ScheduleScreen() {
         <View style={s.monthNav}>
           <Pressable onPress={prevMonth} style={s.navBtn}><Text style={s.navArrow}>‹</Text></Pressable>
           <Text style={s.monthTitle}>{year}년 {MONTHS[month]}</Text>
-          <Pressable onPress={nextMonth} style={s.navBtn}><Text style={s.navArrow}>›</Text></Pressable>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Pressable onPress={nextMonth} style={s.navBtn}><Text style={s.navArrow}>›</Text></Pressable>
+            <Pressable onPress={() => router.push("/(tabs)/bookings")} style={s.bookingsBtn}>
+              <Text style={s.bookingsBtnTxt}>예약목록</Text>
+            </Pressable>
+          </View>
         </View>
 
         <MonthGrid
@@ -663,6 +830,7 @@ export default function ScheduleScreen() {
           bookings={myBookings} availability={availability}
           selectedDate={selectedDate}
           onSelect={openPanel}
+          recurringOffDays={instructorRecurringOffDays}
         />
       </ScrollView>
 
@@ -674,16 +842,17 @@ export default function ScheduleScreen() {
             bookings={myBookings.filter(b => b.when === selectedDate)}
             slots={availability[selectedDate] ?? []}
             managerId={managerId}
-            onAddSlot={(slot) => openBookingModal(slot)}
-            onExpand={() => { closePanel(); setTimeout(() => setViewMode("timeline"), 260); }}
-            onClose={closePanel}
-            onSelectBooking={(b) => { closePanel(); setTimeout(() => setDetailBooking(b), 260); }}
+            activePass={activePass}
+            onAddSlots={(slots) => openBookingModal(slots)}
+            onExpand={() => closePanel(() => setViewMode("timeline"))}
+            onClose={() => closePanel()}
+            onSelectBooking={(b) => closePanel(() => setDetailBooking(b))}
           />
         </Animated.View>
       )}
 
       <BookingModal
-        visible={modalVisible} slot={selectedSlot} date={selectedDate}
+        visible={modalVisible} slots={selectedSlots} date={selectedDate}
         desc={descText} submitting={submitting}
         onDesc={setDescText}
         onClose={() => setModalVisible(false)} onSubmit={submitBooking}
@@ -708,8 +877,8 @@ export default function ScheduleScreen() {
 }
 
 // ─── 예약 신청 모달 (공통) ───────────────────────────────
-function BookingModal({ visible, slot, date, desc, submitting, onDesc, onClose, onSubmit }: {
-  visible: boolean; slot: AvailabilitySlot | null; date: string;
+function BookingModal({ visible, slots, date, desc, submitting, onDesc, onClose, onSubmit }: {
+  visible: boolean; slots: AvailabilitySlot[]; date: string;
   desc: string; submitting: boolean;
   onDesc: (v: string) => void;
   onClose: () => void; onSubmit: () => void;
@@ -719,9 +888,11 @@ function BookingModal({ visible, slot, date, desc, submitting, onDesc, onClose, 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={bm.wrap}>
           <Text style={bm.title}>예약 신청</Text>
-          {date && slot && (
+          {date && slots.length > 0 && (
             <Text style={bm.meta}>
-              {date} · {fmtTime(slot.start_time)} ~ {fmtTime(slot.end_time)}
+              {date} · {slots.length === 1
+                ? `${fmtTime(slots[0].start_time)} ~ ${fmtTime(slots[0].end_time)}`
+                : `${fmtTime(slots[0].start_time)} ~ ${fmtTime(slots[slots.length - 1].end_time)} (${slots.length}개 시간)`}
             </Text>
           )}
           <Text style={bm.label}>강사에게 메모</Text>
@@ -769,6 +940,10 @@ const s = StyleSheet.create({
     paddingVertical: 10, alignItems: "center",
   },
   bookingBtnTxt: { color: "#fff", fontSize: 14, fontWeight: "700" },
+  bookingsBtn: {
+    backgroundColor: "#f3f4f6", paddingHorizontal: 9, paddingVertical: 5, borderRadius: 8,
+  },
+  bookingsBtnTxt: { fontSize: 11, color: "#374151", fontWeight: "600" },
   panelOverlay: { position: "absolute", bottom: 0, left: 0, right: 0, height: PANEL_H },
 });
 
@@ -797,7 +972,7 @@ function BookingDetailModal({ visible, booking, slotTimeMap, instructorName, onC
   const canEdit = booking.status === "REQUESTED";
 
   function startEdit() {
-    setEditTopic(booking!.topic);
+    setEditTopic(booking!.topic ?? "");
     setEditDesc(booking!.description ?? "");
     setEditing(true);
   }
@@ -908,7 +1083,7 @@ function BookingDetailModal({ visible, booking, slotTimeMap, instructorName, onC
             /* ── 상세 뷰 ── */
             <>
               <View style={dm.card}>
-                <DetailRow label="주제" value={booking.topic} />
+                <DetailRow label="주제" value={booking.topic ?? "-"} />
                 <DetailRow label="날짜" value={booking.when} />
                 {slot && (
                   <DetailRow label="시간" value={`${fmtTime(slot.start_time)} ~ ${fmtTime(slot.end_time)}`} />

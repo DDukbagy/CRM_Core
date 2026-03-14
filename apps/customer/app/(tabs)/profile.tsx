@@ -31,13 +31,17 @@ export default function ProfileScreen() {
   );
 
   async function handleLogout() {
+    const doLogout = async () => {
+      try { await apiFetch("/users/me/push-token", { method: "DELETE" }); } catch {}
+      await supabase.auth.signOut();
+    };
     if (Platform.OS === "web") {
       if (!window.confirm("로그아웃 하시겠습니까?")) return;
-      await supabase.auth.signOut();
+      await doLogout();
     } else {
       Alert.alert("로그아웃", "로그아웃 하시겠습니까?", [
         { text: "취소", style: "cancel" },
-        { text: "로그아웃", style: "destructive", onPress: () => supabase.auth.signOut() },
+        { text: "로그아웃", style: "destructive", onPress: doLogout },
       ]);
     }
   }
