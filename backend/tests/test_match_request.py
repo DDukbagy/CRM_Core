@@ -177,13 +177,12 @@ async def test_cannot_cancel_accepted_request(
     db_conn_and_sessionmaker, client, instructor_id
 ):
     """ACCEPTED 상태 요청은 취소 불가 (400)."""
-    async with db_conn_and_sessionmaker() as session:
-        row = await session.execute(text("SELECT id FROM public.users WHERE role='CUSTOMER' LIMIT 1"))
-        cust_row = row.first()
-        if not cust_row:
-            return  # skip if no customer exists
+    # client fixture 의 실제 user id를 API로 확인
+    me_res = await client.get("/users/me")
+    assert me_res.status_code == 200, me_res.text
+    cust_id = me_res.json()["id"]
 
-        cust_id = str(cust_row[0])
+    async with db_conn_and_sessionmaker() as session:
         await session.execute(
             text(
                 "INSERT INTO public.instructor_match_requests "

@@ -317,6 +317,64 @@ async def managed_customer_id(
         return await _ensure_customer_managed_by(session, instructor_id)
 
 
+async def _ensure_admin(session: AsyncSession) -> uuid.UUID:
+    admin_uuid = uuid.uuid4()
+    await session.execute(
+        text(
+            """
+            INSERT INTO public.users (id, username, email, display_name, is_active, status, role)
+            VALUES (:id, :username, :email, :display_name, true, 'ACTIVE', 'ADMIN')
+            """
+        ),
+        {
+            "id": str(admin_uuid),
+            "username": f"admin-{admin_uuid.hex[:8]}",
+            "email": f"admin-{admin_uuid.hex[:8]}@example.com",
+            "display_name": "Test Admin",
+        },
+    )
+    await session.commit()
+    return admin_uuid
+
+
+@pytest_asyncio.fixture
+async def admin_id(db_conn_and_sessionmaker: async_sessionmaker[AsyncSession]) -> uuid.UUID:
+    async with db_conn_and_sessionmaker() as session:
+        return await _ensure_admin(session)
+
+
+@pytest_asyncio.fixture
+async def admin_client(
+    db_conn_and_sessionmaker: async_sessionmaker[AsyncSession],
+    admin_id: uuid.UUID,
+) -> AsyncIterator[AsyncClient]:
+    async def override_get_session() -> AsyncIterator[AsyncSession]:
+        async with db_conn_and_sessionmaker() as session:
+            yield session
+
+    async def override_get_current_user():
+        return CurrentUser(
+            id=str(admin_id),
+            email=None,
+            phone=None,
+            username="test-admin",
+            display_name="Test Admin",
+            role="ADMIN",
+            status="ACTIVE",
+            is_active=True,
+        )
+
+    app.dependency_overrides[get_session] = override_get_session
+    app.dependency_overrides[calendar_router.get_current_user] = override_get_current_user
+    app.dependency_overrides[auth_deps.get_current_user] = override_get_current_user
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+    app.dependency_overrides.clear()
+
+
 @pytest_asyncio.fixture
 async def instructor_client(
     db_conn_and_sessionmaker: async_sessionmaker[AsyncSession],
