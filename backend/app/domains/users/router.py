@@ -165,6 +165,10 @@ async def update_my_account(
         user.gender = data["gender"]
     if "lesson_purpose" in data:
         user.lesson_purpose = data["lesson_purpose"]
+    if "feedback_consent" in data and data["feedback_consent"] is not None:
+        user.feedback_consent = data["feedback_consent"]
+    if "recurring_off_days" in data:
+        user.recurring_off_days = data["recurring_off_days"]
 
     try:
         session.add(user)
@@ -186,13 +190,13 @@ async def list_users(
     current_user: CurrentUser = Depends(get_current_user),
     limit: int = 50,
     offset: int = 0,
-    # 권한 체크가 필요 아래 사용
-    # current_host: CurrentUser = Depends(require_role({"INSTRUCTOR", "ADMIN"})),
+    role: str | None = None,
 ):
     """
-    특정 유저 조회(호스트 전용)
-    - 현재는 host 권한만 체크
-    - 운영 확장 시 current_host를 이용해 코치별 범위 제한 로직을 붙일 수 있음
+    유저 목록 조회
+    - role 쿼리 파라미터로 역할 필터링 가능 (예: ?role=CUSTOMER)
+    - INSTRUCTOR: 본인 담당 고객만 조회 (본인 계정 제외)
+    - ADMIN: 전체 조회
     """
     limit = min(max(limit, 1), 200)
     offset = max(offset, 0)
@@ -200,16 +204,15 @@ async def list_users(
     filters = []
 
     if current_user.role == 'ADMIN':
-        # 관리자: 제약 없음 (모든 데이터 조회)
         pass
     elif current_user.role == 'INSTRUCTOR':
-        # 강사: 본인이 담당자(manager_id)인 고객만 조회 OR 본인 계정
-        filters.append(
-            (User.manager_id == _safe_uuid(str(current_user.id))) | (User.id == _safe_uuid(str(current_user.id)))
-        )
+        # 강사: 담당 고객만 조회 (본인 계정 제외)
+        filters.append(User.manager_id == _safe_uuid(str(current_user.id)))
     else:
-        # 일반 고객 등: 본인 것만 조회 (보안)
         filters.append(User.id == _safe_uuid(str(current_user.id)))
+
+    if role:
+        filters.append(User.role == role)
 
     # 페이징 적용
     stmt = select(User).where(*filters).order_by(User.created_at.desc())
@@ -230,6 +233,36 @@ async def list_users(
         "offset": offset,
     }
 
+@router.put("/me/push-token", status_code=204)
+async def update_push_token(
+    body: dict,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Expo Push Token 저장 (로그인 후 앱에서 호출)"""
+    token = body.get("token") if isinstance(body, dict) else None
+    result = await session.execute(select(User).where(User.id == user.id))
+    u = result.scalar_one_or_none()
+    if u:
+        u.push_token = token
+        session.add(u)
+        await session.commit()
+
+
+@router.delete("/me/push-token", status_code=204)
+async def delete_push_token(
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """로그아웃 시 Push Token 제거"""
+    result = await session.execute(select(User).where(User.id == user.id))
+    u = result.scalar_one_or_none()
+    if u and u.push_token:
+        u.push_token = None
+        session.add(u)
+        await session.commit()
+
+
 @router.get("/{user_id}", response_model=UserRead)
 async def get_user_detail(
     user_id: UUID,
@@ -237,8 +270,7 @@ async def get_user_detail(
     current_user: CurrentUser = Depends(get_current_user),
 ):
     """
-    유저 목록 조회(호스트 전용)
-    - UsersListResponse(items/total/limit/offset)로 고정
+    유저 상세 조회
     """
     result = await session.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()

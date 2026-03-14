@@ -36,6 +36,9 @@ class UserRead(BaseModel):
     gender: str | None = None
     lesson_purpose: str | None = None
 
+    feedback_consent: bool = False
+    recurring_off_days: list[int] = []
+
     is_active: bool = True
     created_at: datetime
     updated_at: datetime
@@ -76,6 +79,8 @@ class UserUpdate(BaseModel):
     birth_date: date | None = None
     gender: str | None = None
     lesson_purpose: str | None = None
+    feedback_consent: bool | None = None
+    recurring_off_days: list[int] | None = None
 
     model_config = ConfigDict(extra="forbid")
 
