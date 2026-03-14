@@ -1,9 +1,55 @@
 // app/_layout.tsx
+import * as Sentry from "@sentry/react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { useEffect, useState } from "react";
-import { View, ActivityIndicator } from "react-native";
+import { View, ActivityIndicator, Platform } from "react-native";
+import * as Notifications from "expo-notifications";
 import { supabase } from "@/lib/supabase";
+import { apiFetch } from "@/lib/api";
 import type { Session } from "@supabase/supabase-js";
+
+const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN;
+if (SENTRY_DSN) {
+  Sentry.init({
+    dsn: SENTRY_DSN,
+    environment: process.env.EXPO_PUBLIC_APP_ENV ?? "development",
+    tracesSampleRate: 0.1,
+  });
+}
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
+
+async function registerPushToken() {
+  if (Platform.OS === "web") return;
+  try {
+    const { status } = await Notifications.requestPermissionsAsync();
+    if (status !== "granted") return;
+    const token = (await Notifications.getExpoPushTokenAsync()).data;
+    await apiFetch("/users/me/push-token", {
+      method: "PUT",
+      body: JSON.stringify({ token }),
+    });
+  } catch {
+    // 시뮬레이터 또는 권한 거부 시 무시
+  }
+}
+
+async function deletePushToken() {
+  if (Platform.OS === "web") return;
+  try {
+    await apiFetch("/users/me/push-token", { method: "DELETE" });
+  } catch {
+    // 무시
+  }
+}
 
 export default function RootLayout() {
   const router = useRouter();
@@ -11,12 +57,10 @@ export default function RootLayout() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
 
   useEffect(() => {
-    // 초기 세션 로드
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
     });
 
-    // 세션 변경 구독 (로그인/로그아웃 이벤트)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
@@ -25,11 +69,16 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if (session === undefined) return; // 아직 로딩 중
+    if (session === undefined) return;
 
     const inAuthGroup = segments[0] === "(auth)";
-    if (session && inAuthGroup) router.replace("/(tabs)");
-    if (!session && !inAuthGroup) router.replace("/(auth)/login" as any);
+    if (session && inAuthGroup) {
+      router.replace("/(tabs)");
+      registerPushToken();
+    }
+    if (!session && !inAuthGroup) {
+      router.replace("/(auth)/login" as any);
+    }
   }, [session, segments, router]);
 
   if (session === undefined) {
@@ -50,3 +99,5 @@ export default function RootLayout() {
     </Stack>
   );
 }
+
+export { deletePushToken };
