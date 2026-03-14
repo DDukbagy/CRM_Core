@@ -1,12 +1,18 @@
 import { useEffect, useState } from "react";
-import { View, Text, ScrollView, Pressable, TextInput, Alert, StyleSheet } from "react-native";
+import { View, Text, ScrollView, Pressable, TextInput, Alert, StyleSheet, ActivityIndicator } from "react-native";
+import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { apiFetch } from "@/lib/api";
 import type { UserRead } from "@/types/api";
 
+// 0=월,1=화,...,6=일 (Python weekday 기준)
+const WEEKDAY_LABELS = ["월", "화", "수", "목", "금", "토", "일"];
+
 export default function ProfileScreen() {
+  const router = useRouter();
   const [me, setMe] = useState<UserRead | null>(null);
   const [editing, setEditing] = useState(false);
+  const [offDaysSaving, setOffDaysSaving] = useState(false);
   const [form, setForm] = useState({
     display_name: "", phone: "", instructor_location: "",
     instructor_specialties: "", instructor_bio: "",
@@ -42,7 +48,7 @@ export default function ProfileScreen() {
       const updated = await apiFetch<UserRead>("/users/me", { method: "PATCH", body });
       setMe(updated);
       setEditing(false);
-      Alert.alert("완료", "프로필이 저장됐습니다.");
+      Alert.alert("저장됨", "프로필이 저장됐습니다.");
     } catch (e: unknown) {
       Alert.alert("오류", e instanceof Error ? e.message : "저장 실패");
     }
@@ -107,11 +113,57 @@ export default function ProfileScreen() {
         )}
       </View>
 
+      {/* 정기 휴무 요일 */}
+      <View style={s.card}>
+        <Text style={s.cardTitle}>정기 휴무 요일</Text>
+        <Text style={s.offDayDesc}>레슨 없는 요일을 선택하면 고객 예약이 차단됩니다</Text>
+        <View style={s.weekdayRow}>
+          {WEEKDAY_LABELS.map((label, idx) => {
+            const isOff = (me.recurring_off_days ?? []).includes(idx);
+            return (
+              <Pressable
+                key={idx}
+                style={[s.weekdayBtn, isOff && s.weekdayBtnOff]}
+                disabled={offDaysSaving}
+                onPress={async () => {
+                  const current = me.recurring_off_days ?? [];
+                  const next = isOff ? current.filter(d => d !== idx) : [...current, idx].sort();
+                  setOffDaysSaving(true);
+                  try {
+                    const updated = await apiFetch<UserRead>("/users/me", {
+                      method: "PATCH", body: { recurring_off_days: next },
+                    });
+                    setMe(updated);
+                  } catch (e: unknown) {
+                    Alert.alert("오류", e instanceof Error ? e.message : "저장 실패");
+                  } finally {
+                    setOffDaysSaving(false);
+                  }
+                }}
+              >
+                <Text style={[s.weekdayTxt, isOff && s.weekdayTxtOff]}>{label}</Text>
+                {isOff && <Text style={s.weekdayOffLabel}>휴무</Text>}
+              </Pressable>
+            );
+          })}
+        </View>
+        {offDaysSaving && <ActivityIndicator size="small" color="#6b7280" style={{ marginTop: 8 }} />}
+      </View>
+
+      {/* 수강권 관리 */}
+      <Pressable style={s.menuBtn} onPress={() => router.push("/passes" as any)}>
+        <Text style={s.menuBtnTxt}>🎫  수강권 관리</Text>
+        <Text style={s.menuBtnArrow}>→</Text>
+      </Pressable>
+
       {/* 로그아웃 */}
       <Pressable style={s.logoutBtn} onPress={() => {
         Alert.alert("로그아웃", "로그아웃 하시겠습니까?", [
           { text: "취소", style: "cancel" },
-          { text: "로그아웃", style: "destructive", onPress: () => supabase.auth.signOut() },
+          { text: "로그아웃", style: "destructive", onPress: async () => {
+            try { await apiFetch("/users/me/push-token", { method: "DELETE" }); } catch {}
+            await supabase.auth.signOut();
+          }},
         ]);
       }}>
         <Text style={s.logoutText}>로그아웃</Text>
@@ -167,6 +219,16 @@ const s = StyleSheet.create({
   fieldInput: { borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 8, padding: 10, fontSize: 15 },
   cancelBtn: { marginTop: 8, padding: 10, alignItems: "center" },
   cancelText: { color: "#9ca3af", fontSize: 14 },
-  logoutBtn: { margin: 16, padding: 14, backgroundColor: "#fff", borderRadius: 10, alignItems: "center", borderWidth: 1, borderColor: "#fecaca" },
+  menuBtn: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", margin: 16, marginBottom: 8, padding: 14, backgroundColor: "#fff", borderRadius: 10, borderWidth: 1, borderColor: "#e5e7eb" },
+  menuBtnTxt: { fontSize: 15, fontWeight: "600", color: "#111" },
+  menuBtnArrow: { fontSize: 15, color: "#9ca3af" },
+  logoutBtn: { margin: 16, marginTop: 8, padding: 14, backgroundColor: "#fff", borderRadius: 10, alignItems: "center", borderWidth: 1, borderColor: "#fecaca" },
   logoutText: { color: "#dc2626", fontWeight: "600", fontSize: 15 },
+  offDayDesc: { fontSize: 12, color: "#9ca3af", marginBottom: 12, marginTop: -4 },
+  weekdayRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  weekdayBtn: { width: 40, height: 52, borderRadius: 10, backgroundColor: "#f0fdf4", borderWidth: 1, borderColor: "#bbf7d0", alignItems: "center", justifyContent: "center" },
+  weekdayBtnOff: { backgroundColor: "#fee2e2", borderColor: "#fca5a5" },
+  weekdayTxt: { fontSize: 14, fontWeight: "700", color: "#16a34a" },
+  weekdayTxtOff: { color: "#dc2626" },
+  weekdayOffLabel: { fontSize: 9, color: "#dc2626", fontWeight: "600", marginTop: 2 },
 });

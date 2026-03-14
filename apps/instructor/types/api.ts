@@ -18,6 +18,7 @@ export interface UserRead {
   gender: string | null;
   lesson_purpose: string | null;
   feedback_consent: boolean;
+  recurring_off_days: number[];
   created_at: string;
   updated_at: string;
 }
@@ -38,6 +39,7 @@ export interface MembershipRead {
 }
 
 export type BookingStatus = "REQUESTED" | "CONFIRMED" | "CANCEL_REQUESTED" | "CANCELLED" | "COMPLETED" | "NO_SHOW";
+export type BookingType = "LESSON" | "HOLIDAY" | "WORK_OVERRIDE";
 
 export interface BookingRead {
   id: number;
@@ -45,7 +47,7 @@ export interface BookingRead {
   topic: string | null;
   description: string | null;
   status: BookingStatus;
-  type: string;
+  type: BookingType;
   guest_id: string;
   time_slot_id: number;
   membership_id: string | null;
@@ -88,17 +90,71 @@ export interface InstructorStats {
   attendance_rate: number | null;
 }
 
+export interface MediaItemRead {
+  id: number;
+  url: string;
+  media_type: "IMAGE" | "VIDEO";
+  sort_order: number;
+}
+
+// ── 수강권 ────────────────────────────────────────────────────
+export interface PassTypeRead {
+  id: number;
+  instructor_id: string;
+  name: string;
+  duration_hours: number;
+  session_count: number;
+  price: number | null;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CustomerPassRead {
+  id: number;
+  pass_type_id: number;
+  customer_id: string;
+  instructor_id: string;
+  pass_name: string;
+  duration_hours: number;
+  sessions_total: number;
+  sessions_used: number;
+  sessions_remaining: number;
+  price_paid: number | null;
+  status: "ACTIVE" | "COMPLETED" | "EXPIRED" | "CANCELLED";
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+  customer_name: string | null;
+}
+
+export interface UsersListResponse {
+  items: UserRead[];
+  total: number | null;
+}
+
 export interface PostRead {
   id: string;
   instructor_id: string;
   type: "PROMOTION" | "FEEDBACK";
   title: string | null;
   content: string | null;
-  media_url: string | null;
+  media_items: MediaItemRead[];
   customer_id: string | null;
+  customer_name: string | null;
   is_public: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface CommentRead {
+  id: number;
+  post_id: string;
+  user_id: string;
+  user_name: string | null;
+  content: string;
+  created_at: string;
 }
 
 export interface UsersListResponse {
