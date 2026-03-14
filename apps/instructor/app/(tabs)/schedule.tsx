@@ -5,7 +5,7 @@ import {
 } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { apiFetch } from "@/lib/api";
-import type { BookingRead, TimeSlotRead, UsersListResponse } from "@/types/api";
+import type { BookingRead, TimeSlotRead, UserRead, UsersListResponse } from "@/types/api";
 
 const { height: SCREEN_H, width: SCREEN_W } = Dimensions.get("window");
 const CELL_H = Math.floor((SCREEN_H - 200) / 6);
@@ -36,13 +36,14 @@ function timeDiff(s: string, e: string) {
 
 // ─── MonthGrid ──────────────────────────────────────────
 function MonthGrid({
-  year, month, bookings, selectedDate, onSelect, customerMap,
+  year, month, bookings, selectedDate, onSelect, customerMap, recurringOffDays,
 }: {
   year: number; month: number;
   bookings: BookingRead[];
   selectedDate: string;
   onSelect: (d: string) => void;
   customerMap: Record<string, string>;
+  recurringOffDays: number[];
 }) {
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -67,17 +68,32 @@ function MonthGrid({
           {week.map((day, di) => {
             if (!day) return <View key={di} style={mg.cell} />;
             const ds = toDateStr(year, month, day);
+            const jsDay = new Date(ds + "T00:00:00").getDay();
+            const pyDay = (jsDay + 6) % 7;
+            const isRecurringOff = recurringOffDays.includes(pyDay);
             const bk = bookings.filter(b => b.when === ds);
+            const isHoliday = !isRecurringOff && bk.some(b => b.type === "HOLIDAY" && b.status !== "CANCELLED");
+            const hasWorkOverride = isRecurringOff && bk.some(b => b.type === "WORK_OVERRIDE" && b.status !== "CANCELLED");
+            const regularBk = bk.filter(b => b.type !== "HOLIDAY");
             const isToday = ds === today;
             const isSelected = ds === selectedDate;
             return (
-              <Pressable key={di} style={mg.cell} onPress={() => onSelect(ds)}>
+              <Pressable key={di} style={[mg.cell, (isHoliday || isRecurringOff) && mg.holidayCell]} onPress={() => onSelect(ds)}>
                 <View style={[mg.numWrap, isToday && mg.todayWrap, isSelected && mg.selectedWrap]}>
                   <Text style={[mg.num, di === 0 && mg.sun, di === 6 && mg.sat, (isToday || isSelected) && mg.whiteNum]}>
                     {day}
                   </Text>
                 </View>
-                {bk.slice(0, 3).map(b => {
+                {isRecurringOff && !hasWorkOverride ? (
+                  <View style={mg.noLessonWrap}>
+                    <Text style={mg.noLessonTxt}>레슨없는날</Text>
+                  </View>
+                ) : isHoliday ? (
+                  <View style={mg.holidayChip}>
+                    <Text style={mg.holidayTxt}>휴무</Text>
+                  </View>
+                ) : null}
+                {!isHoliday && !isRecurringOff && regularBk.slice(0, 2).map(b => {
                   const cname = customerMap[b.guest_id] ?? "예약";
                   const shortName = cname.length > 3 ? cname.slice(0, 3) : cname;
                   const isCancelled = b.status === "CANCELLED";
@@ -92,7 +108,7 @@ function MonthGrid({
                     </View>
                   );
                 })}
-                {bk.length > 2 && <Text style={mg.more}>+{bk.length - 2}</Text>}
+                {!isHoliday && !isRecurringOff && regularBk.length > 2 && <Text style={mg.more}>+{regularBk.length - 2}</Text>}
               </Pressable>
             );
           })}
@@ -118,20 +134,34 @@ const mg = StyleSheet.create({
   chip: { borderRadius: 3, paddingHorizontal: 4, paddingVertical: 1, marginBottom: 2 },
   chipTxt: { fontSize: 9, fontWeight: "700" },
   more: { fontSize: 9, color: "#9ca3af" },
+  holidayCell: { backgroundColor: "#fff7ed" },
+  holidayChip: { backgroundColor: "#fee2e2", borderRadius: 3, paddingHorizontal: 4, paddingVertical: 1, marginBottom: 2, alignSelf: "flex-start" },
+  holidayTxt: { fontSize: 9, fontWeight: "700", color: "#dc2626" },
+  noLessonWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
+  noLessonTxt: { fontSize: 9, fontWeight: "700", color: "#9ca3af", textAlign: "center" },
 });
 
 // ─── DayPanel ───────────────────────────────────────────
 function DayPanel({
-  date, bookings, slots, customerMap,
-  onAction, onBlockDate, onDeactivateSlots, onClose, onTimeline, onSelectBooking,
+  date, bookings, slots, customerMap, isHoliday, isRecurringOff,
+  workOverrideSlotIds,
+  onAction, onBlockDate, onUnblockDate, onOverrideDay, onRestoreRecurring,
+  onDeactivateSlots, onSaveActivation, onClose, onTimeline, onSelectBooking,
 }: {
   date: string;
   bookings: BookingRead[];
   slots: TimeSlotRead[];
   customerMap: Record<string, string>;
+  isHoliday: boolean;
+  isRecurringOff: boolean;
+  workOverrideSlotIds: Set<number>;
   onAction: (id: number, action: "confirm" | "complete" | "no-show" | "decline" | "cancel" | "approve-cancel" | "reject-cancel") => void;
   onBlockDate: () => void;
+  onUnblockDate: () => void;
+  onOverrideDay: () => void;
+  onRestoreRecurring: () => void;
   onDeactivateSlots: (ids: number[]) => void;
+  onSaveActivation: (toAdd: number[], toRemove: number[]) => void;
   onClose: () => void;
   onTimeline: () => void;
   onSelectBooking: (b: BookingRead) => void;
@@ -153,6 +183,10 @@ function DayPanel({
     })
     .sort((a, b) => a.start_time.localeCompare(b.start_time));
 
+  const isBlocked = isHoliday || isRecurringOff;
+  const hasWorkOverride = workOverrideSlotIds.size > 0;
+
+  // 시간 휴무 선택 (일반 날)
   const [slotSelectMode, setSlotSelectMode] = useState(false);
   const [selectedSlotIds, setSelectedSlotIds] = useState<Set<number>>(new Set());
 
@@ -163,15 +197,32 @@ function DayPanel({
       return next;
     });
   }
-
-  function exitSelectMode() {
-    setSlotSelectMode(false);
-    setSelectedSlotIds(new Set());
-  }
-
-  function handleComplete() {
+  function exitSelectMode() { setSlotSelectMode(false); setSelectedSlotIds(new Set()); }
+  function handleDeactivateComplete() {
     if (selectedSlotIds.size > 0) onDeactivateSlots(Array.from(selectedSlotIds));
     exitSelectMode();
+  }
+
+  // 시간 활성화 (휴무/정기휴무 날)
+  const [activateMode, setActivateMode] = useState(false);
+  const [activateSelected, setActivateSelected] = useState<Set<number>>(new Set());
+
+  function openActivateMode() {
+    setActivateSelected(new Set(workOverrideSlotIds));
+    setActivateMode(true);
+  }
+  function toggleActivate(id: number) {
+    setActivateSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+  function handleActivateComplete() {
+    const toAdd = daySlots.filter(s => activateSelected.has(s.id) && !workOverrideSlotIds.has(s.id)).map(s => s.id);
+    const toRemove = daySlots.filter(s => !activateSelected.has(s.id) && workOverrideSlotIds.has(s.id)).map(s => s.id);
+    if (toAdd.length > 0 || toRemove.length > 0) onSaveActivation(toAdd, toRemove);
+    setActivateMode(false);
   }
 
   return (
@@ -180,9 +231,11 @@ function DayPanel({
       <View style={dp.header}>
         <Text style={dp.dateTitle}>{date} ({DAYS_KO[jsDay]})</Text>
         <View style={dp.headerRight}>
-          <Pressable style={dp.timelineBtn} onPress={onTimeline}>
-            <Text style={dp.timelineTxt}>타임라인 →</Text>
-          </Pressable>
+          {!isHoliday && (!isRecurringOff || hasWorkOverride) && (
+            <Pressable style={dp.timelineBtn} onPress={onTimeline}>
+              <Text style={dp.timelineTxt}>타임라인 →</Text>
+            </Pressable>
+          )}
           <Pressable onPress={onClose} style={{ marginLeft: 12 }}>
             <Text style={dp.closeTxt}>✕</Text>
           </Pressable>
@@ -247,27 +300,88 @@ function DayPanel({
         {/* 타임슬롯 */}
         <View style={dp.slotHeader}>
           <Text style={dp.sectionTitle}>타임슬롯</Text>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <Pressable style={dp.blockBtn} onPress={onBlockDate}>
-              <Text style={dp.blockTxt}>휴일전환</Text>
-            </Pressable>
-            <Pressable style={dp.timeSelectBtn} onPress={() => setSlotSelectMode(true)}>
-              <Text style={dp.timeSelectTxt}>시간 휴무 선택</Text>
-            </Pressable>
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+            {/* 일반 날 */}
+            {!isBlocked && (
+              <>
+                <Pressable style={dp.blockBtn} onPress={onBlockDate}>
+                  <Text style={dp.blockTxt}>휴일전환</Text>
+                </Pressable>
+                <Pressable style={dp.timeSelectBtn} onPress={() => setSlotSelectMode(true)}>
+                  <Text style={dp.timeSelectTxt}>시간 휴무 선택</Text>
+                </Pressable>
+              </>
+            )}
+            {/* 휴무 날 */}
+            {isHoliday && (
+              <Pressable style={dp.unblockBtn} onPress={onUnblockDate}>
+                <Text style={dp.unblockTxt}>영업일전환</Text>
+              </Pressable>
+            )}
+            {/* 정기 휴무 날 */}
+            {isRecurringOff && !hasWorkOverride && (
+              <Pressable style={dp.overrideBtn} onPress={onOverrideDay}>
+                <Text style={dp.overrideTxt}>이번만 전체영업</Text>
+              </Pressable>
+            )}
+            {isRecurringOff && hasWorkOverride && (
+              <Pressable style={dp.unblockBtn} onPress={onRestoreRecurring}>
+                <Text style={dp.unblockTxt}>전체복원</Text>
+              </Pressable>
+            )}
+            {/* 시간 활성화 — 휴무/정기휴무 공통 */}
+            {isBlocked && (
+              <Pressable style={dp.activateBtn} onPress={openActivateMode}>
+                <Text style={dp.activateTxt}>시간 활성화</Text>
+              </Pressable>
+            )}
           </View>
         </View>
 
+        {isHoliday && (
+          <View style={dp.holidayBanner}>
+            <Text style={dp.holidayBannerTxt}>🔴 휴무일 {hasWorkOverride ? `— ${workOverrideSlotIds.size}개 시간 활성화됨` : "— 시간 활성화로 특정 시간만 열 수 있습니다"}</Text>
+          </View>
+        )}
+        {isRecurringOff && (
+          <View style={[dp.holidayBanner, { backgroundColor: hasWorkOverride ? "#f0fdf4" : "#f3f4f6" }]}>
+            <Text style={[dp.holidayBannerTxt, { color: hasWorkOverride ? "#16a34a" : "#6b7280" }]}>
+              {hasWorkOverride ? `✅ ${workOverrideSlotIds.size}개 시간 활성화됨` : "⛔ 정기 휴무 요일 — 시간 활성화로 특정 시간만 열 수 있습니다"}
+            </Text>
+          </View>
+        )}
+
         {daySlots.length === 0 ? (
           <Text style={dp.empty}>이 요일 슬롯 없음</Text>
-        ) : daySlots.map(slot => (
-          <View key={slot.id} style={dp.slotRow}>
-            <Text style={dp.slotTime}>{fmtTime(slot.start_time)} ~ {fmtTime(slot.end_time)}</Text>
-          </View>
-        ))}
+        ) : daySlots.map(slot => {
+          const activated = workOverrideSlotIds.has(slot.id);
+          return (
+            <View key={slot.id} style={[dp.slotRow, isBlocked && !activated && dp.slotRowBlocked, isBlocked && activated && dp.slotRowActivated]}>
+              <Text style={[dp.slotTime, isBlocked && !activated && dp.slotTimeInactive]}>
+                {fmtTime(slot.start_time)} ~ {fmtTime(slot.end_time)}
+              </Text>
+              {isBlocked && activated && (
+                <View style={dp.activatedBadge}>
+                  <Text style={dp.activatedTxt}>활성화됨</Text>
+                </View>
+              )}
+              {isBlocked && !activated && (
+                <View style={dp.inactiveBadge}>
+                  <Text style={dp.inactiveTxt}>차단됨</Text>
+                </View>
+              )}
+              {!isBlocked && !slot.is_active && (
+                <View style={dp.inactiveBadge}>
+                  <Text style={dp.inactiveTxt}>비활성</Text>
+                </View>
+              )}
+            </View>
+          );
+        })}
         <View style={{ height: 24 }} />
       </ScrollView>
 
-      {/* 시간 휴무 선택 모달 - 배경 전체 차단 */}
+      {/* 시간 휴무 선택 모달 (일반 날) */}
       <Modal visible={slotSelectMode} transparent animationType="fade">
         <View style={dp.selectOverlay}>
           <View style={dp.selectSheet}>
@@ -277,7 +391,7 @@ function DayPanel({
                 <Pressable style={dp.cancelSelectBtn} onPress={exitSelectMode}>
                   <Text style={dp.cancelSelectTxt}>취소</Text>
                 </Pressable>
-                <Pressable style={dp.completeBtn} onPress={handleComplete}>
+                <Pressable style={dp.completeBtn} onPress={handleDeactivateComplete}>
                   <Text style={dp.completeBtnTxt}>완료{selectedSlotIds.size > 0 ? ` (${selectedSlotIds.size})` : ""}</Text>
                 </Pressable>
               </View>
@@ -285,15 +399,56 @@ function DayPanel({
             {daySlots.map(slot => (
               <Pressable
                 key={slot.id}
-                style={[dp.slotRow, selectedSlotIds.has(slot.id) && dp.slotRowSelected]}
-                onPress={() => toggleSelect(slot.id)}
+                style={[dp.slotRow, selectedSlotIds.has(slot.id) && dp.slotRowSelected, !slot.is_active && dp.slotRowInactive]}
+                onPress={() => slot.is_active && toggleSelect(slot.id)}
               >
                 <View style={[dp.checkbox, selectedSlotIds.has(slot.id) && dp.checkboxOn]}>
                   {selectedSlotIds.has(slot.id) && <Text style={dp.checkmark}>✓</Text>}
                 </View>
-                <Text style={dp.slotTime}>{fmtTime(slot.start_time)} ~ {fmtTime(slot.end_time)}</Text>
+                <Text style={[dp.slotTime, !slot.is_active && dp.slotTimeInactive]}>
+                  {fmtTime(slot.start_time)} ~ {fmtTime(slot.end_time)}
+                </Text>
+                {!slot.is_active && <View style={dp.inactiveBadge}><Text style={dp.inactiveTxt}>이미 비활성</Text></View>}
               </Pressable>
             ))}
+          </View>
+        </View>
+      </Modal>
+
+      {/* 시간 활성화 모달 (휴무/정기휴무 날) */}
+      <Modal visible={activateMode} transparent animationType="fade">
+        <View style={dp.selectOverlay}>
+          <View style={dp.selectSheet}>
+            <View style={dp.selectHeader}>
+              <Text style={dp.selectTitle}>시간 활성화</Text>
+              <Text style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>레슨을 열 시간을 선택하세요</Text>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <Pressable style={dp.cancelSelectBtn} onPress={() => setActivateMode(false)}>
+                  <Text style={dp.cancelSelectTxt}>취소</Text>
+                </Pressable>
+                <Pressable style={dp.completeBtn} onPress={handleActivateComplete}>
+                  <Text style={dp.completeBtnTxt}>저장 ({activateSelected.size})</Text>
+                </Pressable>
+              </View>
+            </View>
+            {daySlots.map(slot => {
+              const isOn = activateSelected.has(slot.id);
+              return (
+                <Pressable
+                  key={slot.id}
+                  style={[dp.slotRow, isOn && dp.slotRowActivated]}
+                  onPress={() => toggleActivate(slot.id)}
+                >
+                  <View style={[dp.checkbox, isOn && dp.checkboxGreen]}>
+                    {isOn && <Text style={dp.checkmark}>✓</Text>}
+                  </View>
+                  <Text style={[dp.slotTime, !isOn && { color: "#9ca3af" }]}>
+                    {fmtTime(slot.start_time)} ~ {fmtTime(slot.end_time)}
+                  </Text>
+                  {isOn && <View style={dp.activatedBadge}><Text style={dp.activatedTxt}>활성화</Text></View>}
+                </Pressable>
+              );
+            })}
           </View>
         </View>
       </Modal>
@@ -339,10 +494,27 @@ const dp = StyleSheet.create({
   completeBtnTxt: { fontSize: 12, color: "#fff", fontWeight: "700" },
   slotRow: { flexDirection: "row", alignItems: "center", backgroundColor: "#f9fafb", borderRadius: 8, padding: 12, marginBottom: 8 },
   slotRowSelected: { backgroundColor: "#dbeafe", borderWidth: 1.5, borderColor: "#3b82f6" },
-  slotTime: { fontSize: 14, fontWeight: "600", color: "#111" },
+  slotRowInactive: { backgroundColor: "#f3f4f6", opacity: 0.7 },
+  slotTime: { fontSize: 14, fontWeight: "600", color: "#111", flex: 1 },
+  slotTimeInactive: { color: "#9ca3af" },
   checkbox: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: "#d1d5db", backgroundColor: "#fff", alignItems: "center", justifyContent: "center", marginRight: 12 },
   checkboxOn: { borderColor: "#3b82f6", backgroundColor: "#3b82f6" },
   checkmark: { color: "#fff", fontSize: 14, fontWeight: "700", lineHeight: 17 },
+  unblockBtn: { backgroundColor: "#dcfce7", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  unblockTxt: { fontSize: 12, color: "#15803d", fontWeight: "600" },
+  overrideBtn: { backgroundColor: "#dbeafe", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  overrideTxt: { fontSize: 12, color: "#1e40af", fontWeight: "600" },
+  activateBtn: { backgroundColor: "#f0fdf4", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: "#86efac" },
+  activateTxt: { fontSize: 12, color: "#16a34a", fontWeight: "600" },
+  slotRowBlocked: { backgroundColor: "#f9fafb", opacity: 0.6 },
+  slotRowActivated: { backgroundColor: "#f0fdf4", borderWidth: 1.5, borderColor: "#86efac" },
+  activatedBadge: { backgroundColor: "#dcfce7", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20 },
+  activatedTxt: { fontSize: 11, color: "#16a34a", fontWeight: "600" },
+  checkboxGreen: { borderColor: "#16a34a", backgroundColor: "#16a34a" },
+  holidayBanner: { backgroundColor: "#fee2e2", borderRadius: 8, padding: 10, marginBottom: 8 },
+  holidayBannerTxt: { fontSize: 13, color: "#dc2626", fontWeight: "600", textAlign: "center" },
+  inactiveBadge: { backgroundColor: "#e5e7eb", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  inactiveTxt: { fontSize: 11, color: "#6b7280", fontWeight: "600" },
 });
 
 // ─── TimelineView ───────────────────────────────────────
@@ -516,6 +688,7 @@ export default function ScheduleScreen() {
   const [bookings, setBookings] = useState<BookingRead[]>([]);
   const [slots, setSlots] = useState<TimeSlotRead[]>([]);
   const [customerMap, setCustomerMap] = useState<Record<string, string>>({});
+  const [recurringOffDays, setRecurringOffDays] = useState<number[]>([]);
   const [detailBooking, setDetailBooking] = useState<BookingRead | null>(null);
   const initialLoaded = useRef(false);
   const currentYear = useRef(year);
@@ -524,10 +697,11 @@ export default function ScheduleScreen() {
   async function load(y = currentYear.current, m = currentMonth.current) {
     const start = new Date(y, m, 1).toISOString().slice(0, 10);
     const end = new Date(y, m + 1, 0).toISOString().slice(0, 10);
-    const [bkRes, slRes, cuRes] = await Promise.allSettled([
+    const [bkRes, slRes, cuRes, meRes] = await Promise.allSettled([
       apiFetch<BookingRead[]>(`/calendars/me/bookings?start=${start}&end=${end}`),
       apiFetch<TimeSlotRead[]>("/calendars/me/time-slots"),
       apiFetch<UsersListResponse>("/users?limit=200"),
+      apiFetch<UserRead>("/users/me"),
     ]);
     if (bkRes.status === "fulfilled") setBookings(Array.isArray(bkRes.value) ? bkRes.value : []);
     if (slRes.status === "fulfilled") setSlots(Array.isArray(slRes.value) ? slRes.value : []);
@@ -536,6 +710,7 @@ export default function ScheduleScreen() {
       cuRes.value.items.forEach(u => { map[u.id] = u.display_name; });
       setCustomerMap(map);
     }
+    if (meRes.status === "fulfilled") setRecurringOffDays(meRes.value.recurring_off_days ?? []);
     setLoading(false);
     initialLoaded.current = true;
   }
@@ -604,19 +779,97 @@ export default function ScheduleScreen() {
   }
 
   function blockDate() {
-    const activeSlot = slots.find(s => s.is_active);
-    if (!activeSlot) { setInfoMsg("활성화된 타임슬롯이 없습니다."); return; }
+    const pyDay = selectedPyDay;
+    const slot = slots.find(s => s.is_active && (s.weekdays ?? []).includes(pyDay)) ?? slots.find(s => s.is_active);
+    if (!slot) { setInfoMsg("활성화된 타임슬롯이 없습니다."); return; }
     setConfirm({
       title: "휴무 등록",
       body: `${selectedDate}을 휴무로 등록하시겠습니까?`,
       onConfirm: async () => {
-        await apiFetch("/bookings", { method: "POST", body: { time_slot_id: activeSlot.id, when: selectedDate, topic: "휴무", type: "HOLIDAY" } });
+        await apiFetch("/bookings", { method: "POST", body: { time_slot_id: slot.id, when: selectedDate, topic: "휴무", type: "HOLIDAY" } });
         await load();
       },
     });
   }
 
-  const dayBookings = bookings.filter(b => b.when === selectedDate && b.status !== "CANCELLED");
+  const holidayBooking = bookings.find(b => b.when === selectedDate && b.type === "HOLIDAY" && b.status !== "CANCELLED");
+  const workOverrideBookings = bookings.filter(b => b.when === selectedDate && b.type === "WORK_OVERRIDE" && b.status !== "CANCELLED");
+  const workOverrideSlotIds = new Set(workOverrideBookings.map(b => b.time_slot_id));
+  const selectedJsDay = selectedDate ? new Date(selectedDate + "T00:00:00").getDay() : -1;
+  const selectedPyDay = selectedJsDay >= 0 ? (selectedJsDay + 6) % 7 : -1;
+  const isSelectedRecurringOff = selectedPyDay >= 0 && recurringOffDays.includes(selectedPyDay);
+
+  function unblockDate() {
+    if (!holidayBooking) return;
+    setConfirm({
+      title: "영업일 전환",
+      body: `${selectedDate}의 휴무를 해제하시겠습니까?`,
+      onConfirm: async () => {
+        try {
+          await apiFetch(`/calendars/me/bookings/${holidayBooking.id}/cancel`, { method: "PATCH", body: { reason: null } });
+        } finally {
+          await load();
+        }
+      },
+    });
+  }
+
+  function overrideDay() {
+    const pyDay = selectedPyDay;
+    const daySlotList = slots.filter(s => s.is_active && (s.weekdays ?? []).includes(pyDay));
+    if (daySlotList.length === 0) { setInfoMsg("타임슬롯이 없습니다."); return; }
+    setConfirm({
+      title: "이번만 전체 영업",
+      body: `${selectedDate}의 모든 시간(${daySlotList.length}개)을 활성화하시겠습니까?`,
+      onConfirm: async () => {
+        await Promise.all(daySlotList.map(s =>
+          apiFetch("/bookings", { method: "POST", body: { time_slot_id: s.id, when: selectedDate, topic: "영업일전환", type: "WORK_OVERRIDE" } })
+        ));
+        await load();
+      },
+    });
+  }
+
+  function restoreRecurring() {
+    if (workOverrideBookings.length === 0) return;
+    setConfirm({
+      title: "전체 복원",
+      body: `${selectedDate}의 활성화된 ${workOverrideBookings.length}개 시간을 모두 비활성화하시겠습니까?`,
+      onConfirm: async () => {
+        try {
+          await Promise.all(workOverrideBookings.map(b =>
+            apiFetch(`/calendars/me/bookings/${b.id}/cancel`, { method: "PATCH", body: { reason: null } })
+          ));
+        } finally {
+          await load();
+        }
+      },
+    });
+  }
+
+  function saveActivation(toAdd: number[], toRemove: number[]) {
+    setConfirm({
+      title: "시간 활성화 저장",
+      body: `열기: ${toAdd.length}개, 닫기: ${toRemove.length}개`,
+      onConfirm: async () => {
+        try {
+          // 새로 활성화
+          await Promise.all(toAdd.map(slotId =>
+            apiFetch("/bookings", { method: "POST", body: { time_slot_id: slotId, when: selectedDate, topic: "시간활성화", type: "WORK_OVERRIDE" } })
+          ));
+          // 기존 활성화 취소
+          const toRemoveBookings = workOverrideBookings.filter(b => toRemove.includes(b.time_slot_id));
+          await Promise.all(toRemoveBookings.map(b =>
+            apiFetch(`/calendars/me/bookings/${b.id}/cancel`, { method: "PATCH", body: { reason: null } })
+          ));
+        } finally {
+          await load();
+        }
+      },
+    });
+  }
+
+  const dayBookings = bookings.filter(b => b.when === selectedDate && b.status !== "CANCELLED" && b.type !== "HOLIDAY" && b.type !== "WORK_OVERRIDE");
 
   if (loading) {
     return <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}><ActivityIndicator size="large" color="#16a34a" /></View>;
@@ -710,6 +963,7 @@ export default function ScheduleScreen() {
           selectedDate={selectedDate}
           onSelect={openPanel}
           customerMap={customerMap}
+          recurringOffDays={recurringOffDays}
         />
       </ScrollView>
 
@@ -729,9 +983,16 @@ export default function ScheduleScreen() {
             bookings={dayBookings}
             slots={slots}
             customerMap={customerMap}
+            isHoliday={!!holidayBooking}
+            isRecurringOff={isSelectedRecurringOff}
+            workOverrideSlotIds={workOverrideSlotIds}
             onAction={doAction}
             onBlockDate={blockDate}
+            onUnblockDate={unblockDate}
+            onOverrideDay={overrideDay}
+            onRestoreRecurring={restoreRecurring}
             onDeactivateSlots={deactivateSlots}
+            onSaveActivation={saveActivation}
             onClose={closePanel}
             onTimeline={() => { closePanel(); setTimeout(() => setViewMode("timeline"), 260); }}
             onSelectBooking={(b) => { closePanel(); setTimeout(() => setDetailBooking(b), 260); }}

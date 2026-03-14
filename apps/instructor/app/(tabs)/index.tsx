@@ -222,7 +222,6 @@ export default function DashboardScreen() {
             <StatBox label="담당고객" value={`${stats.customer_count}명`} color="#16a34a" />
             <StatBox label="대기" value={String(stats.booking_counts.requested)} color="#f59e0b" />
             <StatBox label="확정" value={String(stats.booking_counts.confirmed)} color="#3b82f6" />
-            <StatBox label="출석률" value={stats.attendance_rate !== null ? `${stats.attendance_rate}%` : "-"} color="#8b5cf6" />
           </View>
         )}
 

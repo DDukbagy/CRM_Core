@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { View, Text, ScrollView, Pressable, StyleSheet, Alert } from "react-native";
+import { View, Text, ScrollView, StyleSheet } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { apiFetch } from "@/lib/api";
 import type { UserRead, MembershipRead } from "@/types/api";
@@ -15,15 +15,6 @@ export default function CustomerDetailScreen() {
       apiFetch<MembershipRead[]>(`/memberships?customer_id=${id}&active_only=false`),
     ]).then(([u, m]) => { setCustomer(u); setMemberships(m); }).catch(() => {});
   }, [id]);
-
-  async function toggleConsent() {
-    if (!customer) return;
-    const next = !customer.feedback_consent;
-    try {
-      await apiFetch(`/instructor-posts/customers/${id}/feedback-consent?consent=${next}`, { method: "PATCH" });
-      setCustomer(c => c ? { ...c, feedback_consent: next } : c);
-    } catch { Alert.alert("오류", "설정 변경에 실패했습니다."); }
-  }
 
   if (!customer) return <View style={s.center}><Text>불러오는 중...</Text></View>;
 
@@ -46,16 +37,13 @@ export default function CustomerDetailScreen() {
       <View style={s.card}>
         <View style={s.rowBetween}>
           <Text style={s.sectionLabel}>피드백 공개 동의</Text>
-          <Pressable
-            onPress={toggleConsent}
-            style={[s.toggle, customer.feedback_consent && s.toggleOn]}
-          >
-            <Text style={[s.toggleText, customer.feedback_consent && s.toggleTextOn]}>
+          <View style={[s.badge, customer.feedback_consent ? s.badgeOn : s.badgeOff]}>
+            <Text style={[s.badgeText, customer.feedback_consent ? s.badgeTextOn : s.badgeTextOff]}>
               {customer.feedback_consent ? "동의" : "미동의"}
             </Text>
-          </Pressable>
+          </View>
         </View>
-        <Text style={s.hint}>동의 시 해당 고객의 피드백 게시물을 전체 공개할 수 있습니다.</Text>
+        <Text style={s.hint}>고객이 직접 프로필에서 설정한 공개 여부입니다.</Text>
       </View>
 
       {/* 활성 수강권 */}
@@ -114,8 +102,12 @@ const s = StyleSheet.create({
   sectionLabel: { fontSize: 15, fontWeight: "600" },
   toggle: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, backgroundColor: "#e5e7eb" },
   toggleOn: { backgroundColor: "#16a34a" },
-  toggleText: { fontSize: 13, fontWeight: "600", color: "#6b7280" },
-  toggleTextOn: { color: "#fff" },
+  badge: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20 },
+  badgeOn: { backgroundColor: "#dcfce7" },
+  badgeOff: { backgroundColor: "#f3f4f6" },
+  badgeText: { fontSize: 13, fontWeight: "600" },
+  badgeTextOn: { color: "#16a34a" },
+  badgeTextOff: { color: "#9ca3af" },
   hint: { fontSize: 12, color: "#9ca3af", lineHeight: 18 },
   section: { fontSize: 15, fontWeight: "600", paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6 },
   emptyBox: { margin: 16, padding: 20, backgroundColor: "#fff", borderRadius: 12, alignItems: "center" },
