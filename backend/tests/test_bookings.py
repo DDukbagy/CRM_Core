@@ -156,11 +156,20 @@ async def test_withdraw_cancel_request_returns_confirmed(client, free_slot_and_d
 
 async def test_admin_approve_cancel(admin_client, free_slot_and_date, db_conn_and_sessionmaker):
     """관리자가 취소 신청 승인 → CANCELLED."""
+    import uuid as _uuid
     slot_id, d = free_slot_and_date
 
     async with db_conn_and_sessionmaker() as session:
-        row = await session.execute(text("SELECT id FROM public.users WHERE role='CUSTOMER' LIMIT 1"))
-        guest_id = str(row.scalar_one())
+        cid = _uuid.uuid4()
+        await session.execute(
+            text(
+                "INSERT INTO public.users (id, username, email, display_name, is_active, status, role, feedback_consent) "
+                "VALUES (:id, :u, :e, :d, true, 'ACTIVE', 'CUSTOMER', true)"
+            ),
+            {"id": str(cid), "u": f"guest-{cid.hex[:8]}", "e": f"guest-{cid.hex[:8]}@example.com", "d": "Guest"},
+        )
+        await session.commit()
+        guest_id = str(cid)
         ins = await session.execute(
             text(
                 "INSERT INTO public.bookings (\"when\", topic, type, status, time_slot_id, guest_id) "
@@ -178,11 +187,20 @@ async def test_admin_approve_cancel(admin_client, free_slot_and_date, db_conn_an
 
 async def test_admin_reject_cancel(admin_client, free_slot_and_date, db_conn_and_sessionmaker):
     """관리자가 취소 신청 거절 → CONFIRMED 유지."""
+    import uuid as _uuid
     slot_id, d = free_slot_and_date
 
     async with db_conn_and_sessionmaker() as session:
-        row = await session.execute(text("SELECT id FROM public.users WHERE role='CUSTOMER' LIMIT 1"))
-        guest_id = str(row.scalar_one())
+        cid = _uuid.uuid4()
+        await session.execute(
+            text(
+                "INSERT INTO public.users (id, username, email, display_name, is_active, status, role, feedback_consent) "
+                "VALUES (:id, :u, :e, :d, true, 'ACTIVE', 'CUSTOMER', true)"
+            ),
+            {"id": str(cid), "u": f"guest-{cid.hex[:8]}", "e": f"guest-{cid.hex[:8]}@example.com", "d": "Guest"},
+        )
+        await session.commit()
+        guest_id = str(cid)
         ins = await session.execute(
             text(
                 "INSERT INTO public.bookings (\"when\", topic, type, status, time_slot_id, guest_id) "
