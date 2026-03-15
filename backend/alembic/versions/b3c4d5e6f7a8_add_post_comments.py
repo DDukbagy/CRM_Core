@@ -15,18 +15,21 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        'post_comments',
-        sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column('post_id', sa.dialects.postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('user_id', sa.dialects.postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('content', sa.Text(), nullable=False),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.ForeignKeyConstraint(['post_id'], ['instructor_posts.id'], ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
-        sa.PrimaryKeyConstraint('id'),
-    )
-    op.create_index('ix_post_comments_post_id', 'post_comments', ['post_id'])
+    op.execute(sa.text("""
+        CREATE TABLE IF NOT EXISTS post_comments (
+            id SERIAL NOT NULL,
+            post_id UUID NOT NULL,
+            user_id UUID NOT NULL,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+            PRIMARY KEY (id),
+            FOREIGN KEY (post_id) REFERENCES instructor_posts (id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        )
+    """))
+    op.execute(sa.text(
+        "CREATE INDEX IF NOT EXISTS ix_post_comments_post_id ON post_comments (post_id)"
+    ))
 
 
 def downgrade() -> None:
