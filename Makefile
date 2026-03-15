@@ -75,7 +75,7 @@ iweb: ## Run instructor Expo app in browser (web)
 
 .PHONY: itunnel
 itunnel: ## Run instructor Expo app with tunnel (QR code for real device)
-	@cd apps/instructor && npx expo start --tunnel
+	@cd apps/instructor && npx expo start --tunnel --port 8082
 
 .PHONY: server
 server: ## Run backend server (reload)

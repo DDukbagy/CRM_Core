@@ -287,9 +287,9 @@ export default function DashboardScreen() {
           const sc = STATUS_COLOR[b.status] ?? "#9ca3af";
           return (
             <View key={b.id} style={[s.todayCard, { borderLeftColor: sc }]}>
-              <View style={s.pendingTop}>
+              <View style={s.pendingRow}>
                 <Avatar name={name} size={40} />
-                <View style={s.pendingMeta}>
+                <View style={s.pendingLeft}>
                   <Text style={s.customerName}>{name}</Text>
                   {b.topic ? <Text style={s.topicTxt}>{b.topic}</Text> : null}
                 </View>
@@ -543,7 +543,7 @@ const s = StyleSheet.create({
   squareConfirmTxt: { color: "#2563eb", fontSize: 13, fontWeight: "700" },
   squareDeclineTxt: { color: "#374151", fontSize: 13, fontWeight: "700" },
 
-  cancelReqCard: { borderColor: "#f97316", backgroundColor: "#fff7ed", activeOpacity: 0.8 },
+  cancelReqCard: { borderColor: "#f97316", backgroundColor: "#fff7ed" },
   cancelDetailHint: { color: "#f97316", fontSize: 12, fontWeight: "700", textAlign: "center", lineHeight: 18 },
   cancelReqBanner: { backgroundColor: "#f97316", borderRadius: 6, alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 2, marginBottom: 8 },
   cancelReqBannerTxt: { color: "#fff", fontSize: 11, fontWeight: "700" },

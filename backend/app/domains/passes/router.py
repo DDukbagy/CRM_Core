@@ -198,6 +198,8 @@ async def assign_pass(
     customer = await session.get(User, data.customer_id)
     if not customer:
         raise HTTPException(status_code=404, detail="고객을 찾을 수 없습니다.")
+    if current_user.role == "INSTRUCTOR" and customer.manager_id != uid:
+        raise HTTPException(status_code=403, detail="담당 고객에게만 수강권을 발급할 수 있습니다.")
 
     cp = CustomerPass(
         pass_type_id=pt.id,

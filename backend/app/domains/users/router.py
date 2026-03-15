@@ -20,6 +20,7 @@ from app.domains.users.schemas import (
     UsersListResponse,
     UserUpdate,
     UserCreate,
+    PushTokenUpdate,
 )
 
 router = APIRouter(
@@ -235,12 +236,12 @@ async def list_users(
 
 @router.put("/me/push-token", status_code=204)
 async def update_push_token(
-    body: dict,
+    body: PushTokenUpdate,
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(get_current_user),
 ):
     """Expo Push Token 저장 (로그인 후 앱에서 호출)"""
-    token = body.get("token") if isinstance(body, dict) else None
+    token = body.token
     result = await session.execute(select(User).where(User.id == user.id))
     u = result.scalar_one_or_none()
     if u:
@@ -284,9 +285,15 @@ async def get_user_detail(
             raise HTTPException(status_code=403, detail="Forbidden")
         return user
     else:
-        if user.id != _safe_uuid(str(current_user.id)):
-            raise HTTPException(status_code=403, detail="Forbidden")
-        return user
+        # CUSTOMER: 본인 조회 허용
+        if user.id == _safe_uuid(str(current_user.id)):
+            return user
+        # CUSTOMER: 담당 강사(manager) 조회 허용
+        me_result = await session.execute(select(User).where(User.id == _safe_uuid(str(current_user.id))))
+        me = me_result.scalar_one_or_none()
+        if me and me.manager_id and me.manager_id == user.id:
+            return user
+        raise HTTPException(status_code=403, detail="Forbidden")
 
 @router.post("", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 async def create_user(
@@ -401,11 +408,11 @@ async def delete_user(
     if current_user.role == 'ADMIN':
         pass
     elif current_user.role == 'INSTRUCTOR':
-        if user.id != _safe_uuid(str(current_user.id)) and user.manager_id != _safe_uuid(str(current_user.id)):
+        # 강사는 담당 고객만 삭제 가능 (본인 계정 삭제 불가)
+        if user.manager_id != _safe_uuid(str(current_user.id)):
             raise HTTPException(status_code=403, detail="Forbidden")
     else:
-        if user.id != _safe_uuid(str(current_user.id)):
-            raise HTTPException(status_code=403, detail="Forbidden")
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     await session.delete(user)
     await session.commit()

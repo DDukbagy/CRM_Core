@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, date
 from uuid import UUID
 from typing import Optional, List
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, EmailStr, ConfigDict, field_validator
 
 
 class UserRead(BaseModel):
@@ -82,6 +82,15 @@ class UserUpdate(BaseModel):
     feedback_consent: bool | None = None
     recurring_off_days: list[int] | None = None
 
+    @field_validator("recurring_off_days")
+    @classmethod
+    def validate_recurring_off_days(cls, v: list[int] | None) -> list[int] | None:
+        if v is None:
+            return v
+        if any(d < 0 or d > 6 for d in v):
+            raise ValueError("recurring_off_days 값은 0(월)~6(일) 범위여야 합니다")
+        return sorted(set(v))  # 중복 제거, 정렬
+
     model_config = ConfigDict(extra="forbid")
 
 
@@ -96,6 +105,12 @@ class UserCreateFromAuth(BaseModel):
     display_name: str
     role: str = "CUSTOMER"
     status: str = "ACTIVE"
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class PushTokenUpdate(BaseModel):
+    token: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 

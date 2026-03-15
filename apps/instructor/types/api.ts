@@ -129,11 +129,6 @@ export interface CustomerPassRead {
   customer_name: string | null;
 }
 
-export interface UsersListResponse {
-  items: UserRead[];
-  total: number | null;
-}
-
 export interface PostRead {
   id: string;
   instructor_id: string;
