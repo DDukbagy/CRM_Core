@@ -37,9 +37,9 @@ async def _ensure_test_user_id(session: AsyncSession) -> uuid.UUID:
     await session.execute(
         text(
             """
-            insert into public.users (id, username, email, display_name, is_active, status, role)
-            values (:id, :username, :email, :display_name, true, 'ACTIVE', 'CUSTOMER')
-            """
+            insert into public.users (id, username, email, display_name, is_active, status, role, feedback_consent)
+            values (:id, :username, :email, :display_name, true, 'ACTIVE', 'CUSTOMER', true)
+"""
         ),
         {
             "id": str(user_id),
@@ -182,9 +182,9 @@ async def free_slot_and_date(db_conn_and_sessionmaker: async_sessionmaker[AsyncS
                 await session.execute(
                     text(
                         """
-                        insert into public.users (id, username, email, display_name, is_active, status, role)
-                        values (:id, :username, :email, :display_name, true, 'ACTIVE', 'INSTRUCTOR')
-                        """
+                        insert into public.users (id, username, email, display_name, is_active, status, role, feedback_consent)
+                        values (:id, :username, :email, :display_name, true, 'ACTIVE', 'INSTRUCTOR', true)
+"""
                     ),
                     {
                         "id": host_id,
@@ -259,9 +259,9 @@ async def _ensure_instructor(session: AsyncSession, tier: str = "NORMAL") -> uui
     await session.execute(
         text(
             """
-            INSERT INTO public.users (id, username, email, display_name, is_active, status, role, instructor_tier)
-            VALUES (:id, :username, :email, :display_name, true, 'ACTIVE', 'INSTRUCTOR', :tier)
-            """
+            INSERT INTO public.users (id, username, email, display_name, is_active, status, role, instructor_tier, feedback_consent)
+            VALUES (:id, :username, :email, :display_name, true, 'ACTIVE', 'INSTRUCTOR', :tier, true)
+"""
         ),
         {
             "id": str(instructor_uuid),
@@ -280,9 +280,9 @@ async def _ensure_customer_managed_by(session: AsyncSession, manager_id: uuid.UU
     await session.execute(
         text(
             """
-            INSERT INTO public.users (id, username, email, display_name, is_active, status, role, manager_id)
-            VALUES (:id, :username, :email, :display_name, true, 'ACTIVE', 'CUSTOMER', :manager_id)
-            """
+            INSERT INTO public.users (id, username, email, display_name, is_active, status, role, manager_id, feedback_consent)
+            VALUES (:id, :username, :email, :display_name, true, 'ACTIVE', 'CUSTOMER', :manager_id, true)
+"""
         ),
         {
             "id": str(customer_uuid),
@@ -322,9 +322,9 @@ async def _ensure_admin(session: AsyncSession) -> uuid.UUID:
     await session.execute(
         text(
             """
-            INSERT INTO public.users (id, username, email, display_name, is_active, status, role)
-            VALUES (:id, :username, :email, :display_name, true, 'ACTIVE', 'ADMIN')
-            """
+            INSERT INTO public.users (id, username, email, display_name, is_active, status, role, feedback_consent)
+            VALUES (:id, :username, :email, :display_name, true, 'ACTIVE', 'ADMIN', true)
+"""
         ),
         {
             "id": str(admin_uuid),
