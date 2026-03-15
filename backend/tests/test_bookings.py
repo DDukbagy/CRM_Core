@@ -107,3 +107,111 @@ async def test_cancel_requested_booking_should_fail(client, free_slot_and_date):
     res = await client.patch(f"/bookings/{booking_id}/cancel", json={"reason": "취소"})
     assert res.status_code == 400, res.text
 
+
+# ── CANCEL_REQUESTED 상태 머신 테스트 ─────────────────────────────────────────
+
+async def test_cancel_as_guest_sets_cancel_requested(client, free_slot_and_date, db_conn_and_sessionmaker):
+    """CONFIRMED 예약에 대해 고객이 취소 신청 → CANCEL_REQUESTED."""
+    slot_id, d = free_slot_and_date
+
+    created = await client.post("/bookings", json={
+        "time_slot_id": slot_id, "when": d.isoformat(), "topic": "취소신청 테스트",
+    })
+    assert created.status_code == 201, created.text
+    booking_id = created.json()["id"]
+
+    async with db_conn_and_sessionmaker() as session:
+        await session.execute(
+            text("UPDATE public.bookings SET status='CONFIRMED' WHERE id = :id"),
+            {"id": booking_id},
+        )
+        await session.commit()
+
+    res = await client.patch(f"/bookings/{booking_id}/cancel")
+    assert res.status_code == 200, res.text
+    assert res.json()["status"] == "CANCEL_REQUESTED"
+
+
+async def test_withdraw_cancel_request_returns_confirmed(client, free_slot_and_date, db_conn_and_sessionmaker):
+    """CANCEL_REQUESTED 상태에서 고객이 취소 신청 철회 → CONFIRMED."""
+    slot_id, d = free_slot_and_date
+
+    created = await client.post("/bookings", json={
+        "time_slot_id": slot_id, "when": d.isoformat(), "topic": "취소철회 테스트",
+    })
+    assert created.status_code == 201, created.text
+    booking_id = created.json()["id"]
+
+    async with db_conn_and_sessionmaker() as session:
+        await session.execute(
+            text("UPDATE public.bookings SET status='CANCEL_REQUESTED' WHERE id = :id"),
+            {"id": booking_id},
+        )
+        await session.commit()
+
+    res = await client.patch(f"/bookings/{booking_id}/withdraw-cancel")
+    assert res.status_code == 200, res.text
+    assert res.json()["status"] == "CONFIRMED"
+
+
+async def test_admin_approve_cancel(admin_client, free_slot_and_date, db_conn_and_sessionmaker):
+    """관리자가 취소 신청 승인 → CANCELLED."""
+    import uuid as _uuid
+    slot_id, d = free_slot_and_date
+
+    async with db_conn_and_sessionmaker() as session:
+        cid = _uuid.uuid4()
+        await session.execute(
+            text(
+                "INSERT INTO public.users (id, username, email, display_name, is_active, status, role, feedback_consent) "
+                "VALUES (:id, :u, :e, :d, true, 'ACTIVE', 'CUSTOMER', true)"
+            ),
+            {"id": str(cid), "u": f"guest-{cid.hex[:8]}", "e": f"guest-{cid.hex[:8]}@example.com", "d": "Guest"},
+        )
+        await session.commit()
+        guest_id = str(cid)
+        ins = await session.execute(
+            text(
+                "INSERT INTO public.bookings (\"when\", topic, type, status, time_slot_id, guest_id) "
+                "VALUES (:when, '취소승인 테스트', 'LESSON', 'CANCEL_REQUESTED', :slot_id, :guest_id) RETURNING id"
+            ),
+            {"when": d, "slot_id": slot_id, "guest_id": guest_id},
+        )
+        booking_id = ins.scalar_one()
+        await session.commit()
+
+    res = await admin_client.patch(f"/calendars/me/bookings/{booking_id}/approve-cancel")
+    assert res.status_code == 200, res.text
+    assert res.json()["status"] == "CANCELLED"
+
+
+async def test_admin_reject_cancel(admin_client, free_slot_and_date, db_conn_and_sessionmaker):
+    """관리자가 취소 신청 거절 → CONFIRMED 유지."""
+    import uuid as _uuid
+    slot_id, d = free_slot_and_date
+
+    async with db_conn_and_sessionmaker() as session:
+        cid = _uuid.uuid4()
+        await session.execute(
+            text(
+                "INSERT INTO public.users (id, username, email, display_name, is_active, status, role, feedback_consent) "
+                "VALUES (:id, :u, :e, :d, true, 'ACTIVE', 'CUSTOMER', true)"
+            ),
+            {"id": str(cid), "u": f"guest-{cid.hex[:8]}", "e": f"guest-{cid.hex[:8]}@example.com", "d": "Guest"},
+        )
+        await session.commit()
+        guest_id = str(cid)
+        ins = await session.execute(
+            text(
+                "INSERT INTO public.bookings (\"when\", topic, type, status, time_slot_id, guest_id) "
+                "VALUES (:when, '취소거절 테스트', 'LESSON', 'CANCEL_REQUESTED', :slot_id, :guest_id) RETURNING id"
+            ),
+            {"when": d, "slot_id": slot_id, "guest_id": guest_id},
+        )
+        booking_id = ins.scalar_one()
+        await session.commit()
+
+    res = await admin_client.patch(f"/calendars/me/bookings/{booking_id}/reject-cancel")
+    assert res.status_code == 200, res.text
+    assert res.json()["status"] == "CONFIRMED"
+

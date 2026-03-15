@@ -47,16 +47,12 @@ network:
 
 variables:
   SUPABASE_URL: "https://xkyklpdjfjveacqldiug.supabase.co"
+  AWS_REGION: "ap-northeast-2"
 
 secrets:
   DATABASE_URL: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/DATABASE_URL
   SUPABASE_JWT_SECRET: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/SUPABASE_JWT_SECRET
   SUPABASE_ANON_KEY: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/SUPABASE_ANON_KEY
-
-
-# You can override any of the values defined above by environment.
-#environments:
-#  test:
-#    count: 2               # Number of tasks to run for the "test" environment.
-#    deployment:            # The deployment strategy for the "test" environment.
-#       rolling: 'recreate' # Stops existing tasks before new ones are started for faster deployments.
+  AWS_ACCESS_KEY_ID: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/AWS_ACCESS_KEY_ID
+  AWS_SECRET_ACCESS_KEY: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/AWS_SECRET_ACCESS_KEY
+  S3_BUCKET_NAME: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/S3_BUCKET_NAME

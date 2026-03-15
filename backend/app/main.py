@@ -3,46 +3,54 @@ from __future__ import annotations
 import logging
 import sys
 
-from fastapi import FastAPI, Depends
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import Response
 
 from app.core.config import settings
-from app.db.session import get_session
-
-from app.domains.calendar.router import router as calendar_router
-from app.domains.calendar.lesson_note_router import router as lesson_note_router
 from app.core.exceptions import register_exception_handlers
 from app.core.middleware import RequestLoggingMiddleware
 from app.domains.auth.router import router as auth_router
+from app.domains.calendar.router import router as calendar_router
+from app.domains.calendar.lesson_note_router import router as lesson_note_router
+from app.domains.content.router import router as content_router
 from app.domains.instructor.router import router as instructor_router
 from app.domains.membership.router import router as membership_router
 from app.domains.payment.router import router as payment_router
+from app.domains.passes.router import router as passes_router
 from app.domains.posts.router import router as posts_router
 from app.domains.users.router import router as users_router
 from app.api.health import router as health_router
 
-# ---- Logging: always emit app logs to stdout (works well in ECS/Copilot) ----
+logger = logging.getLogger(__name__)
+
 logging.basicConfig(
     level=logging.INFO,
     stream=sys.stdout,
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
-# Make sure our app logger isn't silenced
 logging.getLogger("app").setLevel(logging.INFO)
-logging.getLogger(__name__).setLevel(logging.INFO)
+
+# ── Sentry ───────────────────────────────────────────────────────────────────
+if settings.SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        environment=settings.SENTRY_ENVIRONMENT,
+        traces_sample_rate=settings.SENTRY_TRACES_SAMPLE_RATE,
+        integrations=[
+            StarletteIntegration(transaction_style="endpoint"),
+            FastApiIntegration(transaction_style="endpoint"),
+        ],
+        send_default_pii=False,
+    )
+    logger.info("Sentry initialized (env=%s)", settings.SENTRY_ENVIRONMENT)
 
 app = FastAPI()
 
-print(f"🔥 Origins: {settings.cors_origins}")
-print(f"🔥 Regex:   {settings.CORS_ORIGIN_REGEX}")
-
-app.include_router(instructor_router)
-app.include_router(posts_router)
-app.include_router(health_router)
-
+# ── 미들웨어 (라우터 등록 전에 추가해야 모든 라우트에 적용됨) ──────────────
 app.add_middleware(RequestLoggingMiddleware)
 
 @app.middleware("http")
@@ -51,29 +59,33 @@ async def allow_options_preflight(request, call_next):
         return Response(status_code=204)
     return await call_next(request)
 
-# CORS
-cors_regex = settings.CORS_ORIGIN_REGEX   # getattr로 잘못된 속성명 쓰던 버그 수정
-cors_origins = settings.cors_origins       # validator 거친 리스트 사용
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins if not cors_regex else [],
-    allow_origin_regex=cors_regex,
+    allow_origins=settings.cors_origins if not settings.CORS_ORIGIN_REGEX else [],
+    allow_origin_regex=settings.CORS_ORIGIN_REGEX,
     allow_credentials=True,
-    allow_methods=["*"],    # allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["*"],    # allow_headers=["Authorization", "Content-Type"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 register_exception_handlers(app)
 
-@app.get("/")
-async def root():
-    return {"status": "ok"}
-
+# ── 라우터 (미들웨어 설정 이후 등록) ─────────────────────────────────────────
+app.include_router(health_router)
 app.include_router(auth_router)
+app.include_router(users_router)
+app.include_router(instructor_router)
 app.include_router(calendar_router)
 app.include_router(lesson_note_router)
 app.include_router(membership_router)
 app.include_router(payment_router)
+app.include_router(passes_router)
 app.include_router(posts_router)
-app.include_router(users_router)
+app.include_router(content_router)
+
+logger.info("CORS origins: %s", settings.cors_origins)
+logger.info("CORS regex: %s", settings.CORS_ORIGIN_REGEX)
+
+@app.get("/")
+async def root():
+    return {"status": "ok"}

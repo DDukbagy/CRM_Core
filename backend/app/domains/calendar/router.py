@@ -12,8 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.core.auth.deps import require_role, get_current_user, CurrentUser
+from app.core.push import send_push
 from app.db.session import get_session
 from app.domains.calendar.models import Booking, Calendar, TimeSlot, BookingType
+from app.domains.users.models import User
 from app.domains.calendar.schemas import (
     AvailabilityDay,
     AvailabilityResponse,
@@ -29,6 +31,7 @@ from app.domains.calendar.schemas import (
     TimeSlotUpdate,
     TimeSlotWeekdaysPatch,
     BookingCancelRequest,
+    BookingConfirmRequest,
     BookingUpdateRequest,
 )
 
@@ -38,6 +41,22 @@ bk_router = APIRouter(prefix="/bookings", tags=["Booking"])
 
 
 # --- Helpers ---
+async def _get_guest_push_token(session, guest_id: UUID) -> str | None:
+    u = await session.get(User, guest_id)
+    return getattr(u, "push_token", None) if u else None
+
+
+async def _get_host_push_token(session, booking: Booking) -> str | None:
+    ts = await session.get(TimeSlot, booking.time_slot_id)
+    if not ts:
+        return None
+    cal = await session.get(Calendar, ts.calendar_id)
+    if not cal:
+        return None
+    u = await session.get(User, cal.host_id)
+    return getattr(u, "push_token", None) if u else None
+
+
 def _date_range_inclusive(start: date, end: date) -> list[date]:
     days: list[date] = []
     cur = start
@@ -53,6 +72,50 @@ async def _get_calendar_id_by_host(session: AsyncSession, host_id: UUID) -> int:
     if cal_id is None:
         raise HTTPException(status_code=404, detail="Calendar not found")
     return cal_id
+
+
+async def _assert_booking_in_host_calendar(
+    session: AsyncSession,
+    booking: Booking,
+    host_id: UUID,
+    host_role: str,
+) -> None:
+    """INSTRUCTOR가 본인 캘린더의 예약만 조작할 수 있도록 검증.
+    ADMIN은 전체 허용. 실패 시 404/403 raise."""
+    if host_role == "ADMIN":
+        return
+    ts = await session.get(TimeSlot, booking.time_slot_id)
+    if not ts:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="TimeSlot not found")
+    cal = await session.get(Calendar, ts.calendar_id)
+    if not cal or UUID(str(cal.host_id)) != host_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only manage bookings in your calendar")
+
+
+async def _deduct_pass_for_lesson(session: AsyncSession, booking: Booking) -> None:
+    """완료 또는 노쇼 처리 시 활성 수강권에서 1회 차감.
+    HOLIDAY/WORK_OVERRIDE 타입은 차감하지 않음."""
+    if booking.type in (BookingType.HOLIDAY, BookingType.WORK_OVERRIDE):
+        return
+    from app.domains.passes.models import CustomerPass as CustomerPassModel
+    ts = await session.get(TimeSlot, booking.time_slot_id)
+    cal = await session.get(Calendar, ts.calendar_id) if ts else None
+    instructor_id = UUID(str(cal.host_id)) if cal else None
+    if not instructor_id:
+        return
+    cp_res = await session.execute(
+        select(CustomerPassModel).where(
+            CustomerPassModel.customer_id == UUID(str(booking.guest_id)),
+            CustomerPassModel.instructor_id == instructor_id,
+            CustomerPassModel.status == "ACTIVE",
+        ).limit(1)
+    )
+    active_pass = cp_res.scalars().first()
+    if active_pass and active_pass.sessions_used < active_pass.sessions_total:
+        active_pass.sessions_used += 1
+        if active_pass.sessions_used >= active_pass.sessions_total:
+            active_pass.status = "COMPLETED"
+        session.add(active_pass)
 
 
 # 409(예약 충돌) 응답
@@ -284,6 +347,23 @@ async def get_host_calendar(
     return calendar
 
 
+@cal_router.get("/{host_id}/time-slots", response_model=list[TimeSlotRead])
+async def get_host_time_slots(
+    host_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """강사의 타임슬롯 목록 조회 (고객이 과거 예약 시간 표시에 사용)"""
+    result = await session.execute(select(Calendar).where(Calendar.host_id == host_id))
+    calendar = result.scalar_one_or_none()
+    if not calendar:
+        raise HTTPException(status_code=404, detail="Calendar not found")
+    slots_result = await session.execute(
+        select(TimeSlot).where(TimeSlot.calendar_id == calendar.id)
+    )
+    return slots_result.scalars().all()
+
+
 @cal_router.get("/{host_id}/availability", response_model=AvailabilityResponse)
 async def get_availability(
     host_id: UUID,
@@ -304,15 +384,20 @@ async def get_availability(
     if calendar_id is None:
         raise HTTPException(status_code=404, detail="Calendar not found")
 
+    # 호스트 정보 조회 (정기 휴무 요일 확인)
+    host_res = await session.execute(select(User).where(User.id == host_id))
+    host = host_res.scalar_one_or_none()
+    recurring_off: set[int] = set(host.recurring_off_days or []) if host else set()
+
     # 해당 캘린더의 모든 time_slots
     slots_res = await session.execute(
         select(TimeSlot).where(TimeSlot.calendar_id == calendar_id, TimeSlot.is_active == True,).order_by(TimeSlot.id.asc())
     )
     slots = slots_res.scalars().all()
 
-    # 기간 내 예약(취소 제외) 조회
+    # 기간 내 예약(취소 제외) 조회 — slot_id + 시간 범위 양쪽으로 체크
     booked_res = await session.execute(
-        select(Booking.time_slot_id, Booking.when)
+        select(Booking.time_slot_id, Booking.when, TimeSlot.start_time, TimeSlot.end_time, Booking.type)
         .join(TimeSlot, TimeSlot.id == Booking.time_slot_id)
         .where(
             TimeSlot.calendar_id == calendar_id,
@@ -321,18 +406,60 @@ async def get_availability(
             Booking.status != "CANCELLED",
         )
     )
-    booked_set = {(row[0], row[1]) for row in booked_res.all()}
+    booked_rows = booked_res.all()
+    # HOLIDAY 예약이 있는 날짜 — 해당 날의 모든 슬롯 차단
+    holiday_dates: set = {row[1] for row in booked_rows if row[4] == "HOLIDAY"}
+    # WORK_OVERRIDE: 날짜 → 활성화된 slot_id 집합 (특정 시간만 열기)
+    work_override_by_date: dict = {}
+    for row in booked_rows:
+        if row[4] == "WORK_OVERRIDE":
+            work_override_by_date.setdefault(row[1], set()).add(row[0])
+    # (slot_id, date) 집합 — 직접 예약된 슬롯
+    booked_slot_date: set[tuple] = {(row[0], row[1]) for row in booked_rows if row[4] not in ("HOLIDAY", "WORK_OVERRIDE")}
+    # (start_time, end_time, date) 집합 — 같은 시간대가 중복 슬롯일 때 통째로 막기
+    booked_time_date: set[tuple] = {(row[2], row[3], row[1]) for row in booked_rows if row[4] not in ("HOLIDAY", "WORK_OVERRIDE")}
 
     days_out: list[AvailabilityDay] = []
     for d in _date_range_inclusive(start, end):
         wd = d.weekday()  # 월0~일6
+
+        # 정기 휴무 요일이거나 HOLIDAY 예약이 있는 날
+        if wd in recurring_off or d in holiday_dates:
+            override_slot_ids = work_override_by_date.get(d)
+            if override_slot_ids:
+                # 특정 시간만 활성화된 경우 — 해당 슬롯만 반환
+                partial: list[AvailabilitySlot] = []
+                seen_partial: set[tuple] = set()
+                for s in slots:
+                    if s.id not in override_slot_ids:
+                        continue
+                    tk = (s.start_time, s.end_time)
+                    if tk in seen_partial:
+                        continue
+                    seen_partial.add(tk)
+                    partial.append(AvailabilitySlot(time_slot_id=s.id, start_time=s.start_time, end_time=s.end_time))
+                days_out.append(AvailabilityDay(date=d, slots=partial))
+            else:
+                days_out.append(AvailabilityDay(date=d, slots=[], is_holiday=d in holiday_dates))
+            continue
+
         day_slots: list[AvailabilitySlot] = []
+        seen_times: set[tuple] = set()  # 같은 시간대 중복 제거
 
         for s in slots:
             if wd not in (s.weekdays or []):
                 continue
-            if (s.id, d) in booked_set:
+            # 이 슬롯 자체가 예약됨
+            if (s.id, d) in booked_slot_date:
                 continue
+            # 동일 시간대의 다른 슬롯이 예약됨
+            if (s.start_time, s.end_time, d) in booked_time_date:
+                continue
+            # 중복 시간대 제거 (같은 start/end 는 하나만 노출)
+            time_key = (s.start_time, s.end_time)
+            if time_key in seen_times:
+                continue
+            seen_times.add(time_key)
             day_slots.append(
                 AvailabilitySlot(
                     time_slot_id=s.id,
@@ -383,21 +510,25 @@ async def create_booking(
         # 휴무는 해당 TimeSlot의 주인(Host)만 등록
         if host_id != guest_id:
             raise HTTPException(status_code=403, detail="Only the host can schedule a HOLIDAY")
-        # 휴무는 생성 즉시 확정
+        initial_status = "CONFIRMED"
+    elif data.type == BookingType.WORK_OVERRIDE:
+        # 정기 휴무 요일 영업일 전환도 호스트(강사)만 가능
+        if host_id != guest_id:
+            raise HTTPException(status_code=403, detail="Only the host can create a WORK_OVERRIDE")
         initial_status = "CONFIRMED"
     else:
-        # LESSON
-        # 고객/관리자만 요청 생성 가능 (강사 - 확정권한만)
+        # LESSON: 고객/관리자만 요청 생성 가능
         if user_role not in {"CUSTOMER", "ADMIN"}:
             raise HTTPException(status_code=403, detail="Only customer can request a LESSON booking")
         initial_status = "REQUESTED"
 
-    # 중복 예약 확인
+    # 중복 예약 확인 (타입별로 분리 — HOLIDAY+WORK_OVERRIDE는 같은 슬롯에 공존 가능)
     existing = await session.execute(
         select(Booking.id).where(
             Booking.time_slot_id == data.time_slot_id,
             Booking.when == data.when,
             Booking.status != "CANCELLED",
+            Booking.type == data.type,
         )
     )
     if existing.scalar_one_or_none():
@@ -449,6 +580,7 @@ async def create_booking(
                 Booking.time_slot_id == data.time_slot_id,
                 Booking.when == data.when,
                 Booking.status != "CANCELLED",
+                Booking.type == data.type,
             )
         )
         if again.scalar_one_or_none():
@@ -499,6 +631,7 @@ async def list_my_calendar_bookings(
 @cal_router.patch("/me/bookings/{booking_id}/confirm", response_model=BookingRead)
 async def confirm_booking_as_host(
     booking_id: int,
+    body: BookingConfirmRequest | None = None,
     session: AsyncSession = Depends(get_session),
     host: CurrentUser = Depends(require_role({"INSTRUCTOR", "ADMIN"})),
 ):
@@ -514,9 +647,9 @@ async def confirm_booking_as_host(
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
 
-    # HOLIDAY는 확정 대상 X
-    if booking.type == BookingType.HOLIDAY:
-        raise HTTPException(status_code=400, detail="HOLIDAY booking does not require confirmation")
+    # HOLIDAY/WORK_OVERRIDE는 이미 CONFIRMED 상태로 생성되므로 확정 불필요
+    if booking.type in (BookingType.HOLIDAY, BookingType.WORK_OVERRIDE):
+        raise HTTPException(status_code=400, detail=f"{booking.type} booking does not require confirmation")
 
     if booking.status == "CONFIRMED":
         return booking
@@ -525,28 +658,23 @@ async def confirm_booking_as_host(
     if booking.status != "REQUESTED":
         raise HTTPException(status_code=400, detail=f"Invalid status transition: {booking.status} -> CONFIRMED")
 
-    # ADMIN - 전체 허용, INSTRUCTOR - 내 캘린더 소유 예약만
-    if host_role != "ADMIN":
-        ts_res = await session.execute(select(TimeSlot).where(TimeSlot.id == booking.time_slot_id))
-        ts = ts_res.scalar_one_or_none()
-        if not ts:
-            raise HTTPException(status_code=404, detail="TimeSlot not found")
-
-        cal_res = await session.execute(select(Calendar).where(Calendar.id == ts.calendar_id))
-        calendar = cal_res.scalar_one_or_none()
-        if not calendar or UUID(str(calendar.host_id)) != host_id:
-            raise HTTPException(status_code=403, detail="You can confirm bookings only in your calendar")
+    await _assert_booking_in_host_calendar(session, booking, host_id, host_role)
 
     booking.status = "CONFIRMED"
+    if body and body.topic:
+        booking.topic = body.topic
     session.add(booking)
     await session.commit()
     await session.refresh(booking)
+    token = await _get_guest_push_token(session, UUID(str(booking.guest_id)))
+    await send_push(token, "예약 확정", f"{booking.topic} ({booking.when}) 예약이 확정되었습니다.")
     return booking
 
 
 @cal_router.patch("/me/bookings/{booking_id}/decline", response_model=BookingRead)
 async def decline_booking_as_host(
     booking_id: int,
+    body: BookingCancelRequest | None = None,
     session: AsyncSession = Depends(get_session),
     host: CurrentUser = Depends(require_role({"INSTRUCTOR", "ADMIN"})),
 ):
@@ -562,30 +690,27 @@ async def decline_booking_as_host(
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
 
-    if booking.type == BookingType.HOLIDAY:
-        raise HTTPException(status_code=400, detail="HOLIDAY booking cannot be declined")
+    # HOLIDAY/WORK_OVERRIDE는 decline 대상이 아님 (cancel 사용)
+    if booking.type in (BookingType.HOLIDAY, BookingType.WORK_OVERRIDE):
+        raise HTTPException(status_code=400, detail=f"{booking.type} booking cannot be declined — use cancel")
 
     if booking.status == "CANCELLED":
         return booking
     if booking.status != "REQUESTED":
-        # - CONFIRMED 이후는 cancel로 처리
+        # CONFIRMED 이후는 cancel로 처리
         raise HTTPException(status_code=400, detail=f"Invalid status transition: {booking.status} -> CANCELLED")
 
-    if host_role != "ADMIN":
-        ts_res = await session.execute(select(TimeSlot).where(TimeSlot.id == booking.time_slot_id))
-        ts = ts_res.scalar_one_or_none()
-        if not ts:
-            raise HTTPException(status_code=404, detail="TimeSlot not found")
-
-        cal_res = await session.execute(select(Calendar).where(Calendar.id == ts.calendar_id))
-        calendar = cal_res.scalar_one_or_none()
-        if not calendar or UUID(str(calendar.host_id)) != host_id:
-            raise HTTPException(status_code=403, detail="You can decline bookings only in your calendar")
+    await _assert_booking_in_host_calendar(session, booking, host_id, host_role)
 
     booking.status = "CANCELLED"
+    if body is not None and getattr(body, "reason", None):
+        if hasattr(booking, "cancel_reason"):
+            booking.cancel_reason = body.reason
     session.add(booking)
     await session.commit()
     await session.refresh(booking)
+    token = await _get_guest_push_token(session, UUID(str(booking.guest_id)))
+    await send_push(token, "예약 신청 거절", f"{booking.topic} ({booking.when}) 예약 신청이 거절되었습니다.")
     return booking
 
 
@@ -606,6 +731,9 @@ async def update_booking_as_guest(
 
     if booking.guest_id != user_id:
         raise HTTPException(status_code=403, detail="Only the guest can modify this booking")
+
+    if booking.type in (BookingType.HOLIDAY, BookingType.WORK_OVERRIDE):
+        raise HTTPException(status_code=400, detail="Cannot modify HOLIDAY or WORK_OVERRIDE bookings")
 
     if booking.status != "REQUESTED":
         raise HTTPException(status_code=400, detail="Only REQUESTED bookings can be modified")
@@ -657,10 +785,13 @@ async def cancel_booking_as_guest(
     # - REQUESTED는 withdraw(요청 철회)로 처리
     if booking.status == "REQUESTED":
         raise HTTPException(status_code=400, detail="Requested booking should be withdrawn, not cancelled")
+    if booking.status == "CANCEL_REQUESTED":
+        return BookingCancelResponse(id=booking.id, status=booking.status, updated_at=booking.updated_at)
     if booking.status != "CONFIRMED":
-        raise HTTPException(status_code=400, detail=f"Invalid status transition: {booking.status} -> CANCELLED")
+        raise HTTPException(status_code=400, detail=f"Invalid status transition: {booking.status} -> CANCEL_REQUESTED")
 
-    booking.status = "CANCELLED"
+    # 고객 취소 신청 → 강사 승인 대기 상태로 전환
+    booking.status = "CANCEL_REQUESTED"
 
     # cancel_reason 저장
     if body is not None and getattr(body, "reason", None):
@@ -670,6 +801,10 @@ async def cancel_booking_as_guest(
     session.add(booking)
     await session.commit()
     await session.refresh(booking)
+    token = await _get_host_push_token(session, booking)
+    guest = await session.get(User, UUID(str(booking.guest_id)))
+    guest_name = guest.display_name if guest else "고객"
+    await send_push(token, "취소 신청", f"{guest_name}님이 {booking.topic} ({booking.when}) 취소를 신청했습니다.")
     return BookingCancelResponse(id=booking.id, status=booking.status, updated_at=booking.updated_at)
 
 
@@ -733,17 +868,14 @@ async def cancel_booking_as_host(
     - REQUESTED 상태는 decline(거절)로만 처리
     """
     host_id = UUID(str(host.id))
-    calendar_id = await _get_calendar_id_by_host(session, host_id)
+    host_role = str(host.role)
 
     res = await session.execute(select(Booking).where(Booking.id == booking_id))
     booking = res.scalar_one_or_none()
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
 
-    ts_res = await session.execute(select(TimeSlot).where(TimeSlot.id == booking.time_slot_id))
-    ts = ts_res.scalar_one_or_none()
-    if not ts or ts.calendar_id != calendar_id:
-        raise HTTPException(status_code=403, detail="You can cancel bookings only in your calendar")
+    await _assert_booking_in_host_calendar(session, booking, host_id, host_role)
 
     if booking.status == "CANCELLED":
         return BookingCancelResponse(id=booking.id, status=booking.status, updated_at=booking.updated_at)
@@ -753,8 +885,8 @@ async def cancel_booking_as_host(
         raise HTTPException(status_code=400, detail="Completed booking cannot be cancelled")
 
     # 강사 취소는 CONFIRMED에서만
-    # - HOLIDAY는 host가 만든 확정 블록이므로 CONFIRMED 취소 허용
-    if booking.type != BookingType.HOLIDAY:
+    # - HOLIDAY/WORK_OVERRIDE는 host가 만든 확정 블록이므로 CONFIRMED 취소 허용
+    if booking.type not in (BookingType.HOLIDAY, BookingType.WORK_OVERRIDE):
         if booking.status == "REQUESTED":
             raise HTTPException(status_code=400, detail="Requested booking should be declined, not cancelled")
         if booking.status != "CONFIRMED":
@@ -770,6 +902,9 @@ async def cancel_booking_as_host(
     session.add(booking)
     await session.commit()
     await session.refresh(booking)
+    if booking.type not in (BookingType.HOLIDAY, BookingType.WORK_OVERRIDE):
+        token = await _get_guest_push_token(session, UUID(str(booking.guest_id)))
+        await send_push(token, "예약 취소", f"{booking.topic} ({booking.when}) 예약이 취소되었습니다.")
     return BookingCancelResponse(id=booking.id, status=booking.status, updated_at=booking.updated_at)
 
 
@@ -793,16 +928,7 @@ async def complete_booking_as_host(
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
 
-    # 강사는 본인 캘린더 예약만
-    if host_role != "ADMIN":
-        ts_res = await session.execute(select(TimeSlot).where(TimeSlot.id == booking.time_slot_id))
-        ts = ts_res.scalar_one_or_none()
-        if not ts:
-            raise HTTPException(status_code=404, detail="TimeSlot not found")
-        cal_res = await session.execute(select(Calendar).where(Calendar.id == ts.calendar_id))
-        calendar = cal_res.scalar_one_or_none()
-        if not calendar or UUID(str(calendar.host_id)) != host_id:
-            raise HTTPException(status_code=403, detail="You can complete bookings only in your calendar")
+    await _assert_booking_in_host_calendar(session, booking, host_id, host_role)
 
     if booking.status == "COMPLETED":
         return booking
@@ -811,6 +937,9 @@ async def complete_booking_as_host(
 
     booking.status = "COMPLETED"
     session.add(booking)
+
+    # 수강권 차감
+    await _deduct_pass_for_lesson(session, booking)
 
     # 멤버십 차감 (TIMES 타입)
     if booking.membership_id:
@@ -826,6 +955,8 @@ async def complete_booking_as_host(
 
     await session.commit()
     await session.refresh(booking)
+    token = await _get_guest_push_token(session, UUID(str(booking.guest_id)))
+    await send_push(token, "레슨 완료", f"{booking.topic} ({booking.when}) 레슨이 완료 처리되었습니다.")
     return booking
 
 
@@ -847,15 +978,7 @@ async def no_show_booking_as_host(
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
 
-    if host_role != "ADMIN":
-        ts_res = await session.execute(select(TimeSlot).where(TimeSlot.id == booking.time_slot_id))
-        ts = ts_res.scalar_one_or_none()
-        if not ts:
-            raise HTTPException(status_code=404, detail="TimeSlot not found")
-        cal_res = await session.execute(select(Calendar).where(Calendar.id == ts.calendar_id))
-        calendar = cal_res.scalar_one_or_none()
-        if not calendar or UUID(str(calendar.host_id)) != host_id:
-            raise HTTPException(status_code=403, detail="You can mark no-show only in your calendar")
+    await _assert_booking_in_host_calendar(session, booking, host_id, host_role)
 
     if booking.status == "NO_SHOW":
         return booking
@@ -863,6 +986,101 @@ async def no_show_booking_as_host(
         raise HTTPException(status_code=400, detail=f"Only CONFIRMED bookings can be marked NO_SHOW (current: {booking.status})")
 
     booking.status = "NO_SHOW"
+    session.add(booking)
+
+    # 수강권 차감 (노쇼도 차감)
+    await _deduct_pass_for_lesson(session, booking)
+
+    await session.commit()
+    await session.refresh(booking)
+    return booking
+
+
+@cal_router.patch("/me/bookings/{booking_id}/approve-cancel", response_model=BookingCancelResponse)
+async def approve_cancel_as_host(
+    booking_id: int,
+    session: AsyncSession = Depends(get_session),
+    host: CurrentUser = Depends(require_role({"INSTRUCTOR", "ADMIN"})),
+):
+    """강사가 고객의 취소 신청을 승인: CANCEL_REQUESTED -> CANCELLED"""
+    host_id = UUID(str(host.id))
+    host_role = ((getattr(host, "role", None) or "").strip()).upper()
+
+    res = await session.execute(select(Booking).where(Booking.id == booking_id))
+    booking = res.scalar_one_or_none()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    await _assert_booking_in_host_calendar(session, booking, host_id, host_role)
+
+    if booking.status != "CANCEL_REQUESTED":
+        raise HTTPException(status_code=400, detail=f"Invalid status: expected CANCEL_REQUESTED, got {booking.status}")
+
+    booking.status = "CANCELLED"
+    session.add(booking)
+    await session.commit()
+    await session.refresh(booking)
+    token = await _get_guest_push_token(session, UUID(str(booking.guest_id)))
+    await send_push(token, "취소 승인", f"{booking.topic} ({booking.when}) 취소 신청이 승인되었습니다.")
+    return BookingCancelResponse(id=booking.id, status=booking.status, updated_at=booking.updated_at)
+
+
+@cal_router.patch("/me/bookings/{booking_id}/reject-cancel", response_model=BookingRead)
+async def reject_cancel_as_host(
+    booking_id: int,
+    session: AsyncSession = Depends(get_session),
+    host: CurrentUser = Depends(require_role({"INSTRUCTOR", "ADMIN"})),
+):
+    """강사가 고객의 취소 신청을 거절: CANCEL_REQUESTED -> CONFIRMED"""
+    host_id = UUID(str(host.id))
+    host_role = ((getattr(host, "role", None) or "").strip()).upper()
+
+    res = await session.execute(select(Booking).where(Booking.id == booking_id))
+    booking = res.scalar_one_or_none()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    await _assert_booking_in_host_calendar(session, booking, host_id, host_role)
+
+    if booking.status != "CANCEL_REQUESTED":
+        raise HTTPException(status_code=400, detail=f"Invalid status: expected CANCEL_REQUESTED, got {booking.status}")
+
+    booking.status = "CONFIRMED"
+    session.add(booking)
+    await session.commit()
+    await session.refresh(booking)
+    token = await _get_guest_push_token(session, UUID(str(booking.guest_id)))
+    await send_push(token, "취소 거절", f"{booking.topic} ({booking.when}) 취소 신청이 거절되었습니다. 예약이 유지됩니다.")
+    return booking
+
+
+@bk_router.patch("/{booking_id}/withdraw-cancel", response_model=BookingRead)
+async def withdraw_cancel_as_guest(
+    booking_id: int,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """
+    게스트(예약자) 취소 신청 철회
+    - CANCEL_REQUESTED → CONFIRMED (강사가 아직 승인 전에만 가능)
+    """
+    user_id = UUID(str(user.id))
+
+    res = await session.execute(select(Booking).where(Booking.id == booking_id))
+    booking = res.scalar_one_or_none()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if booking.guest_id != user_id:
+        raise HTTPException(status_code=403, detail="Only the guest can withdraw this cancel request")
+
+    if booking.status == "CONFIRMED":
+        return booking
+
+    if booking.status != "CANCEL_REQUESTED":
+        raise HTTPException(status_code=400, detail=f"Invalid status transition: {booking.status} -> CONFIRMED")
+
+    booking.status = "CONFIRMED"
     session.add(booking)
     await session.commit()
     await session.refresh(booking)

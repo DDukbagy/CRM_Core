@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     SUPER_ADMIN_USER_ID: str | None = None
     SUPER_ADMIN_EMAIL: str | None = None
 
+    # Sentry
+    SENTRY_DSN: str | None = None
+    SENTRY_ENVIRONMENT: str = "development"
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.1
+
     CORS_ORIGIN_REGEX: str | None = Field(
         default=None,
         validation_alias=AliasChoices(

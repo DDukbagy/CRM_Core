@@ -9,16 +9,15 @@ import {
   ActivityIndicator,
   ScrollView,
   StyleSheet,
+  Switch,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { apiFetch } from "@/lib/api";
 import type { UserRead, UserUpdate } from "@/types/api";
 
 const GENDER_OPTIONS = [
-  { label: "선택 안 함", value: null },
   { label: "남성", value: "MALE" },
   { label: "여성", value: "FEMALE" },
-  { label: "기타", value: "OTHER" },
 ];
 
 export default function EditProfileScreen() {
@@ -32,6 +31,7 @@ export default function EditProfileScreen() {
   const [birthDate, setBirthDate] = useState("");       // YYYY-MM-DD
   const [gender, setGender] = useState<string | null>(null);
   const [lessonPurpose, setLessonPurpose] = useState("");
+  const [feedbackConsent, setFeedbackConsent] = useState(false);
 
   useEffect(() => {
     apiFetch<UserRead>("/users/me")
@@ -42,6 +42,7 @@ export default function EditProfileScreen() {
         setBirthDate(me.birth_date ?? "");
         setGender(me.gender ?? null);
         setLessonPurpose(me.lesson_purpose ?? "");
+        setFeedbackConsent(me.feedback_consent ?? false);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -66,6 +67,7 @@ export default function EditProfileScreen() {
         birth_date: birthDate.trim() || null,
         gender: gender,
         lesson_purpose: lessonPurpose.trim() || null,
+        feedback_consent: feedbackConsent,
       };
       await apiFetch("/users/me", { method: "PATCH", body });
       Alert.alert("완료", "프로필이 수정되었습니다.");
@@ -149,13 +151,28 @@ export default function EditProfileScreen() {
         style={[s.input, { height: 72, textAlignVertical: "top" }]}
       />
 
-      <Pressable
-        style={[s.saveBtn, saving && { opacity: 0.6 }]}
-        onPress={handleSave}
-        disabled={saving}
-      >
-        <Text style={s.saveBtnText}>{saving ? "저장 중..." : "저장"}</Text>
-      </Pressable>
+      <Text style={[s.sectionTitle, { marginTop: 24 }]}>공개 설정</Text>
+      <View style={s.consentRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.label}>피드백 게시물 공개 동의</Text>
+          <Text style={s.consentDesc}>강사가 작성한 나의 피드백을 다른 사람에게 공개합니다</Text>
+        </View>
+        <Switch
+          value={feedbackConsent}
+          onValueChange={setFeedbackConsent}
+          trackColor={{ false: "#e5e7eb", true: "#1a1a1a" }}
+          thumbColor="#fff"
+        />
+      </View>
+
+      <View style={s.btnRow}>
+        <Pressable style={s.cancelBtn} onPress={() => router.back()} disabled={saving}>
+          <Text style={s.cancelBtnText}>취소</Text>
+        </Pressable>
+        <Pressable style={[s.saveBtn, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
+          <Text style={s.saveBtnText}>{saving ? "저장 중..." : "저장"}</Text>
+        </Pressable>
+      </View>
     </ScrollView>
   );
 }
@@ -174,6 +191,8 @@ const s = StyleSheet.create({
     backgroundColor: "#fff",
   },
   genderRow: { flexDirection: "row", gap: 8, marginTop: 4 },
+  consentRow: { flexDirection: "row", alignItems: "center", marginTop: 8, backgroundColor: "#fff", borderRadius: 10, padding: 14, borderWidth: 1, borderColor: "#d1d5db" },
+  consentDesc: { fontSize: 12, color: "#9ca3af", marginTop: 2, lineHeight: 17 },
   genderBtn: {
     flex: 1, paddingVertical: 10, borderRadius: 8,
     borderWidth: 1, borderColor: "#d1d5db",
@@ -182,12 +201,26 @@ const s = StyleSheet.create({
   genderBtnActive: { backgroundColor: "#1a1a1a", borderColor: "#1a1a1a" },
   genderBtnTxt: { fontSize: 13, color: "#374151", fontWeight: "600" },
   genderBtnTxtActive: { color: "#fff" },
-  saveBtn: {
+  btnRow: {
+    flexDirection: "row",
+    gap: 10,
     marginTop: 32,
+    marginBottom: 40,
+  },
+  cancelBtn: {
+    flex: 1,
+    padding: 14,
+    backgroundColor: "#f3f4f6",
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  cancelBtnText: { color: "#374151", fontWeight: "700", fontSize: 15 },
+  saveBtn: {
+    flex: 1,
     padding: 14,
     backgroundColor: "#1a1a1a",
     borderRadius: 12,
-    marginBottom: 40,
+    alignItems: "center",
   },
   saveBtnText: { color: "#fff", textAlign: "center", fontWeight: "700", fontSize: 15 },
 });

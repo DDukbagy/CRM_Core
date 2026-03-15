@@ -51,7 +51,7 @@ try:
     # [LessonNote]
     from app.domains.calendar.lesson_note_models import LessonNote  # noqa: F401
 
-    # from app.domains.posts.models import ...
+    from app.domains.content.models import InstructorPost  # noqa: F401
 
     # 메타데이터 통합
     if hasattr(Base, "metadata") and hasattr(SQLModel, "metadata"):

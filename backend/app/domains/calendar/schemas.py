@@ -91,6 +91,7 @@ class AvailabilitySlot(BaseModel):
 class AvailabilityDay(BaseModel):
     date: date
     slots: list[AvailabilitySlot]
+    is_holiday: bool = False
 
     model_config = {"extra": "forbid"}
 
@@ -107,7 +108,7 @@ class AvailabilityResponse(BaseModel):
     model_config = {"extra": "forbid"}
 
 
-BookingStatus = Literal["REQUESTED", "CONFIRMED", "CANCELLED", "COMPLETED", "NO_SHOW"]
+BookingStatus = Literal["REQUESTED", "CONFIRMED", "CANCEL_REQUESTED", "CANCELLED", "COMPLETED", "NO_SHOW"]
 
 
 class BookingCreate(BaseModel):
@@ -116,7 +117,7 @@ class BookingCreate(BaseModel):
     """
     time_slot_id: int
     when: date
-    topic: str = Field(min_length=1)
+    topic: str | None = None
     description: str | None = None
     membership_id: Optional[UUID] = None  # 차감할 멤버십 (선택)
 
@@ -132,7 +133,7 @@ class BookingRead(BaseModel):
     """
     id: int
     when: date
-    topic: str
+    topic: str | None = None
     status: BookingStatus
     type: BookingType  # 타입 정보 포함
     description: str | None
@@ -152,6 +153,12 @@ class BookingUpdateRequest(BaseModel):
     """
     topic: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = None
+
+    model_config = {"extra": "forbid"}
+
+
+class BookingConfirmRequest(BaseModel):
+    topic: str | None = Field(default=None, max_length=200, description="수업 내용 (강사가 확정 시 지정)")
 
     model_config = {"extra": "forbid"}
 

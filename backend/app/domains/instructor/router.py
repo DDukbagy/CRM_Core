@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import text, select, and_, or_
+from sqlalchemy import text, select, and_, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth.deps import require_role, CurrentUser, get_current_user
@@ -566,7 +566,7 @@ async def get_my_stats(
 
     # 전체 예약 상태별 집계
     booking_res = await session.execute(
-        select(Booking.status, text("count(*) AS cnt"))
+        select(Booking.status, func.count().label("cnt"))
         .join(User, Booking.guest_id == User.id)
         .where(User.manager_id == instructor_id)
         .group_by(Booking.status)

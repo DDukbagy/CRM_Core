@@ -31,13 +31,17 @@ export default function ProfileScreen() {
   );
 
   async function handleLogout() {
+    const doLogout = async () => {
+      try { await apiFetch("/users/me/push-token", { method: "DELETE" }); } catch {}
+      await supabase.auth.signOut();
+    };
     if (Platform.OS === "web") {
       if (!window.confirm("로그아웃 하시겠습니까?")) return;
-      await supabase.auth.signOut();
+      await doLogout();
     } else {
       Alert.alert("로그아웃", "로그아웃 하시겠습니까?", [
         { text: "취소", style: "cancel" },
-        { text: "로그아웃", style: "destructive", onPress: () => supabase.auth.signOut() },
+        { text: "로그아웃", style: "destructive", onPress: doLogout },
       ]);
     }
   }
@@ -78,12 +82,6 @@ export default function ProfileScreen() {
           {user?.lesson_purpose && <InfoRow label="레슨 목적" value={user.lesson_purpose} />}
         </View>
       )}
-
-      {/* 수강권 현황 */}
-      <Pressable style={s.menuBtn} onPress={() => router.push("/membership" as any)}>
-        <Text style={s.menuBtnText}>수강권 현황</Text>
-        <Text style={s.menuArrow}>›</Text>
-      </Pressable>
 
       {/* 프로필 수정 */}
       <Pressable style={s.editBtn} onPress={() => router.push("/edit-profile" as any)}>

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Dict
 
@@ -33,12 +34,15 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
         request_id = getattr(request.state, "request_id", None)
+        # Pydantic v2 errors() may contain non-JSON-serializable objects (e.g. ValueError
+        # in ctx["error"]). Serialize via json.dumps(default=str) to make them safe.
+        safe_errors = json.loads(json.dumps(exc.errors(), default=str))
         return JSONResponse(
             status_code=422,
             content=_error(
                 code="VALIDATION_ERROR",
                 message="Request validation failed",
-                details=exc.errors(),
+                details=safe_errors,
                 request_id=request_id,
             ),
         )
