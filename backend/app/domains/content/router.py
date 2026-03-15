@@ -110,8 +110,7 @@ async def create_post(
             raise HTTPException(status_code=404, detail="Customer not found")
         if user.role == "INSTRUCTOR" and customer.manager_id != instructor_id:
             raise HTTPException(status_code=403, detail="담당 고객의 피드백만 등록할 수 있습니다.")
-        has_consent = getattr(customer, "feedback_consent", False) or False
-        is_public = has_consent  # 동의하면 공개, 아니면 비공개
+        is_public = False  # FEEDBACK은 항상 비공개 (해당 고객만 조회 가능)
     else:
         is_public = True  # PROMOTION은 항상 공개
 
@@ -139,6 +138,7 @@ async def list_posts(
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(get_current_user),
     customer_id: UUID | None = None,
+    type: str | None = Query(None, description="PROMOTION or FEEDBACK"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ):
@@ -150,7 +150,13 @@ async def list_posts(
         if customer_id:
             stmt = stmt.where(InstructorPost.customer_id == customer_id)
     elif user.role == "CUSTOMER":
-        stmt = stmt.where(or_(InstructorPost.is_public == True, InstructorPost.customer_id == uid))
+        if type == "FEEDBACK":
+            stmt = stmt.where(InstructorPost.customer_id == uid)
+        else:
+            stmt = stmt.where(or_(InstructorPost.is_public == True, InstructorPost.customer_id == uid))
+
+    if type:
+        stmt = stmt.where(InstructorPost.type == type)
 
     stmt = stmt.order_by(InstructorPost.created_at.desc()).limit(limit).offset(offset)
     result = await session.execute(stmt)

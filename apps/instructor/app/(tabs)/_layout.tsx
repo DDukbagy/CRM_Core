@@ -3,7 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 export default function TabsLayout() {
   return (
-    <Tabs screenOptions={{ headerTitleAlign: "center", tabBarActiveTintColor: "#16a34a" }}>
+    <Tabs screenOptions={{ headerTitleAlign: "center", tabBarActiveTintColor: "#16a34a", tabBarStyle: { height: 72, paddingBottom: 12 } }}>
       <Tabs.Screen
         name="index"
         options={{ title: "대시보드", tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" size={size} color={color} /> }}
@@ -18,7 +18,7 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="posts"
-        options={{ title: "게시물", tabBarIcon: ({ color, size }) => <Ionicons name="newspaper-outline" size={size} color={color} /> }}
+        options={{ title: "글쓰기", tabBarIcon: ({ color, size }) => <Ionicons name="create-outline" size={size} color={color} /> }}
       />
       <Tabs.Screen
         name="revenue"

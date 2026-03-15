@@ -14,13 +14,9 @@ const SH = Dimensions.get("window").height;
 const CARD_W = SW - 32;
 const MEDIA_W = Math.floor(CARD_W * 0.45);
 const CARD_H = 240;
-const LEFT_COL_W = Math.floor(SW * 0.48);
-const GRID_COLS = 4;
-const GRID_GAP = 3;
-const GRID_ITEM_W = Math.floor((LEFT_COL_W - 16 - GRID_GAP * (GRID_COLS - 1)) / GRID_COLS);
 
 interface LocalMedia { url: string; media_type: "IMAGE" | "VIDEO"; }
-interface FormState { content: string; media_items: LocalMedia[]; customer_id: string; }
+interface FormState { content: string; media_items: LocalMedia[]; customer_id: string; sub_type: "게시글" | "프로모션"; }
 
 // ─── VideoItem ────────────────────────────────────────────────────────────────
 function VideoItem({ uri, w, h, autoPlay }: { uri: string; w: number; h: number; autoPlay?: boolean }) {
@@ -55,39 +51,31 @@ function CustomerDropdown({ customers, selectedId, onSelect }: {
   const [open, setOpen] = useState(false);
   const selected = customers.find((c) => c.id === selectedId);
   return (
-    <View>
-      <Pressable style={dd.trigger} onPress={() => setOpen(true)}>
+    <View style={{ zIndex: 10 }}>
+      <Pressable style={dd.trigger} onPress={() => setOpen((v) => !v)}>
         <Text style={[dd.triggerText, !selected && { color: "#9ca3af" }]}>
-          {selected?.display_name ?? "고객 선택 ▼"}
+          {selected?.display_name ?? "고객 선택"}
         </Text>
-        {selected && <Text style={dd.arrow}>▼</Text>}
+        <Text style={dd.arrow}>{open ? "▲" : "▼"}</Text>
       </Pressable>
-      <Modal visible={open} transparent animationType="fade">
-        <Pressable style={dd.backdrop} onPress={() => setOpen(false)}>
-          <View style={dd.sheet}>
-            <Text style={dd.sheetTitle}>고객 선택</Text>
-            <ScrollView style={{ maxHeight: 320 }}>
-              {customers.map((c) => (
-                <Pressable
-                  key={c.id}
-                  style={[dd.item, c.id === selectedId && dd.itemSel]}
-                  onPress={() => { onSelect(c.id); setOpen(false); }}
-                >
-                  <Text style={[dd.itemText, c.id === selectedId && dd.itemTextSel]}>
-                    {c.display_name}
-                  </Text>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                    <Text style={c.feedback_consent ? dd.consentOn : dd.consentOff}>
-                      {c.feedback_consent ? "공개" : "비공개"}
-                    </Text>
-                    {c.id === selectedId && <Text style={dd.check}>✓</Text>}
-                  </View>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        </Pressable>
-      </Modal>
+      {open && (
+        <View style={dd.listWrap}>
+          <ScrollView style={{ maxHeight: 240 }} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+            {customers.map((c) => (
+              <Pressable
+                key={c.id}
+                style={[dd.item, c.id === selectedId && dd.itemSel]}
+                onPress={() => { onSelect(c.id); setOpen(false); }}
+              >
+                <Text style={[dd.itemText, c.id === selectedId && dd.itemTextSel]}>
+                  {c.display_name}
+                </Text>
+                {c.id === selectedId && <Text style={dd.check}>✓</Text>}
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      )}
     </View>
   );
 }
@@ -215,8 +203,8 @@ function PostCard({ post, onDelete, onEdit }: {
         {/* 오른쪽 */}
         <View style={s.infoCol}>
           <View style={s.badgeRow}>
-            <View style={[s.badge, isFeedback ? s.badgeFeedback : s.badgePromo]}>
-              <Text style={s.badgeText}>{isFeedback ? "피드백" : "프로모션"}</Text>
+            <View style={[s.badge, isFeedback ? s.badgeFeedback : post.title === "프로모션" ? s.badgePromo : s.badgePost]}>
+              <Text style={s.badgeText}>{isFeedback ? "피드백" : post.title === "프로모션" ? "📢 프로모션" : "📝 게시글"}</Text>
             </View>
             {post.is_public && <View style={s.badgePublic}><Text style={s.badgeText}>공개</Text></View>}
           </View>
@@ -250,6 +238,7 @@ interface PostFormProps {
   form: FormState;
   onChangeContent: (v: string) => void;
   onChangeCustomerId: (v: string) => void;
+  onChangeSubType: (v: "게시글" | "프로모션") => void;
   onChangeMedia: (items: LocalMedia[]) => void;
   uploading: boolean;
   onUpload: () => void;
@@ -262,7 +251,7 @@ interface PostFormProps {
 }
 
 function PostForm({
-  form, onChangeContent, onChangeCustomerId, onChangeMedia,
+  form, onChangeContent, onChangeCustomerId, onChangeSubType, onChangeMedia,
   uploading, onUpload, postType, isEditing,
   customers, onSubmit, onCancel, submitting,
 }: PostFormProps) {
@@ -280,40 +269,67 @@ function PostForm({
     onChangeMedia(form.media_items.filter((_, i) => i !== idx));
   }
 
-  // 4열 그리드
-  const rows: LocalMedia[][] = [];
-  for (let i = 0; i < form.media_items.length; i += GRID_COLS) {
-    rows.push(form.media_items.slice(i, i + GRID_COLS));
+  // 3열 그리드 — 아이템 + 마지막에 + 셀 1개
+  const allItems: Array<LocalMedia | "ADD"> = [...form.media_items, "ADD"];
+  const rows: Array<Array<LocalMedia | "ADD">> = [];
+  for (let i = 0; i < allItems.length; i += GRID_COLS) {
+    rows.push(allItems.slice(i, i + GRID_COLS));
   }
 
   return (
-    <View style={fm.container}>
-      {/* 왼쪽: 미디어 갤러리 */}
-      <View style={fm.leftCol}>
-        <ScrollView style={fm.grid} showsVerticalScrollIndicator={false}>
-          {rows.length === 0 && (
-            <View style={fm.emptyGrid}>
-              <Text style={fm.emptyGridIcon}>🖼️</Text>
-              <Text style={fm.emptyGridText}>미디어를 추가하세요</Text>
+    <ScrollView style={fm.container} contentContainerStyle={fm.contentContainer} keyboardShouldPersistTaps="handled">
+      {/* 위: 미디어 */}
+      {form.media_items.length === 0 ? (
+        /* 빈 상태: 전체 영역 탭 */
+        uploading ? (
+          <View style={fm.emptyMediaOuter}>
+            <View style={fm.emptyMediaInner}>
+              <ActivityIndicator color="#16a34a" size="large" />
+              <Text style={fm.uploadingText}>업로드 중...</Text>
             </View>
-          )}
+          </View>
+        ) : (
+          <Pressable style={fm.emptyMediaOuter} onPress={onUpload}>
+            <View style={fm.emptyMediaInner}>
+              <Text style={fm.emptyMediaIcon}>🖼</Text>
+              <Text style={fm.emptyMediaLabel}>탭하여 사진·동영상 추가</Text>
+            </View>
+          </Pressable>
+        )
+      ) : (
+        /* 그리드 */
+        <View style={fm.grid}>
           {rows.map((row, rowIdx) => (
             <View key={rowIdx} style={fm.gridRow}>
-              {row.map((m, colIdx) => {
+              {row.map((cell, colIdx) => {
                 const idx = rowIdx * GRID_COLS + colIdx;
+                if (cell === "ADD") {
+                  return uploading ? (
+                    <View key="add" style={fm.gridCell}>
+                      <View style={fm.addCellInner}>
+                        <ActivityIndicator color="#16a34a" />
+                      </View>
+                    </View>
+                  ) : (
+                    <Pressable key="add" style={fm.gridCell} onPress={onUpload}>
+                      <View style={fm.addCellInner}>
+                        <Text style={fm.addCellPlus}>＋</Text>
+                      </View>
+                    </Pressable>
+                  );
+                }
+                const m = cell as LocalMedia;
                 return (
                   <View key={idx} style={fm.gridCell}>
-                    <Pressable onPress={() => setViewerItem(m)} style={{ flex: 1 }}>
+                    <Pressable onPress={() => setViewerItem(m)} style={fm.cellImg}>
                       {m.media_type === "VIDEO"
-                        ? <VideoItem uri={m.url} w={GRID_ITEM_W} h={GRID_ITEM_W} />
-                        : <Image source={{ uri: m.url }} style={{ width: GRID_ITEM_W, height: GRID_ITEM_W }} resizeMode="cover" />
+                        ? <VideoItem uri={m.url} w={GRID_ITEM_SIZE} h={GRID_ITEM_SIZE} />
+                        : <Image source={{ uri: m.url }} style={{ width: GRID_ITEM_SIZE, height: GRID_ITEM_SIZE }} resizeMode="cover" />
                       }
                     </Pressable>
-                    {/* ✕ 삭제 */}
                     <Pressable onPress={() => remove(idx)} style={fm.removeX}>
                       <Text style={fm.removeXText}>✕</Text>
                     </Pressable>
-                    {/* ← → 순서 */}
                     <View style={fm.orderRow}>
                       <Pressable onPress={() => move(idx, -1)} disabled={idx === 0} style={fm.orderBtn}>
                         <Text style={[fm.orderText, idx === 0 && { opacity: 0.25 }]}>←</Text>
@@ -325,65 +341,68 @@ function PostForm({
                   </View>
                 );
               })}
-              {/* 부족한 셀 채우기 */}
+              {/* 빈 셀 패딩 */}
               {Array.from({ length: GRID_COLS - row.length }).map((_, i) => (
-                <View key={`empty-${i}`} style={[fm.gridCell, { backgroundColor: "transparent" }]} />
+                <View key={`pad-${i}`} style={[fm.gridCell, { backgroundColor: "transparent" }]} />
               ))}
             </View>
           ))}
-        </ScrollView>
-
-        {uploading ? (
-          <View style={fm.uploadingRow}>
-            <ActivityIndicator color="#16a34a" />
-            <Text style={fm.uploadingText}>업로드 중...</Text>
-          </View>
-        ) : (
-          <Pressable style={fm.addBtn} onPress={onUpload}>
-            <Text style={fm.addBtnIcon}>＋</Text>
-            <Text style={fm.addBtnText}>미디어 추가</Text>
-          </Pressable>
-        )}
-      </View>
-
-      {/* 오른쪽: 내용 + 고객 + 버튼 */}
-      <View style={fm.rightCol}>
-        <TextInput
-          value={form.content}
-          onChangeText={onChangeContent}
-          placeholder="내용을 입력하세요..."
-          style={fm.contentInput}
-          multiline
-          placeholderTextColor="#9ca3af"
-          textAlignVertical="top"
-        />
-
-        {postType === "FEEDBACK" && !isEditing && (
-          <View style={fm.customerSection}>
-            <CustomerDropdown
-              customers={customers}
-              selectedId={form.customer_id}
-              onSelect={onChangeCustomerId}
-            />
-          </View>
-        )}
-
-        <View style={fm.btnRow}>
-          <Pressable
-            onPress={onSubmit}
-            disabled={submitting || uploading}
-            style={[fm.confirmBtn, (submitting || uploading) && { opacity: 0.5 }]}
-          >
-            <Text style={fm.confirmText}>{submitting ? "..." : "확인"}</Text>
-          </Pressable>
-          <Pressable onPress={onCancel} style={fm.cancelBtn}>
-            <Text style={fm.cancelBtnText}>취소</Text>
-          </Pressable>
         </View>
+      )}
+
+      {/* 카테고리 세그먼트 (PROMOTION 타입만) */}
+      {postType === "PROMOTION" && !isEditing && (
+        <View style={fm.segmentWrap}>
+          {(["게시글", "프로모션"] as const).map((opt) => (
+            <Pressable
+              key={opt}
+              style={[fm.segmentBtn, form.sub_type === opt && fm.segmentBtnActive]}
+              onPress={() => onChangeSubType(opt)}
+            >
+              <Text style={[fm.segmentText, form.sub_type === opt && fm.segmentTextActive]}>
+                {opt === "프로모션" ? "📢 프로모션" : "📝 게시글"}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+
+      {/* 아래: 내용 */}
+      <TextInput
+        value={form.content}
+        onChangeText={onChangeContent}
+        placeholder="내용을 입력하세요..."
+        style={fm.contentInput}
+        multiline
+        placeholderTextColor="#9ca3af"
+        textAlignVertical="top"
+      />
+
+      {postType === "FEEDBACK" && !isEditing && (
+        <View style={fm.customerSection}>
+          <CustomerDropdown
+            customers={customers}
+            selectedId={form.customer_id}
+            onSelect={onChangeCustomerId}
+          />
+        </View>
+      )}
+
+      <View style={fm.btnRow}>
+        <Pressable
+          onPress={onSubmit}
+          disabled={submitting || uploading}
+          style={[fm.confirmBtn, (submitting || uploading) && { opacity: 0.5 }]}
+        >
+          <Text style={fm.confirmText}>{submitting ? "..." : "확인"}</Text>
+        </Pressable>
+        <Pressable onPress={onCancel} style={fm.cancelBtn}>
+          <Text style={fm.cancelBtnText}>취소</Text>
+        </Pressable>
       </View>
 
       <MediaViewer item={viewerItem} onClose={() => setViewerItem(null)} />
-    </View>
+    </ScrollView>
   );
 }
 
@@ -395,7 +414,7 @@ export default function PostsScreen() {
   const [editTarget, setEditTarget] = useState<PostRead | null>(null);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState<FormState>({ content: "", media_items: [], customer_id: "" });
+  const [form, setForm] = useState<FormState>({ content: "", media_items: [], customer_id: "", sub_type: "게시글" });
 
   // refs — 항상 최신값 동기 접근 (stale closure 완전 방지)
   const formRef = useRef(form);
@@ -459,8 +478,28 @@ export default function PostsScreen() {
       }
     }
 
+    // ── 선택 즉시 로컬 URI로 그리드에 표시 (optimistic UI) ──────────────
+    // ImagePicker 닫힌 직후 Modal re-mount 타이밍 문제를 우회하기 위해
+    // setForm 대신 ref를 직접 업데이트하고 강제 re-render
+    const localItems: LocalMedia[] = toUpload.map((asset) => {
+      const isVideo =
+        asset.type === "video" ||
+        (asset.mimeType ?? "").startsWith("video/") ||
+        (asset.fileName ?? "").match(/\.(mp4|mov|avi|mkv)$/i) !== null;
+      return { url: asset.uri, media_type: isVideo ? "VIDEO" : "IMAGE" };
+    });
+
+    const nextWithLocal = {
+      ...formRef.current,
+      media_items: [...formRef.current.media_items, ...localItems],
+    };
+    formRef.current = nextWithLocal;
+    setForm(nextWithLocal);  // snapshot 직접 전달 (functional update 아님 — 즉시 반영)
+
     try {
       setUploading(true);
+      const replacements: Array<{ localUri: string; s3Url: string }> = [];
+
       for (const asset of toUpload) {
         const isVideo =
           asset.type === "video" ||
@@ -489,24 +528,33 @@ export default function PostsScreen() {
         formData.append("file", { uri: asset.uri, type: contentType, name: fileName } as unknown as Blob);
 
         const res = await fetch(upload_url, { method: "POST", body: formData });
-        // S3 presigned POST 성공 응답은 204 No Content
         if (res.status !== 204 && !res.ok) throw new Error(`S3 업로드 실패 (${res.status})`);
 
         uploadedUrisRef.current.add(asset.uri);
-        setForm((f) => {
-          const next = { ...f, media_items: [...f.media_items, { url: public_url, media_type: mediaType }] };
-          formRef.current = next;
-          return next;
-        });
+        replacements.push({ localUri: asset.uri, s3Url: public_url });
       }
+
+      // 3. 로컬 URI → S3 URL 교체
+      const urlMap = new Map(replacements.map((r) => [r.localUri, r.s3Url]));
+      setForm((f) => {
+        const next = {
+          ...f,
+          media_items: f.media_items.map((m) =>
+            urlMap.has(m.url) ? { ...m, url: urlMap.get(m.url)! } : m
+          ),
+        };
+        formRef.current = next;
+        return next;
+      });
     } catch (e: unknown) {
+      // 로컬 프리뷰는 유지 — 롤백하지 않음
       Alert.alert("업로드 오류", e instanceof Error ? e.message : "업로드에 실패했습니다.");
     } finally { setUploading(false); }
   }, []);
 
   // ─── 등록 ─────────────────────────────────────────────────────────────────
   function openCreate(type: "PROMOTION" | "FEEDBACK") {
-    const blank: FormState = { content: "", media_items: [], customer_id: "" };
+    const blank: FormState = { content: "", media_items: [], customer_id: "", sub_type: "게시글" };
     createTypeRef.current = type;   // 즉시 동기화
     formRef.current = blank;
     setCreateType(type);
@@ -524,12 +572,17 @@ export default function PostsScreen() {
     if (ct === "FEEDBACK" && !f.customer_id) {
       Alert.alert("오류", "피드백 대상 고객을 선택해주세요."); return;
     }
+    const hasLocalUri = f.media_items.some((m) => m.url.startsWith("file://") || m.url.startsWith("content://"));
+    if (hasLocalUri) {
+      Alert.alert("업로드 미완료", "사진 업로드가 실패했습니다. 사진을 제거하고 다시 시도해주세요."); return;
+    }
     try {
       setSubmitting(true);
       await apiFetch("/instructor-posts", {
         method: "POST",
         body: {
           type: ct,
+          title: ct === "PROMOTION" ? f.sub_type : null,
           content: f.content || null,
           media_items: f.media_items.map((m, i) => ({ url: m.url, media_type: m.media_type, sort_order: i })),
           customer_id: ct === "FEEDBACK" ? f.customer_id : undefined,
@@ -559,6 +612,7 @@ export default function PostsScreen() {
         media_type: m.media_type as "IMAGE" | "VIDEO",
       })),
       customer_id: post.customer_id ?? "",
+      sub_type: (post.title === "프로모션" ? "프로모션" : "게시글") as "게시글" | "프로모션",
     };
     editTargetRef.current = post;  // 즉시 동기화
     formRef.current = newForm;
@@ -619,6 +673,11 @@ export default function PostsScreen() {
     formRef.current = next;
     return next;
   }), []);
+  const handleChangeSubType = useCallback((v: "게시글" | "프로모션") => setForm((f) => {
+    const next = { ...f, sub_type: v };
+    formRef.current = next;
+    return next;
+  }), []);
 
   const isEditing = editTarget !== null;
   const postType = isEditing
@@ -649,10 +708,10 @@ export default function PostsScreen() {
       <Modal visible={createType === "_select"} transparent animationType="fade">
         <Pressable style={s.backdrop} onPress={() => setCreateType(null)}>
           <Pressable style={s.typeSheet} onPress={() => {}}>
-            <Text style={s.typeSheetTitle}>어떤 게시물을 올리시겠어요?</Text>
+            <Text style={s.typeSheetTitle}>어떤 글을 올리시겠어요?</Text>
             <View style={s.typeCards}>
               {([
-                { key: "PROMOTION", icon: "📢", label: "프로모션", sub: "홍보·소식" },
+                { key: "PROMOTION", icon: "📝", label: "게시글", sub: "홍보·소식" },
                 { key: "FEEDBACK", icon: "💬", label: "피드백", sub: "고객 피드백" },
               ] as { key: "PROMOTION" | "FEEDBACK"; icon: string; label: string; sub: string }[]).map((t) => (
                 <Pressable key={t.key} style={s.typeCard} onPress={() => openCreate(t.key)}>
@@ -671,13 +730,14 @@ export default function PostsScreen() {
         <View style={s.modal}>
           <View style={s.modalHeader}>
             <Text style={s.modalTitle}>
-              {isEditing ? "게시물 수정" : postType === "PROMOTION" ? "📢 프로모션" : "💬 피드백"}
+              {isEditing ? "글 수정" : postType === "PROMOTION" ? "📝 게시글" : "💬 피드백"}
             </Text>
           </View>
           <PostForm
             form={form}
             onChangeContent={handleChangeContent}
             onChangeCustomerId={handleChangeCustomerId}
+            onChangeSubType={handleChangeSubType}
             onChangeMedia={handleChangeMedia}
             uploading={uploading}
             onUpload={uploadMedia}
@@ -702,21 +762,21 @@ const mv = StyleSheet.create({
   img: { width: SW, height: SH * 0.8 },
 });
 
-// ─── 드롭다운 스타일 ─────────────────────────────────────────────────────────
+// ─── 드롭다운 스타일 (인라인, 중첩 Modal 없음) ───────────────────────────────
 const dd = StyleSheet.create({
-  trigger: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderWidth: 1, borderColor: "#d1d5db", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: "#fff" },
+  trigger: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 12, backgroundColor: "#fff" },
   triggerText: { fontSize: 14, color: "#111827", flex: 1 },
   arrow: { fontSize: 11, color: "#9ca3af" },
-  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", alignItems: "center" },
-  sheet: { backgroundColor: "#fff", borderRadius: 14, width: SW * 0.75, maxHeight: 400, overflow: "hidden" },
-  sheetTitle: { fontSize: 15, fontWeight: "700", color: "#111827", padding: 16, borderBottomWidth: 1, borderColor: "#f3f4f6" },
+  listWrap: {
+    borderTopWidth: 1, borderTopColor: "#f3f4f6",
+    backgroundColor: "#fff",
+    maxHeight: 240,
+  },
   item: { flexDirection: "row", alignItems: "center", paddingVertical: 13, paddingHorizontal: 16, borderBottomWidth: 1, borderColor: "#f9fafb" },
   itemSel: { backgroundColor: "#f0fdf4" },
   itemText: { fontSize: 14, color: "#374151", flex: 1 },
   itemTextSel: { color: "#16a34a", fontWeight: "600" },
   check: { fontSize: 14, color: "#16a34a", fontWeight: "700" },
-  consentOn: { fontSize: 11, color: "#16a34a", fontWeight: "600", backgroundColor: "#f0fdf4", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, overflow: "hidden" },
-  consentOff: { fontSize: 11, color: "#9ca3af", fontWeight: "500", backgroundColor: "#f3f4f6", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, overflow: "hidden" },
 });
 
 // ─── 삭제 확인 스타일 ─────────────────────────────────────────────────────────
@@ -747,34 +807,107 @@ const cm = StyleSheet.create({
   sendText: { color: "#fff", fontSize: 12, fontWeight: "600" },
 });
 
-// ─── 폼 스타일 ───────────────────────────────────────────────────────────────
+// ─── 폼 상수 & 스타일 ─────────────────────────────────────────────────────────
+const GRID_COLS = 3;
+const GRID_GAP = 4;
+const GRID_PADDING = 16;
+const GRID_ITEM_SIZE = Math.floor((SW - GRID_PADDING * 2 - GRID_GAP * (GRID_COLS - 1)) / GRID_COLS);
+
 const fm = StyleSheet.create({
-  container: { flex: 1, flexDirection: "row" },
-  leftCol: { width: LEFT_COL_W, borderRightWidth: 1, borderColor: "#e5e7eb", padding: 8 },
-  grid: { flex: 1 },
-  gridRow: { flexDirection: "row", gap: GRID_GAP, marginBottom: GRID_GAP },
-  gridCell: { width: GRID_ITEM_W, height: GRID_ITEM_W, borderRadius: 6, overflow: "hidden", backgroundColor: "#e5e7eb", position: "relative" },
-  removeX: { position: "absolute", top: 4, right: 4, width: 22, height: 22, borderRadius: 11, backgroundColor: "rgba(0,0,0,0.65)", alignItems: "center", justifyContent: "center", zIndex: 10 },
+  container: { flex: 1, backgroundColor: "#fff" },
+  contentContainer: { paddingBottom: 40 },
+
+  // 빈 미디어 영역 — Pressable에는 dashed border 금지(Android 터치 버그)
+  emptyMediaOuter: {
+    height: 220,
+    marginHorizontal: GRID_PADDING,
+    marginTop: GRID_PADDING,
+    borderRadius: 14,
+    backgroundColor: "#f9fafb",
+    overflow: "hidden",
+  },
+  emptyMediaInner: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: "#d1d5db",
+    borderStyle: "dashed",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  emptyMediaIcon: { fontSize: 44 },
+  emptyMediaLabel: { fontSize: 14, color: "#9ca3af", fontWeight: "500" },
+  uploadingText: { fontSize: 13, color: "#16a34a", marginTop: 8 },
+
+  // 그리드
+  grid: { paddingHorizontal: GRID_PADDING, paddingTop: GRID_PADDING, gap: GRID_GAP },
+  gridRow: { flexDirection: "row", gap: GRID_GAP },
+  gridCell: {
+    width: GRID_ITEM_SIZE, height: GRID_ITEM_SIZE,
+    borderRadius: 10, overflow: "hidden",
+    backgroundColor: "#e5e7eb", position: "relative",
+  },
+  cellImg: { width: GRID_ITEM_SIZE, height: GRID_ITEM_SIZE },
+  // ADD 셀 — Pressable은 plain View로, dashed border는 내부 View에
+  addCellInner: {
+    flex: 1,
+    borderWidth: 2, borderColor: "#d1d5db", borderStyle: "dashed",
+    borderRadius: 10,
+    alignItems: "center", justifyContent: "center",
+  },
+  addCellPlus: { fontSize: 28, color: "#9ca3af", fontWeight: "300" },
+
+  removeX: {
+    position: "absolute", top: 5, right: 5,
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    alignItems: "center", justifyContent: "center", zIndex: 10,
+  },
   removeXText: { color: "#fff", fontSize: 10, fontWeight: "700" },
-  orderRow: { position: "absolute", bottom: 4, left: 0, right: 0, flexDirection: "row", justifyContent: "center", gap: 4, zIndex: 10 },
+  orderRow: {
+    position: "absolute", bottom: 4, left: 0, right: 0,
+    flexDirection: "row", justifyContent: "center", gap: 4, zIndex: 10,
+  },
   orderBtn: { backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 4, paddingHorizontal: 7, paddingVertical: 2 },
   orderText: { color: "#fff", fontSize: 11, fontWeight: "700" },
-  emptyGrid: { alignItems: "center", justifyContent: "center", paddingVertical: 32, gap: 6 },
-  emptyGridIcon: { fontSize: 30 },
-  emptyGridText: { fontSize: 12, color: "#9ca3af" },
-  uploadingRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 12 },
-  uploadingText: { color: "#16a34a", fontSize: 12 },
-  addBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, paddingVertical: 11, borderRadius: 8, borderWidth: 1.5, borderColor: "#d1d5db", borderStyle: "dashed", marginTop: 6 },
-  addBtnIcon: { fontSize: 17, color: "#6b7280", fontWeight: "700" },
-  addBtnText: { fontSize: 13, color: "#6b7280" },
-  rightCol: { flex: 1, padding: 10, justifyContent: "space-between" },
-  contentInput: { flex: 1, fontSize: 14, color: "#111827", textAlignVertical: "top", paddingTop: 4, lineHeight: 20 },
-  customerSection: { paddingTop: 8, borderTopWidth: 1, borderColor: "#f3f4f6" },
-  btnRow: { flexDirection: "row", gap: 8, paddingTop: 10, borderTopWidth: 1, borderColor: "#f3f4f6" },
-  confirmBtn: { flex: 1, paddingVertical: 11, borderRadius: 8, backgroundColor: "#16a34a", alignItems: "center" },
-  confirmText: { color: "#fff", fontSize: 14, fontWeight: "700" },
-  cancelBtn: { flex: 1, paddingVertical: 11, borderRadius: 8, borderWidth: 1, borderColor: "#e5e7eb", alignItems: "center" },
-  cancelBtnText: { fontSize: 14, color: "#374151" },
+
+  // 카테고리 세그먼트
+  segmentWrap: {
+    flexDirection: "row",
+    marginHorizontal: GRID_PADDING,
+    marginTop: 14,
+    backgroundColor: "#f3f4f6",
+    borderRadius: 10,
+    padding: 3,
+    gap: 2,
+  },
+  segmentBtn: {
+    flex: 1, paddingVertical: 8,
+    borderRadius: 8, alignItems: "center",
+  },
+  segmentBtnActive: { backgroundColor: "#fff", shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 4, elevation: 2 },
+  segmentText: { fontSize: 13, fontWeight: "600", color: "#9ca3af" },
+  segmentTextActive: { color: "#111827" },
+
+  // 내용
+  contentInput: {
+    minHeight: 140, fontSize: 15, color: "#111827",
+    textAlignVertical: "top", lineHeight: 22,
+    borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 12,
+    padding: 14, backgroundColor: "#fafafa",
+    margin: GRID_PADDING, marginTop: 14,
+  },
+  customerSection: {
+    marginHorizontal: GRID_PADDING, marginBottom: 4,
+    borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 10, overflow: "hidden",
+  },
+
+  btnRow: { flexDirection: "row", gap: 10, margin: GRID_PADDING, marginTop: 8 },
+  confirmBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: "#16a34a", alignItems: "center" },
+  confirmText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  cancelBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: "#e5e7eb", alignItems: "center" },
+  cancelBtnText: { fontSize: 15, color: "#374151" },
 });
 
 // ─── 메인 스타일 ─────────────────────────────────────────────────────────────
@@ -795,6 +928,7 @@ const s = StyleSheet.create({
   badgeRow: { flexDirection: "row", gap: 6, marginBottom: 6 },
   badge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 20 },
   badgePromo: { backgroundColor: "#dbeafe" },
+  badgePost: { backgroundColor: "#f3f4f6" },
   badgeFeedback: { backgroundColor: "#fef3c7" },
   badgePublic: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 20, backgroundColor: "#dcfce7" },
   badgeText: { fontSize: 10, fontWeight: "700", color: "#374151" },
