@@ -22,9 +22,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    conn = op.get_bind()
-    # media_type 컬럼이 enum 타입인 경우에만 VARCHAR로 변환
-    conn.execute(sa.text("""
+    op.execute(sa.text("""
         ALTER TABLE instructor_post_media
         ALTER COLUMN media_type TYPE VARCHAR(10) USING media_type::text
     """))

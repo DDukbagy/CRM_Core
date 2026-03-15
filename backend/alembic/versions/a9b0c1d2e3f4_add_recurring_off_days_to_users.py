@@ -16,10 +16,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        'users',
-        sa.Column('recurring_off_days', JSONB, nullable=True, server_default='[]')
-    )
+    op.execute(sa.text(
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS recurring_off_days JSONB DEFAULT '[]'::jsonb"
+    ))
 
 
 def downgrade() -> None:

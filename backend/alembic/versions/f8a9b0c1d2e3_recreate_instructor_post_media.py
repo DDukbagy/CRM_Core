@@ -21,9 +21,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    conn = op.get_bind()
-    conn.execute(sa.text("DROP TABLE IF EXISTS instructor_post_media CASCADE"))
-    conn.execute(sa.text("""
+    op.execute(sa.text("DROP TABLE IF EXISTS instructor_post_media CASCADE"))
+    op.execute(sa.text("""
         CREATE TABLE instructor_post_media (
             id SERIAL PRIMARY KEY,
             post_id UUID NOT NULL REFERENCES instructor_posts(id) ON DELETE CASCADE,
@@ -32,8 +31,8 @@ def upgrade() -> None:
             sort_order INTEGER NOT NULL DEFAULT 0
         )
     """))
-    conn.execute(sa.text(
-        "CREATE INDEX ix_instructor_post_media_post_id ON instructor_post_media (post_id)"
+    op.execute(sa.text(
+        "CREATE INDEX IF NOT EXISTS ix_instructor_post_media_post_id ON instructor_post_media (post_id)"
     ))
 
 
