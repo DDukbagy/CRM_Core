@@ -9,7 +9,6 @@ import { apiFetch } from "@/lib/api";
 import type { InstructorPostRead, MediaItemRead } from "@/types/api";
 
 const SW = Dimensions.get("window").width;
-const SH = Dimensions.get("window").height;
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();

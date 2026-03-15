@@ -509,10 +509,9 @@ export default function PostsScreen() {
         const fileName = asset.fileName ?? `upload.${isVideo ? "mp4" : "jpg"}`;
         const contentType = asset.mimeType ?? (isVideo ? "video/mp4" : "image/jpeg");
 
-        // 1. 서버에서 presigned POST URL + fields 발급
-        const { upload_url, fields, public_url } = await apiFetch<{
+        // 1. 서버에서 presigned PUT URL 발급
+        const { upload_url, public_url } = await apiFetch<{
           upload_url: string;
-          fields: Record<string, string>;
           key: string;
           public_url: string;
         }>("/instructor-posts/upload-url", {
@@ -520,15 +519,14 @@ export default function PostsScreen() {
           body: { filename: fileName, content_type: contentType },
         });
 
-        // 2. S3에 직접 multipart POST (서버 경유 없음)
-        const formData = new FormData();
-        for (const [k, v] of Object.entries(fields)) {
-          formData.append(k, v);
-        }
-        formData.append("file", { uri: asset.uri, type: contentType, name: fileName } as unknown as Blob);
-
-        const res = await fetch(upload_url, { method: "POST", body: formData });
-        if (res.status !== 204 && !res.ok) throw new Error(`S3 업로드 실패 (${res.status})`);
+        // 2. S3에 직접 PUT (FormData 없음 — RN에서 안정적)
+        const fileBlob = await (await fetch(asset.uri)).blob();
+        const res = await fetch(upload_url, {
+          method: "PUT",
+          headers: { "Content-Type": contentType },
+          body: fileBlob,
+        });
+        if (!res.ok) throw new Error(`S3 업로드 실패 (${res.status})`);
 
         uploadedUrisRef.current.add(asset.uri);
         replacements.push({ localUri: asset.uri, s3Url: public_url });

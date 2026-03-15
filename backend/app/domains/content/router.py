@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import uuid as _uuid
 from app.core.auth.deps import get_current_user, require_role, CurrentUser
-from app.core.s3 import create_presigned_post, BUCKET_NAME, REGION, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES
+from app.core.s3 import create_presigned_upload_url, BUCKET_NAME, REGION
 from app.db.session import get_session
 from app.domains.content.models import InstructorPost, InstructorPostMedia, PostComment
 from app.domains.content.schemas import (
@@ -69,20 +69,17 @@ async def get_upload_url(
     if req.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(status_code=400, detail=f"허용되지 않는 파일 형식: {req.content_type}")
 
-    is_video = req.content_type.startswith("video/")
-    max_bytes = MAX_VIDEO_BYTES if is_video else MAX_IMAGE_BYTES
-
     ext = req.filename.rsplit(".", 1)[-1].lower() if "." in req.filename else "bin"
     key = f"instructor-posts/{user.id}/{_uuid.uuid4()}.{ext}"
 
-    result = create_presigned_post(key, req.content_type, max_bytes)
-    if not result:
+    # presigned PUT — FormData 없이 직접 PUT, RN에서 더 안정적
+    upload_url = create_presigned_upload_url(key, req.content_type)
+    if not upload_url:
         raise HTTPException(status_code=500, detail="S3 presigned URL 생성 실패")
 
     public_url = f"https://{BUCKET_NAME}.s3.{REGION}.amazonaws.com/{key}"
     return UploadUrlResponse(
-        upload_url=result["url"],
-        fields=result["fields"],
+        upload_url=upload_url,
         key=key,
         public_url=public_url,
     )

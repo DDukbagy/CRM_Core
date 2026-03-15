@@ -32,7 +32,6 @@ class PostUpdate(BaseModel):
     title: Optional[str] = None
     content: Optional[str] = None
     media_items: Optional[list[MediaItemCreate]] = None  # None = 변경 없음
-    is_public: Optional[bool] = None
     model_config = ConfigDict(extra="forbid")
 
 
@@ -58,7 +57,7 @@ class UploadUrlRequest(BaseModel):
 
 class UploadUrlResponse(BaseModel):
     upload_url: str
-    fields: dict[str, str]  # presigned POST에 필요한 form fields (key, policy, signature 등)
+    fields: dict[str, str] = {}  # presigned PUT은 fields 없음
     key: str
     public_url: str
 
