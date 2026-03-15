@@ -83,12 +83,6 @@ export default function ProfileScreen() {
         </View>
       )}
 
-      {/* 수강권 현황 */}
-      <Pressable style={s.menuBtn} onPress={() => router.push("/membership" as any)}>
-        <Text style={s.menuBtnText}>수강권 현황</Text>
-        <Text style={s.menuArrow}>›</Text>
-      </Pressable>
-
       {/* 프로필 수정 */}
       <Pressable style={s.editBtn} onPress={() => router.push("/edit-profile" as any)}>
         <Text style={s.editBtnText}>프로필 수정</Text>

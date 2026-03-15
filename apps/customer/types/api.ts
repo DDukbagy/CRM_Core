@@ -26,6 +26,7 @@ export interface UserRead {
   feedback_consent: boolean;
   recurring_off_days: number[];
   created_at: string;
+  updated_at: string;
 }
 
 export interface UserUpdate {
@@ -61,11 +62,12 @@ export interface MembershipRead {
 }
 
 export type BookingStatus = "REQUESTED" | "CONFIRMED" | "CANCEL_REQUESTED" | "CANCELLED" | "COMPLETED" | "NO_SHOW";
-export type BookingType = "LESSON";
+// HOLIDAY: 강사가 지정한 휴무일, WORK_OVERRIDE: 휴무 요일에 특정 슬롯만 오픈
+export type BookingType = "LESSON" | "HOLIDAY" | "WORK_OVERRIDE";
 
 export interface BookingRead {
   id: number;
-  when: string; // date string YYYY-MM-DD
+  when: string; // YYYY-MM-DD
   topic: string | null;
   status: BookingStatus;
   type: BookingType;
@@ -73,6 +75,7 @@ export interface BookingRead {
   cancel_reason: string | null;
   time_slot_id: number;
   guest_id: string;
+  membership_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -94,6 +97,7 @@ export interface AvailabilitySlot {
 export interface AvailabilityDay {
   date: string; // YYYY-MM-DD
   slots: AvailabilitySlot[];
+  is_holiday?: boolean;
 }
 
 export interface AvailabilityResponse {

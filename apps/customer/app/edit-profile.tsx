@@ -165,13 +165,14 @@ export default function EditProfileScreen() {
         />
       </View>
 
-      <Pressable
-        style={[s.saveBtn, saving && { opacity: 0.6 }]}
-        onPress={handleSave}
-        disabled={saving}
-      >
-        <Text style={s.saveBtnText}>{saving ? "저장 중..." : "저장"}</Text>
-      </Pressable>
+      <View style={s.btnRow}>
+        <Pressable style={s.cancelBtn} onPress={() => router.back()} disabled={saving}>
+          <Text style={s.cancelBtnText}>취소</Text>
+        </Pressable>
+        <Pressable style={[s.saveBtn, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
+          <Text style={s.saveBtnText}>{saving ? "저장 중..." : "저장"}</Text>
+        </Pressable>
+      </View>
     </ScrollView>
   );
 }
@@ -200,12 +201,26 @@ const s = StyleSheet.create({
   genderBtnActive: { backgroundColor: "#1a1a1a", borderColor: "#1a1a1a" },
   genderBtnTxt: { fontSize: 13, color: "#374151", fontWeight: "600" },
   genderBtnTxtActive: { color: "#fff" },
-  saveBtn: {
+  btnRow: {
+    flexDirection: "row",
+    gap: 10,
     marginTop: 32,
+    marginBottom: 40,
+  },
+  cancelBtn: {
+    flex: 1,
+    padding: 14,
+    backgroundColor: "#f3f4f6",
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  cancelBtnText: { color: "#374151", fontWeight: "700", fontSize: 15 },
+  saveBtn: {
+    flex: 1,
     padding: 14,
     backgroundColor: "#1a1a1a",
     borderRadius: 12,
-    marginBottom: 40,
+    alignItems: "center",
   },
   saveBtnText: { color: "#fff", textAlign: "center", fontWeight: "700", fontSize: 15 },
 });
