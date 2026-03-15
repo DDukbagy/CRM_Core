@@ -14,8 +14,9 @@ if TYPE_CHECKING:
 
 # 예약 타입 정의 (일반 레슨 / 휴무)
 class BookingType(str, Enum):
-    LESSON = "LESSON"     # 일반 예약 (레슨, 게임 등)
-    HOLIDAY = "HOLIDAY"   # 휴무 (강사 일정 차단)
+    LESSON = "LESSON"          # 일반 예약 (레슨, 게임 등)
+    HOLIDAY = "HOLIDAY"        # 휴무 (강사 일정 차단)
+    WORK_OVERRIDE = "WORK_OVERRIDE"  # 정기 휴무 요일을 특정 날짜만 영업일로 전환
 
 class Calendar(SQLModel, table=True):
     __tablename__ = "calendars"

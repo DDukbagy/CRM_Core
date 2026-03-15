@@ -141,7 +141,7 @@ export default function BookingDetailScreen() {
 
       {/* 상세 정보 */}
       <View style={s.card}>
-        <DetailRow label="주제" value={booking.topic} />
+        {booking.topic ? <DetailRow label="주제" value={booking.topic} /> : null}
         <DetailRow label="종류" value={booking.type === "LESSON" ? "레슨" : "상담"} />
         <DetailRow label="날짜" value={booking.when} />
         {booking.description ? <DetailRow label="메모" value={booking.description} /> : null}

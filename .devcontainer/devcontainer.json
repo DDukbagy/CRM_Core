@@ -29,9 +29,10 @@
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   },
-  "forwardPorts": [8000, 8081],
+  "forwardPorts": [8000, 8081, 8082],
   "portsAttributes": {
-    "8000": { "label": "FastAPI Backend", "onAutoForward": "silent" },
-    "8081": { "label": "Expo Web", "onAutoForward": "openBrowser" }
+    "8000": { "label": "FastAPI Backend", "onAutoForward": "silent", "visibility": "public" },
+    "8081": { "label": "Expo Web (customer)", "onAutoForward": "openBrowser", "visibility": "public" },
+    "8082": { "label": "Expo Web (instructor)", "onAutoForward": "openBrowser", "visibility": "public" }
   }
 }

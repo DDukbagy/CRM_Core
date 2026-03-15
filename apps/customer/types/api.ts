@@ -9,6 +9,8 @@ export interface UserRead {
   display_name: string;
   phone: string | null;
   role: UserRole;
+  status: string;
+  is_active: boolean;
   manager_id: string | null;
   // 강사 필드
   instructor_tier: string | null;
@@ -21,7 +23,10 @@ export interface UserRead {
   birth_date: string | null;
   gender: string | null;
   lesson_purpose: string | null;
+  feedback_consent: boolean;
+  recurring_off_days: number[];
   created_at: string;
+  updated_at: string;
 }
 
 export interface UserUpdate {
@@ -38,6 +43,7 @@ export interface UserUpdate {
   birth_date?: string | null;
   gender?: string | null;
   lesson_purpose?: string | null;
+  feedback_consent?: boolean;
 }
 
 export interface MembershipRead {
@@ -55,19 +61,21 @@ export interface MembershipRead {
   updated_at: string;
 }
 
-export type BookingStatus = "REQUESTED" | "CONFIRMED" | "CANCELLED" | "COMPLETED" | "NO_SHOW";
-export type BookingType = "LESSON";
+export type BookingStatus = "REQUESTED" | "CONFIRMED" | "CANCEL_REQUESTED" | "CANCELLED" | "COMPLETED" | "NO_SHOW";
+// HOLIDAY: 강사가 지정한 휴무일, WORK_OVERRIDE: 휴무 요일에 특정 슬롯만 오픈
+export type BookingType = "LESSON" | "HOLIDAY" | "WORK_OVERRIDE";
 
 export interface BookingRead {
   id: number;
-  when: string; // date string YYYY-MM-DD
-  topic: string;
+  when: string; // YYYY-MM-DD
+  topic: string | null;
   status: BookingStatus;
   type: BookingType;
   description: string | null;
   cancel_reason: string | null;
   time_slot_id: number;
   guest_id: string;
+  membership_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -75,7 +83,7 @@ export interface BookingRead {
 export interface BookingCreate {
   time_slot_id: number;
   when: string; // date string YYYY-MM-DD
-  topic: string;
+  topic?: string;
   description?: string;
   type?: BookingType;
 }
@@ -89,6 +97,7 @@ export interface AvailabilitySlot {
 export interface AvailabilityDay {
   date: string; // YYYY-MM-DD
   slots: AvailabilitySlot[];
+  is_holiday?: boolean;
 }
 
 export interface AvailabilityResponse {
@@ -130,6 +139,69 @@ export interface MatchRequestRead {
   updated_at: string;
 }
 
+// ── 강사 게시물 ──────────────────────────────────────────────
+export interface MediaItemRead {
+  id: number;
+  url: string;
+  media_type: "IMAGE" | "VIDEO";
+  sort_order: number;
+}
+
+export interface InstructorPostRead {
+  id: string;
+  instructor_id: string;
+  type: "PROMOTION" | "FEEDBACK";
+  title: string | null;
+  content: string | null;
+  media_items: MediaItemRead[];
+  customer_id: string | null;
+  customer_name: string | null;
+  is_public: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── 수강권 ────────────────────────────────────────────────────
+export interface PassTypeRead {
+  id: number;
+  instructor_id: string;
+  name: string;
+  duration_hours: number;
+  session_count: number;
+  price: number | null;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InstructorBrief {
+  id: string;
+  display_name: string;
+  instructor_location: string | null;
+  instructor_bio: string | null;
+  instructor_specialties: string | null;
+}
+
+export interface CustomerPassRead {
+  id: number;
+  pass_type_id: number;
+  customer_id: string;
+  instructor_id: string;
+  pass_name: string;
+  duration_hours: number;
+  sessions_total: number;
+  sessions_used: number;
+  sessions_remaining: number;
+  price_paid: number | null;
+  status: "ACTIVE" | "COMPLETED" | "EXPIRED" | "CANCELLED";
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+  instructor: InstructorBrief | null;
+  pass_type: PassTypeRead | null;
+}
+
 export type PostType = "NOTICE" | "COMMUNITY" | "FEEDBACK";
 export type PostStatus = "PUBLIC" | "MEMBERS" | "PRIVATE";
 
@@ -141,13 +213,12 @@ export interface PostMediaResponse {
 }
 
 export interface CommentRead {
-  id: string;
+  id: number;
   post_id: string;
   user_id: string;
+  user_name: string | null;
   content: string;
-  parent_id: string | null;
   created_at: string;
-  updated_at: string;
 }
 
 export interface PostResponse {

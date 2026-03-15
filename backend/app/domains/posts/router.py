@@ -310,6 +310,7 @@ async def update_comment(
 async def list_comments(
     post_id: UUID,
     session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(get_current_user),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
 ):

@@ -37,9 +37,9 @@ async def _ensure_test_user_id(session: AsyncSession) -> uuid.UUID:
     await session.execute(
         text(
             """
-            insert into public.users (id, username, email, display_name, is_active, status, role)
-            values (:id, :username, :email, :display_name, true, 'ACTIVE', 'CUSTOMER')
-            """
+            insert into public.users (id, username, email, display_name, is_active, status, role, feedback_consent)
+            values (:id, :username, :email, :display_name, true, 'ACTIVE', 'CUSTOMER', true)
+"""
         ),
         {
             "id": str(user_id),
@@ -182,9 +182,9 @@ async def free_slot_and_date(db_conn_and_sessionmaker: async_sessionmaker[AsyncS
                 await session.execute(
                     text(
                         """
-                        insert into public.users (id, username, email, display_name, is_active, status, role)
-                        values (:id, :username, :email, :display_name, true, 'ACTIVE', 'INSTRUCTOR')
-                        """
+                        insert into public.users (id, username, email, display_name, is_active, status, role, feedback_consent)
+                        values (:id, :username, :email, :display_name, true, 'ACTIVE', 'INSTRUCTOR', true)
+"""
                     ),
                     {
                         "id": host_id,
@@ -250,4 +250,158 @@ async def free_slot_and_date(db_conn_and_sessionmaker: async_sessionmaker[AsyncS
                 )
 
         return picked
-    
+
+
+# ── Instructor / Customer helpers ─────────────────────────────
+
+async def _ensure_instructor(session: AsyncSession, tier: str = "NORMAL") -> uuid.UUID:
+    instructor_uuid = uuid.uuid4()
+    await session.execute(
+        text(
+            """
+            INSERT INTO public.users (id, username, email, display_name, is_active, status, role, instructor_tier, feedback_consent)
+            VALUES (:id, :username, :email, :display_name, true, 'ACTIVE', 'INSTRUCTOR', :tier, true)
+"""
+        ),
+        {
+            "id": str(instructor_uuid),
+            "username": f"instr-{instructor_uuid.hex[:8]}",
+            "email": f"instr-{instructor_uuid.hex[:8]}@example.com",
+            "display_name": "Test Instructor",
+            "tier": tier,
+        },
+    )
+    await session.commit()
+    return instructor_uuid
+
+
+async def _ensure_customer_managed_by(session: AsyncSession, manager_id: uuid.UUID) -> uuid.UUID:
+    customer_uuid = uuid.uuid4()
+    await session.execute(
+        text(
+            """
+            INSERT INTO public.users (id, username, email, display_name, is_active, status, role, manager_id, feedback_consent)
+            VALUES (:id, :username, :email, :display_name, true, 'ACTIVE', 'CUSTOMER', :manager_id, true)
+"""
+        ),
+        {
+            "id": str(customer_uuid),
+            "username": f"cust-{customer_uuid.hex[:8]}",
+            "email": f"cust-{customer_uuid.hex[:8]}@example.com",
+            "display_name": "Test Customer",
+            "manager_id": str(manager_id),
+        },
+    )
+    await session.commit()
+    return customer_uuid
+
+
+@pytest_asyncio.fixture
+async def instructor_id(db_conn_and_sessionmaker: async_sessionmaker[AsyncSession]) -> uuid.UUID:
+    async with db_conn_and_sessionmaker() as session:
+        return await _ensure_instructor(session)
+
+
+@pytest_asyncio.fixture
+async def named_instructor_id(db_conn_and_sessionmaker: async_sessionmaker[AsyncSession]) -> uuid.UUID:
+    async with db_conn_and_sessionmaker() as session:
+        return await _ensure_instructor(session, tier="NAMED")
+
+
+@pytest_asyncio.fixture
+async def managed_customer_id(
+    db_conn_and_sessionmaker: async_sessionmaker[AsyncSession],
+    instructor_id: uuid.UUID,
+) -> uuid.UUID:
+    async with db_conn_and_sessionmaker() as session:
+        return await _ensure_customer_managed_by(session, instructor_id)
+
+
+async def _ensure_admin(session: AsyncSession) -> uuid.UUID:
+    admin_uuid = uuid.uuid4()
+    await session.execute(
+        text(
+            """
+            INSERT INTO public.users (id, username, email, display_name, is_active, status, role, feedback_consent)
+            VALUES (:id, :username, :email, :display_name, true, 'ACTIVE', 'ADMIN', true)
+"""
+        ),
+        {
+            "id": str(admin_uuid),
+            "username": f"admin-{admin_uuid.hex[:8]}",
+            "email": f"admin-{admin_uuid.hex[:8]}@example.com",
+            "display_name": "Test Admin",
+        },
+    )
+    await session.commit()
+    return admin_uuid
+
+
+@pytest_asyncio.fixture
+async def admin_id(db_conn_and_sessionmaker: async_sessionmaker[AsyncSession]) -> uuid.UUID:
+    async with db_conn_and_sessionmaker() as session:
+        return await _ensure_admin(session)
+
+
+@pytest_asyncio.fixture
+async def admin_client(
+    db_conn_and_sessionmaker: async_sessionmaker[AsyncSession],
+    admin_id: uuid.UUID,
+) -> AsyncIterator[AsyncClient]:
+    async def override_get_session() -> AsyncIterator[AsyncSession]:
+        async with db_conn_and_sessionmaker() as session:
+            yield session
+
+    async def override_get_current_user():
+        return CurrentUser(
+            id=str(admin_id),
+            email=None,
+            phone=None,
+            username="test-admin",
+            display_name="Test Admin",
+            role="ADMIN",
+            status="ACTIVE",
+            is_active=True,
+        )
+
+    app.dependency_overrides[get_session] = override_get_session
+    app.dependency_overrides[calendar_router.get_current_user] = override_get_current_user
+    app.dependency_overrides[auth_deps.get_current_user] = override_get_current_user
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+    app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def instructor_client(
+    db_conn_and_sessionmaker: async_sessionmaker[AsyncSession],
+    instructor_id: uuid.UUID,
+) -> AsyncIterator[AsyncClient]:
+    async def override_get_session() -> AsyncIterator[AsyncSession]:
+        async with db_conn_and_sessionmaker() as session:
+            yield session
+
+    async def override_get_current_user():
+        return CurrentUser(
+            id=str(instructor_id),
+            email=None,
+            phone=None,
+            username="test-instructor",
+            display_name="Test Instructor",
+            role="INSTRUCTOR",
+            status="ACTIVE",
+            is_active=True,
+        )
+
+    app.dependency_overrides[get_session] = override_get_session
+    app.dependency_overrides[calendar_router.get_current_user] = override_get_current_user
+    app.dependency_overrides[auth_deps.get_current_user] = override_get_current_user
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+    app.dependency_overrides.clear()

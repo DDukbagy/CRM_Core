@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import EmailStr, AwareDatetime
 from sqlalchemy import UniqueConstraint, String, Text, SmallInteger, Date
-from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
 from sqlmodel import SQLModel, Field, Relationship, func
 from sqlalchemy_utc import UtcDateTime
 
@@ -122,10 +122,30 @@ class User(SQLModel, table=True):
         description="레슨 목적/목표",
     )
 
+    feedback_consent: bool = Field(
+        default=False,
+        nullable=False,
+        description="피드백 공개 동의 여부",
+    )
+
     is_active: bool = Field(
         default=True,
         nullable=False,
         description="계정 활성화 여부"
+    )
+
+    push_token: Optional[str] = Field(
+        default=None,
+        sa_type=String(200),
+        nullable=True,
+        description="Expo Push Token (알림 발송용)",
+    )
+
+    recurring_off_days: Optional[List[int]] = Field(
+        default=None,
+        sa_type=JSONB,
+        nullable=True,
+        description="정기 휴무 요일 목록 (0=월, 1=화, ..., 6=일, Python weekday 기준)",
     )
 
     password: Optional[str] = Field(default=None, max_length=128, description="사용자 비밀번호")

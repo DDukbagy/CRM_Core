@@ -62,10 +62,14 @@ def make_engine():
         ssl_ctx.load_verify_locations(cafile=str(SUPABASE_CA))
         connect_args["ssl"] = ssl_ctx
 
+    # Supabase pooler(Supavisor) URL 사용 시 SQLAlchemy 자체 pool을 비활성화한다.
+    # Supavisor가 PG 커넥션 풀을 직접 관리하므로 SQLAlchemy pool과 이중 풀링하면
+    # idle 커넥션이 끊겼을 때 SSL TimeoutError가 발생한다.
+    # NullPool: 요청마다 새 커넥션 체크아웃 → 체크인 시 즉시 반환 (Supavisor가 재사용)
     return create_async_engine(
         db_url,
         echo=settings.DB_ECHO,
-        pool_pre_ping=True,
+        poolclass=NullPool,
         connect_args=connect_args,
     )
 
