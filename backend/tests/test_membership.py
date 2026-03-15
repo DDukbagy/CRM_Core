@@ -47,8 +47,8 @@ async def test_cannot_create_for_unmanaged_customer(instructor_client, db_conn_a
     async with db_conn_and_sessionmaker() as session:
         await session.execute(
             text(
-                "INSERT INTO public.users (id, username, email, display_name, is_active, status, role) "
-                "VALUES (:id, :username, :email, :display_name, true, 'ACTIVE', 'CUSTOMER')"
+                "INSERT INTO public.users (id, username, email, display_name, is_active, status, role, feedback_consent) "
+                "VALUES (:id, :username, :email, :display_name, true, 'ACTIVE', 'CUSTOMER', true)"
             ),
             {
                 "id": cust_id,
@@ -129,8 +129,8 @@ async def test_instructor_cannot_patch_others_membership(
     async with db_conn_and_sessionmaker() as session:
         await session.execute(
             text(
-                "INSERT INTO public.users (id, username, email, display_name, is_active, status, role) "
-                "VALUES (:id, :username, :email, :dn, true, 'ACTIVE', 'INSTRUCTOR')"
+                "INSERT INTO public.users (id, username, email, display_name, is_active, status, role, feedback_consent) "
+                "VALUES (:id, :username, :email, :dn, true, 'ACTIVE', 'INSTRUCTOR', true)"
             ),
             {
                 "id": other_instr_id,
@@ -141,8 +141,8 @@ async def test_instructor_cannot_patch_others_membership(
         )
         await session.execute(
             text(
-                "INSERT INTO public.users (id, username, email, display_name, is_active, status, role, manager_id) "
-                "VALUES (:id, :username, :email, :dn, true, 'ACTIVE', 'CUSTOMER', :mid)"
+                "INSERT INTO public.users (id, username, email, display_name, is_active, status, role, manager_id, feedback_consent) "
+                "VALUES (:id, :username, :email, :dn, true, 'ACTIVE', 'CUSTOMER', :mid, true)"
             ),
             {
                 "id": other_cust_id,

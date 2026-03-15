@@ -39,6 +39,11 @@ class UserRead(BaseModel):
     feedback_consent: bool = False
     recurring_off_days: list[int] = []
 
+    @field_validator("recurring_off_days", mode="before")
+    @classmethod
+    def coerce_none_to_empty(cls, v: object) -> object:
+        return v if v is not None else []
+
     is_active: bool = True
     created_at: datetime
     updated_at: datetime

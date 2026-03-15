@@ -84,8 +84,8 @@ async def test_instructor_accepts_match_request(
     async with db_conn_and_sessionmaker() as session:
         await session.execute(
             text(
-                "INSERT INTO public.users (id, username, email, display_name, is_active, status, role) "
-                "VALUES (:id, :username, :email, :dn, true, 'ACTIVE', 'CUSTOMER')"
+                "INSERT INTO public.users (id, username, email, display_name, is_active, status, role, feedback_consent) "
+                "VALUES (:id, :username, :email, :dn, true, 'ACTIVE', 'CUSTOMER', true)"
             ),
             {
                 "id": cust_id,
@@ -126,8 +126,8 @@ async def test_instructor_rejects_match_request(
     async with db_conn_and_sessionmaker() as session:
         await session.execute(
             text(
-                "INSERT INTO public.users (id, username, email, display_name, is_active, status, role) "
-                "VALUES (:id, :username, :email, :dn, true, 'ACTIVE', 'CUSTOMER')"
+                "INSERT INTO public.users (id, username, email, display_name, is_active, status, role, feedback_consent) "
+                "VALUES (:id, :username, :email, :dn, true, 'ACTIVE', 'CUSTOMER', true)"
             ),
             {
                 "id": cust_id,
