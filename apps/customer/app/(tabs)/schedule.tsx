@@ -3,16 +3,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View, Text, ScrollView, Pressable, TextInput, Alert,
   ActivityIndicator, Modal, Animated, Dimensions, StyleSheet,
-  KeyboardAvoidingView, Platform, AppState,
+  KeyboardAvoidingView, Platform, AppState, PanResponder,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { apiFetch } from "@/lib/api";
 import type { UserRead, BookingRead, AvailabilityResponse, AvailabilitySlot, BookingCreate, CustomerPassRead } from "@/types/api";
+import {
+  STATUS_COLOR, STATUS_LABEL, CHIP_BG,
+  toDateStr, fmtTime, parseTime, timeToY as _timeToY, timeDiff as _timeDiff,
+  jsWeekdayToPy, isEffectiveOffDay, makeBookingGroups,
+} from "@/lib/bookingUtils";
 
 const { height: SCREEN_H, width: SCREEN_W } = Dimensions.get("window");
 const CELL_SIZE = Math.floor((SCREEN_W) / 7);
-const CELL_H = Math.floor((SCREEN_H - 180) / 6); // 6주 기준으로 화면 꽉 채우기
-const PANEL_H = SCREEN_H * 0.44;
+const CELL_H = Math.floor((SCREEN_H - 250) / 6); // 살짝 작게
+const GRID_H = CELL_H * 6 + 48; // 6주 + 헤더 충분히 포함
 const DAYS_KO = ["일", "월", "화", "수", "목", "금", "토"];
 const MONTHS = ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
 
@@ -22,18 +27,7 @@ const END_H = 22;
 const HOUR_H = 64;
 const TIME_LABEL_W = 52;
 
-const STATUS_COLOR: Record<string, string> = {
-  REQUESTED: "#f59e0b", CONFIRMED: "#10b981", CANCEL_REQUESTED: "#f97316",
-  CANCELLED: "#ef4444", COMPLETED: "#6b7280",
-};
-const STATUS_LABEL: Record<string, string> = {
-  REQUESTED: "신청됨", CONFIRMED: "확정", CANCEL_REQUESTED: "취소 신청중",
-  CANCELLED: "취소됨", COMPLETED: "완료",
-};
-const CHIP_BG: Record<string, string> = {
-  REQUESTED: "#fff7ed", CONFIRMED: "#f0fdf4", CANCEL_REQUESTED: "#fff7ed",
-  CANCELLED: "#fef2f2", COMPLETED: "#f9fafb",
-};
+// bookingUtils에서 import: STATUS_COLOR, STATUS_LABEL, CHIP_BG, toDateStr, fmtTime, parseTime, makeBookingGroups
 
 function bookingLabel(b: BookingRead): string {
   if (b.status === "REQUESTED") return "신청 대기중";
@@ -41,26 +35,13 @@ function bookingLabel(b: BookingRead): string {
   return b.topic ?? "";
 }
 
-function toDateStr(y: number, m: number, d: number) {
-  return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-}
-function parseTime(t: string) {
-  const [h, m] = t.split(":").map(Number);
-  return { h, m };
-}
-function timeToY(t: string) {
-  const { h, m } = parseTime(t);
-  return (h - START_H) * HOUR_H + (m / 60) * HOUR_H;
-}
-function timeDiff(start: string, end: string) {
-  const s = parseTime(start), e = parseTime(end);
-  return ((e.h - s.h) * 60 + (e.m - s.m)) / 60 * HOUR_H;
-}
-function fmtTime(t: string) { return t.slice(0, 5); }
+// START_H, HOUR_H를 사용하는 로컬 래퍼
+const timeToY = (t: string) => _timeToY(t, START_H, HOUR_H);
+const timeDiff = (start: string, end: string) => _timeDiff(start, end, HOUR_H);
 
 // ─── 1. 월간 달력 그리드 ─────────────────────────────────
 function MonthGrid({
-  year, month, bookings, availability, selectedDate, onSelect, recurringOffDays,
+  year, month, bookings, availability, selectedDate, onSelect, recurringOffDays, slotTimeMap, holidayDates,
 }: {
   year: number; month: number;
   bookings: BookingRead[];
@@ -68,6 +49,8 @@ function MonthGrid({
   selectedDate: string;
   onSelect: (d: string) => void;
   recurringOffDays: number[];
+  slotTimeMap: Record<number, { start_time: string; end_time: string }>;
+  holidayDates: Set<string>;
 }) {
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -78,6 +61,7 @@ function MonthGrid({
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
   ];
   while (cells.length % 7 !== 0) cells.push(null);
+  while (cells.length < 42) cells.push(null); // 항상 6행
   const weeks: (number | null)[][] = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
@@ -96,26 +80,40 @@ function MonthGrid({
             const bk = bookings.filter(b => b.when === ds);
             const isToday = ds === today;
             const isSelected = ds === selectedDate;
-            // di: 0=일,1=월,...,6=토 → Python weekday: (di+6)%7
-            const pyDay = (di + 6) % 7;
+            const jsDay = new Date(ds + "T00:00:00").getDay();
+            const pyDay = jsWeekdayToPy(jsDay);
             const isRecurringOff = recurringOffDays.includes(pyDay);
+            const isHoliday = holidayDates.has(ds);
+            const isEffectiveOff = isEffectiveOffDay({
+              pyWeekday: pyDay,
+              recurringOffDays,
+              hasAvailability: !!availability[ds],
+              hasBookings: bk.length > 0,
+              isHoliday,
+            });
+            const sessions = makeBookingGroups(bk, slotTimeMap, false);
             return (
-              <Pressable key={di} style={[mg.cell, isRecurringOff && mg.offCell]} onPress={() => onSelect(ds)}>
+              <Pressable key={di} style={[mg.cell, isEffectiveOff && mg.offCell]} onPress={() => onSelect(ds)}>
                 <View style={[mg.numWrap, isToday && mg.todayWrap, isSelected && mg.selectedWrap]}>
-                  <Text style={[mg.num, di === 0 && mg.sun, di === 6 && mg.sat, (isToday || isSelected) && mg.whiteNum, isRecurringOff && !isSelected && mg.offNum]}>
+                  <Text style={[mg.num, di === 0 && mg.sun, di === 6 && mg.sat, (isToday || isSelected) && mg.whiteNum, isEffectiveOff && !isSelected && mg.offNum]}>
                     {day}
                   </Text>
                 </View>
-                {bk.slice(0, 2).map(b => (
-                  <View key={b.id} style={[mg.chip, { backgroundColor: CHIP_BG[b.status] }]}>
-                    <Text style={[mg.chipTxt, { color: STATUS_COLOR[b.status] }]} numberOfLines={1}>
-                      {bookingLabel(b)}
-                    </Text>
+                {sessions.slice(0, 2).map((sess, si) => {
+                  const b = sess.bookings[0];
+                  return (
+                    <View key={si} style={[mg.chip, { backgroundColor: CHIP_BG[b.status] }]}>
+                      <Text style={[mg.chipTxt, { color: STATUS_COLOR[b.status] }]} numberOfLines={1}>
+                        {bookingLabel(b)}
+                      </Text>
+                    </View>
+                  );
+                })}
+                {sessions.length > 2 && <Text style={mg.more}>+{sessions.length - 2}</Text>}
+                {bk.length === 0 && isEffectiveOff && (
+                  <View style={mg.noLessonWrap}>
+                    <Text style={mg.noLessonTxt}>{isHoliday ? "휴무" : "레슨없는날"}</Text>
                   </View>
-                ))}
-                {bk.length > 2 && <Text style={mg.more}>+{bk.length - 2}</Text>}
-                {!availability[ds] && bk.length === 0 && isRecurringOff && (
-                  <Text style={mg.offTxt}>휴무</Text>
                 )}
                 {availability[ds] && bk.length === 0 && (
                   <View style={mg.dot} />
@@ -130,12 +128,12 @@ function MonthGrid({
 }
 
 const mg = StyleSheet.create({
-  wrap: { backgroundColor: "#fff" },
+  wrap: { flex: 1, backgroundColor: "#fff" },
   header: { flexDirection: "row" },
   dayLabel: { flex: 1, textAlign: "center", fontSize: 12, fontWeight: "600", color: "#9ca3af", paddingVertical: 8 },
   sun: { color: "#ef4444" },
   sat: { color: "#3b82f6" },
-  week: { flexDirection: "row", height: CELL_H },
+  week: { flex: 1, flexDirection: "row" },
   cell: { flex: 1, borderWidth: 0.5, borderColor: "#f3f4f6", padding: 4, overflow: "hidden" },
   numWrap: { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", marginBottom: 2 },
   todayWrap: { backgroundColor: "#1a1a1a" },
@@ -146,22 +144,23 @@ const mg = StyleSheet.create({
   chipTxt: { fontSize: 9, fontWeight: "500" },
   more: { fontSize: 9, color: "#9ca3af" },
   dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: "#3b82f6", marginTop: 1 },
-  offCell: { backgroundColor: "#f9fafb" },
-  offNum: { color: "#d1d5db" },
-  offTxt: { fontSize: 9, color: "#d1d5db", fontWeight: "600", marginTop: 1 },
+  offCell: { backgroundColor: "#fff7ed" },
+  offNum: { color: "#9ca3af" },
+  noLessonWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
+  noLessonTxt: { fontSize: 9, fontWeight: "700", color: "#9ca3af", textAlign: "center" },
 });
 
 // ─── 2. 날짜별 패널 (타임라인 미리보기 + 수강권 기반 자동 슬롯 선택) ──────
 function DayPanel({
-  date, bookings, slots, managerId, activePass, onAddSlots, onExpand, onClose, onSelectBooking,
+  date, bookings, slots, managerId, activePass, slotTimeMap, onAddSlots, onClose, onSelectBooking,
 }: {
   date: string;
   bookings: BookingRead[];
   slots: AvailabilitySlot[];
   managerId: string | null;
   activePass: CustomerPassRead | null;
+  slotTimeMap: Record<number, { start_time: string; end_time: string }>;
   onAddSlots: (slots: AvailabilitySlot[]) => void;
-  onExpand: () => void;
   onClose: () => void;
   onSelectBooking: (b: BookingRead) => void;
 }) {
@@ -205,9 +204,23 @@ function DayPanel({
       setSelectedSlotIds(new Set());
       return;
     }
-    // 연속 슬롯 선택
-    const toSelect = uniqueSlots.slice(idx, idx + slotsPerLesson);
-    setSelectedSlotIds(new Set(toSelect.map(s => s.time_slot_id)));
+    // 앞으로 연속 슬롯 수집
+    const forward: AvailabilitySlot[] = [uniqueSlots[idx]];
+    for (let i = idx + 1; i < uniqueSlots.length && forward.length < slotsPerLesson; i++) {
+      if (forward[forward.length - 1].end_time === uniqueSlots[i].start_time) {
+        forward.push(uniqueSlots[i]);
+      } else break;
+    }
+    // 앞이 부족하면 뒤로 채우기
+    const backward: AvailabilitySlot[] = [];
+    const needed = slotsPerLesson - forward.length;
+    for (let i = idx - 1; i >= 0 && backward.length < needed; i--) {
+      const anchor = backward.length === 0 ? uniqueSlots[idx] : backward[0];
+      if (uniqueSlots[i].end_time === anchor.start_time) {
+        backward.unshift(uniqueSlots[i]);
+      } else break;
+    }
+    setSelectedSlotIds(new Set([...backward, ...forward].map(s => s.time_slot_id)));
   }
 
   function handleBook() {
@@ -216,25 +229,45 @@ function DayPanel({
     onAddSlots(toBook);
   }
 
+  // Group consecutive bookings into session rows
+  const bkSorted = [...bookings].sort((a, b) =>
+    (slotTimeMap[a.time_slot_id]?.start_time ?? "").localeCompare(slotTimeMap[b.time_slot_id]?.start_time ?? "")
+  );
+  type BkGroup = { bookings: BookingRead[]; startTime: string | null; endTime: string | null };
+  const bookingGroups: BkGroup[] = [];
+  let bgi = 0;
+  while (bgi < bkSorted.length) {
+    const cur = bkSorted[bgi];
+    const curTimes = slotTimeMap[cur.time_slot_id];
+    const group: BookingRead[] = [cur];
+    let endT: string | null = curTimes?.end_time ?? null;
+    let j = bgi + 1;
+    while (j < bkSorted.length && endT) {
+      const next = bkSorted[j];
+      const nextTimes = slotTimeMap[next.time_slot_id];
+      if (nextTimes?.start_time === endT) {
+        group.push(next);
+        endT = nextTimes?.end_time ?? null;
+        j++;
+      } else break;
+    }
+    bookingGroups.push({ bookings: group, startTime: curTimes?.start_time ?? null, endTime: endT });
+    bgi = j;
+  }
+
   const DAYS_KO_PANEL = ["일", "월", "화", "수", "목", "금", "토"];
   const jsDay = new Date(date + "T00:00:00").getDay();
 
   return (
     <View style={dp.wrap}>
-      <View style={dp.handle} />
       <View style={dp.header}>
         <View>
           <Text style={dp.dateTitle}>{date}</Text>
           <Text style={dp.dateSub}>{DAYS_KO_PANEL[jsDay]}요일</Text>
         </View>
-        <View style={dp.headerRight}>
-          <Pressable style={dp.expandBtn} onPress={onExpand}>
-            <Text style={dp.expandTxt}>전체 →</Text>
-          </Pressable>
-          <Pressable onPress={onClose} style={{ marginLeft: 12 }}>
-            <Text style={dp.closeTxt}>✕</Text>
-          </Pressable>
-        </View>
+        <Pressable onPress={onClose}>
+          <Text style={dp.closeTxt}>✕</Text>
+        </Pressable>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
@@ -256,22 +289,29 @@ function DayPanel({
         )}
 
         {/* 내 예약 현황 */}
-        {bookings.length > 0 && (
+        {bookingGroups.length > 0 && (
           <>
             <Text style={dp.sectionLabel}>내 예약</Text>
-            {bookings.map(b => (
-              <Pressable key={b.id} style={[dp.row, { borderLeftColor: STATUS_COLOR[b.status] }]} onPress={() => onSelectBooking(b)}>
-                <View style={{ flex: 1 }}>
-                  <Text style={dp.topic}>{bookingLabel(b)}</Text>
-                  <Text style={dp.meta}>{b.type === "LESSON" ? "레슨" : "상담"}</Text>
-                </View>
-                <View style={[dp.badge, { backgroundColor: STATUS_COLOR[b.status] + "20" }]}>
-                  <Text style={[dp.badgeTxt, { color: STATUS_COLOR[b.status] }]}>
-                    {STATUS_LABEL[b.status]}
-                  </Text>
-                </View>
-              </Pressable>
-            ))}
+            {bookingGroups.map((group, gi) => {
+              const b = group.bookings[0];
+              const color = STATUS_COLOR[b.status];
+              const timeLabel = group.startTime && group.endTime
+                ? `${fmtTime(group.startTime)} ~ ${fmtTime(group.endTime)}${group.bookings.length > 1 ? ` · ${group.bookings.length}슬롯` : ""}`
+                : (b.type === "LESSON" ? "레슨" : "상담");
+              return (
+                <Pressable key={`g-${gi}`} style={[dp.row, { borderLeftColor: color }]} onPress={() => onSelectBooking(b)}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={dp.topic}>{bookingLabel(b)}</Text>
+                    <Text style={dp.meta}>{timeLabel}</Text>
+                  </View>
+                  <View style={[dp.badge, { backgroundColor: color + "20" }]}>
+                    <Text style={[dp.badgeTxt, { color }]}>
+                      {STATUS_LABEL[b.status]}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
           </>
         )}
 
@@ -345,18 +385,13 @@ function DayPanel({
 const dp = StyleSheet.create({
   wrap: {
     flex: 1,
-    backgroundColor: "#fff", borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    paddingHorizontal: 20, paddingTop: 12,
+    backgroundColor: "#fff",
+    paddingHorizontal: 20, paddingTop: 10,
     borderTopWidth: 1, borderTopColor: "#e5e7eb",
-    elevation: 10,
   },
-  handle: { width: 36, height: 4, backgroundColor: "#d1d5db", borderRadius: 2, alignSelf: "center", marginBottom: 14 },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
-  headerRight: { flexDirection: "row", alignItems: "center" },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
   dateTitle: { fontSize: 16, fontWeight: "700", color: "#111" },
   dateSub: { fontSize: 12, color: "#9ca3af", marginTop: 1 },
-  expandBtn: { backgroundColor: "#f3f4f6", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
-  expandTxt: { fontSize: 12, color: "#374151", fontWeight: "600" },
   closeTxt: { fontSize: 16, color: "#9ca3af" },
   empty: { textAlign: "center", color: "#9ca3af", fontSize: 14, marginTop: 24 },
   sectionLabel: { fontSize: 12, fontWeight: "600", color: "#6b7280", marginBottom: 8, marginTop: 4 },
@@ -588,12 +623,12 @@ export default function ScheduleScreen() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
-  const [viewMode, setViewMode] = useState<"month" | "timeline">("month");
 
   const [managerId, setManagerId] = useState<string | null>(null);
   const [instructorName, setInstructorName] = useState<string | null>(null);
   const [instructorRecurringOffDays, setInstructorRecurringOffDays] = useState<number[]>([]);
   const [availability, setAvailability] = useState<Record<string, AvailabilitySlot[]>>({});
+  const [holidayDates, setHolidayDates] = useState<Set<string>>(new Set());
   const [slotTimeMap, setSlotTimeMap] = useState<Record<number, { start_time: string; end_time: string }>>({});
   const [myBookings, setMyBookings] = useState<BookingRead[]>([]);
   const [activePass, setActivePass] = useState<CustomerPassRead | null>(null);
@@ -611,8 +646,11 @@ export default function ScheduleScreen() {
 
   const [selectedDate, setSelectedDate] = useState("");
   const [panelVisible, setPanelVisible] = useState(false);
-  const panelAnim = useRef(new Animated.Value(0)).current;
-  const afterCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const calGridAnimH = useRef(new Animated.Value(GRID_H)).current;
+  const gridAvailH = useRef(GRID_H);
+  const weekStripScrollRef = useRef<ScrollView>(null);
+  const DAY_CELL_W = Math.floor(SCREEN_W / 7);
+  const isSwipingRef = useRef(false);
 
   // 예약 신청 모달
   const [modalVisible, setModalVisible] = useState(false);
@@ -629,6 +667,7 @@ export default function ScheduleScreen() {
         `/calendars/${mgId}/availability?start=${start}&end=${end}`
       );
       const slotMap: Record<string, AvailabilitySlot[]> = {};
+      const holidays = new Set<string>();
       avail.days.forEach((d: any) => {
         if (d.slots.length > 0) {
           slotMap[d.date] = d.slots;
@@ -636,8 +675,10 @@ export default function ScheduleScreen() {
             slotTimeAccum.current[s.time_slot_id] = { start_time: s.start_time, end_time: s.end_time };
           });
         }
+        if (d.is_holiday) holidays.add(d.date);
       });
       setAvailability(slotMap);
+      setHolidayDates(holidays);
       setSlotTimeMap({ ...slotTimeAccum.current });
     } catch (e) { console.error("가용 슬롯 로딩 실패:", e); }
   }
@@ -660,6 +701,17 @@ export default function ScheduleScreen() {
           .then(i => {
             if (i?.display_name) setInstructorName(i.display_name);
             setInstructorRecurringOffDays(i?.recurring_off_days ?? []);
+          })
+          .catch(() => {});
+        // 강사 전체 슬롯을 미리 불러 slotTimeMap에 등록 (과거 예약 시간 표시용)
+        apiFetch<{ id: number; start_time: string; end_time: string }[]>(
+          `/calendars/${me.manager_id}/time-slots`
+        )
+          .then(instructorSlots => {
+            instructorSlots.forEach(s => {
+              slotTimeAccum.current[s.id] = { start_time: s.start_time, end_time: s.end_time };
+            });
+            setSlotTimeMap({ ...slotTimeAccum.current });
           })
           .catch(() => {});
         await loadAvailability(me.manager_id, yearRef.current, monthRef.current);
@@ -709,19 +761,44 @@ export default function ScheduleScreen() {
     }
   }, [year, month]);
 
+  // 날짜 변경 시 스트립 자동 스크롤
+  useEffect(() => {
+    if (!panelVisible || !selectedDate) return;
+    const selDay = new Date(selectedDate + "T00:00:00").getDate() - 1;
+    const scrollX = Math.max(0, selDay * DAY_CELL_W - SCREEN_W / 2 + DAY_CELL_W / 2);
+    weekStripScrollRef.current?.scrollTo({ x: scrollX, animated: true });
+  }, [selectedDate]);
+
   function openPanel(date: string) {
     setSelectedDate(date);
     setPanelVisible(true);
-    panelAnim.setValue(PANEL_H);
-    Animated.spring(panelAnim, { toValue: 0, useNativeDriver: true, tension: 65, friction: 11 }).start();
+    calGridAnimH.setValue(gridAvailH.current);
+    Animated.timing(calGridAnimH, { toValue: 0, duration: 220, useNativeDriver: false }).start();
     if (managerIdRef.current) {
       loadAvailability(managerIdRef.current, yearRef.current, monthRef.current);
     }
   }
   function closePanel(onDone?: () => void) {
-    if (afterCloseTimer.current) clearTimeout(afterCloseTimer.current);
-    Animated.timing(panelAnim, { toValue: PANEL_H, duration: 240, useNativeDriver: true })
-      .start(() => { setPanelVisible(false); onDone?.(); });
+    Animated.timing(calGridAnimH, { toValue: gridAvailH.current, duration: 220, useNativeDriver: false }).start(() => {
+      setPanelVisible(false);
+      onDone?.();
+    });
+  }
+  function prevMonthHandler() {
+    if (panelVisible) {
+      const newY = month === 0 ? year - 1 : year;
+      const newM = month === 0 ? 11 : month - 1;
+      setYear(newY); setMonth(newM);
+      setSelectedDate(toDateStr(newY, newM, 1));
+    } else { prevMonth(); }
+  }
+  function nextMonthHandler() {
+    if (panelVisible) {
+      const newY = month === 11 ? year + 1 : year;
+      const newM = month === 11 ? 0 : month + 1;
+      setYear(newY); setMonth(newM);
+      setSelectedDate(toDateStr(newY, newM, 1));
+    } else { nextMonth(); }
   }
 
   function openBookingModal(slots: AvailabilitySlot[]) {
@@ -764,91 +841,177 @@ export default function ScheduleScreen() {
   function prevMonth() { if (month === 0) { setYear(y => y - 1); setMonth(11); } else setMonth(m => m - 1); }
   function nextMonth() { if (month === 11) { setYear(y => y + 1); setMonth(0); } else setMonth(m => m + 1); }
 
+  // 달력 스와이프 (이전달/다음달) — ref로 stale closure 방지
+  const prevMonthRef = useRef(prevMonth);
+  const nextMonthRef = useRef(nextMonth);
+  const panelVisibleRef = useRef(panelVisible);
+  prevMonthRef.current = prevMonth;
+  nextMonthRef.current = nextMonth;
+  panelVisibleRef.current = panelVisible;
+
+  // 달력 슬라이드 애니메이션
+  const calSlideX = useRef(new Animated.Value(0)).current;
+  const prevGhostX = useRef(Animated.add(calSlideX, new Animated.Value(-SCREEN_W))).current;
+  const nextGhostX = useRef(Animated.add(calSlideX, new Animated.Value(SCREEN_W))).current;
+  // 이전달/다음달 계산
+  const prevY = month === 0 ? year - 1 : year;
+  const prevM = month === 0 ? 11 : month - 1;
+  const nextY = month === 11 ? year + 1 : year;
+  const nextM = month === 11 ? 0 : month + 1;
+
+  const calendarPan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gs) =>
+        !panelVisibleRef.current &&
+        !isSwipingRef.current &&
+        Math.abs(gs.dx) > 12 &&
+        Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5,
+      onPanResponderMove: (_, gs) => {
+        calSlideX.setValue(gs.dx * 0.92);
+      },
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dx > 60) {
+          isSwipingRef.current = true;
+          Animated.timing(calSlideX, { toValue: SCREEN_W, duration: 180, useNativeDriver: true })
+            .start(() => { prevMonthRef.current(); calSlideX.setValue(0); isSwipingRef.current = false; });
+        } else if (gs.dx < -60) {
+          isSwipingRef.current = true;
+          Animated.timing(calSlideX, { toValue: -SCREEN_W, duration: 180, useNativeDriver: true })
+            .start(() => { nextMonthRef.current(); calSlideX.setValue(0); isSwipingRef.current = false; });
+        } else {
+          Animated.spring(calSlideX, { toValue: 0, useNativeDriver: true }).start();
+        }
+      },
+    })
+  ).current;
+
 
   if (loading) return <View style={s.center}><ActivityIndicator size="large" /></View>;
 
-  // ── 타임라인 뷰 (3번째 화면) ──
-  if (viewMode === "timeline") {
-    return (
-      <>
-        <TimelineView
-          year={year} month={month} selectedDate={selectedDate}
-          bookings={myBookings} availability={availability} slotTimeMap={slotTimeMap}
-          onSelectDate={(d) => setSelectedDate(d)}
-          onBack={() => { setViewMode("month"); openPanel(selectedDate); }}
-          onAddSlot={(slot) => openBookingModal([slot])}
-          onSelectBooking={(b) => setDetailBooking(b)}
-        />
-        <BookingModal
-          visible={modalVisible} slots={selectedSlots} date={selectedDate}
-          desc={descText} submitting={submitting}
-          onDesc={setDescText}
-          onClose={() => setModalVisible(false)} onSubmit={submitBooking}
-        />
-        <BookingDetailModal
-          visible={detailBooking !== null}
-          booking={detailBooking}
-          slotTimeMap={slotTimeMap}
-          instructorName={instructorName}
-          onClose={() => setDetailBooking(null)}
-          onCancelled={(id) => {
-            setMyBookings(prev => prev.map(b => b.id === id ? { ...b, status: "CANCELLED" } : b));
-            setDetailBooking(null);
-          }}
-          onUpdated={(updated) => {
-            setMyBookings(prev => prev.map(b => b.id === updated.id ? updated : b));
-            setDetailBooking(updated);
-          }}
-        />
-      </>
-    );
-  }
+  const daysInMon = new Date(year, month + 1, 0).getDate();
+  const todayStr = new Date().toISOString().slice(0, 10);
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#fff" }}>
-      {/* 달력 영역 */}
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: panelVisible ? PANEL_H + 16 : 0 }}
-        scrollEnabled={panelVisible}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* 월 네비 */}
-        <View style={s.monthNav}>
-          <Pressable onPress={prevMonth} style={s.navBtn}><Text style={s.navArrow}>‹</Text></Pressable>
-          <Text style={s.monthTitle}>{year}년 {MONTHS[month]}</Text>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Pressable onPress={nextMonth} style={s.navBtn}><Text style={s.navArrow}>›</Text></Pressable>
-            <Pressable onPress={() => router.push("/(tabs)/bookings")} style={s.bookingsBtn}>
-              <Text style={s.bookingsBtnTxt}>예약목록</Text>
-            </Pressable>
-          </View>
+    <View style={{ flex: 1, backgroundColor: "#fff" }} {...calendarPan.panHandlers}>
+      {/* 월 네비 */}
+      <View style={s.monthNav}>
+        <Pressable onPress={prevMonthHandler} style={s.navBtn}>
+          <Text style={s.navArrow}>‹</Text>
+        </Pressable>
+        <Text style={s.monthTitle}>{year}년 {MONTHS[month]}</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Pressable onPress={nextMonthHandler} style={s.navBtn}><Text style={s.navArrow}>›</Text></Pressable>
+          <Pressable onPress={() => router.push("/(tabs)/bookings")} style={s.bookingsBtn}>
+            <Text style={s.bookingsBtnTxt}>예약목록</Text>
+          </Pressable>
         </View>
+      </View>
 
-        <MonthGrid
-          year={year} month={month}
-          bookings={myBookings} availability={availability}
-          selectedDate={selectedDate}
-          onSelect={openPanel}
-          recurringOffDays={instructorRecurringOffDays}
-        />
-      </ScrollView>
+      {/* 달력 그리드 (날짜 선택 시 애니메이션으로 축소) */}
+      <View
+        style={{ flex: panelVisible ? 0 : 1 }}
+        onLayout={(e) => {
+          const h = e.nativeEvent.layout.height;
+          if (h > 0 && !panelVisible) {
+            gridAvailH.current = h;
+            calGridAnimH.setValue(h);
+          }
+        }}
+      >
+      <Animated.View style={{ height: calGridAnimH, overflow: "hidden" }}>
+        <View style={{ flex: 1, overflow: "hidden" }}>
+          {/* 이전 달 ghost */}
+          <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ translateX: prevGhostX }] }]} pointerEvents="none">
+            <MonthGrid
+              year={prevY} month={prevM}
+              bookings={myBookings} availability={availability}
+              selectedDate={selectedDate}
+              onSelect={openPanel}
+              recurringOffDays={instructorRecurringOffDays}
+              slotTimeMap={slotTimeMap}
+              holidayDates={holidayDates}
+            />
+          </Animated.View>
+          {/* 다음 달 ghost */}
+          <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ translateX: nextGhostX }] }]} pointerEvents="none">
+            <MonthGrid
+              year={nextY} month={nextM}
+              bookings={myBookings} availability={availability}
+              selectedDate={selectedDate}
+              onSelect={openPanel}
+              recurringOffDays={instructorRecurringOffDays}
+              slotTimeMap={slotTimeMap}
+              holidayDates={holidayDates}
+            />
+          </Animated.View>
+          {/* 현재 달 */}
+          <Animated.View style={{ flex: 1, transform: [{ translateX: calSlideX }] }}>
+            <MonthGrid
+              year={year} month={month}
+              bookings={myBookings} availability={availability}
+              selectedDate={selectedDate}
+              onSelect={openPanel}
+              recurringOffDays={instructorRecurringOffDays}
+              slotTimeMap={slotTimeMap}
+              holidayDates={holidayDates}
+            />
+          </Animated.View>
+        </View>
+      </Animated.View>
+      </View>
 
-      {/* 날짜 패널 - 아래서 올라오는 오버레이 */}
+      {/* 1열 날짜 스트립 + 상세 패널 */}
       {panelVisible && (
-        <Animated.View style={[s.panelOverlay, { transform: [{ translateY: panelAnim }] }]}>
+        <>
+          {/* 날짜 스트립 */}
+          <View style={s.weekStripWrap}>
+            <ScrollView
+              ref={weekStripScrollRef}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ alignItems: "center" }}
+              onLayout={() => {
+                const selDay = new Date(selectedDate + "T00:00:00").getDate() - 1;
+                const scrollX = Math.max(0, selDay * DAY_CELL_W - SCREEN_W / 2 + DAY_CELL_W / 2);
+                weekStripScrollRef.current?.scrollTo({ x: scrollX, animated: false });
+              }}
+            >
+              {Array.from({ length: daysInMon }, (_, i) => {
+                const ds = toDateStr(year, month, i + 1);
+                const dow = new Date(ds + "T00:00:00").getDay();
+                const isSelected = ds === selectedDate;
+                const isToday = ds === todayStr;
+                const hasBk = myBookings.some(b => b.when === ds && b.status !== "CANCELLED");
+                return (
+                  <Pressable key={ds} style={[s.weekStripCell, { width: DAY_CELL_W }]} onPress={() => ds === selectedDate ? closePanel() : setSelectedDate(ds)}>
+                    <Text style={[s.weekStripDayLabel, dow === 0 && { color: "#ef4444" }, dow === 6 && { color: "#3b82f6" }]}>
+                      {DAYS_KO[dow]}
+                    </Text>
+                    <View style={[s.weekStripNumWrap, isSelected && s.weekStripSelected, isToday && !isSelected && s.weekStripToday]}>
+                      <Text style={[s.weekStripNum, (isSelected || isToday) && { color: "#fff" }, dow === 0 && !isSelected && { color: "#ef4444" }, dow === 6 && !isSelected && { color: "#3b82f6" }]}>
+                        {i + 1}
+                      </Text>
+                    </View>
+                    {hasBk && <View style={s.weekStripDot} />}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+
+          {/* 날짜 상세 패널 */}
           <DayPanel
             date={selectedDate}
             bookings={myBookings.filter(b => b.when === selectedDate)}
             slots={availability[selectedDate] ?? []}
             managerId={managerId}
             activePass={activePass}
+            slotTimeMap={slotTimeMap}
             onAddSlots={(slots) => openBookingModal(slots)}
-            onExpand={() => closePanel(() => setViewMode("timeline"))}
             onClose={() => closePanel()}
             onSelectBooking={(b) => closePanel(() => setDetailBooking(b))}
           />
-        </Animated.View>
+        </>
       )}
 
       <BookingModal
@@ -944,7 +1107,14 @@ const s = StyleSheet.create({
     backgroundColor: "#f3f4f6", paddingHorizontal: 9, paddingVertical: 5, borderRadius: 8,
   },
   bookingsBtnTxt: { fontSize: 11, color: "#374151", fontWeight: "600" },
-  panelOverlay: { position: "absolute", bottom: 0, left: 0, right: 0, height: PANEL_H },
+  weekStripWrap: { borderBottomWidth: 1, borderBottomColor: "#e5e7eb", backgroundColor: "#fff" },
+  weekStripCell: { alignItems: "center", paddingVertical: 6, gap: 3 },
+  weekStripDayLabel: { fontSize: 10, color: "#9ca3af", fontWeight: "600" },
+  weekStripNumWrap: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
+  weekStripSelected: { backgroundColor: "#3b82f6" },
+  weekStripToday: { backgroundColor: "#1a1a1a" },
+  weekStripNum: { fontSize: 14, fontWeight: "600", color: "#111" },
+  weekStripDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: "#3b82f6" },
 });
 
 // ─── 예약 상세 모달 ──────────────────────────────────────

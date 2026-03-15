@@ -91,6 +91,7 @@ class AvailabilitySlot(BaseModel):
 class AvailabilityDay(BaseModel):
     date: date
     slots: list[AvailabilitySlot]
+    is_holiday: bool = False
 
     model_config = {"extra": "forbid"}
 

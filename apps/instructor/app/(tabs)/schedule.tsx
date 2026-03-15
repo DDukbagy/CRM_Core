@@ -1,11 +1,16 @@
 import { useCallback, useRef, useState } from "react";
 import {
   View, Text, ScrollView, Pressable, Modal, TextInput,
-  Animated, Dimensions, StyleSheet, ActivityIndicator,
+  Animated, Dimensions, StyleSheet, ActivityIndicator, PanResponder,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { apiFetch } from "@/lib/api";
 import type { BookingRead, TimeSlotRead, UserRead, UsersListResponse } from "@/types/api";
+import {
+  STATUS_COLOR, STATUS_LABEL,
+  toDateStr, fmtTime, parseTime, timeToY as _timeToY, timeDiff as _timeDiff,
+  jsWeekdayToPy, makeBookingGroups,
+} from "@/lib/bookingUtils";
 
 const { height: SCREEN_H, width: SCREEN_W } = Dimensions.get("window");
 const CELL_H = Math.floor((SCREEN_H - 200) / 6);
@@ -14,29 +19,15 @@ const DAYS_KO = ["일", "월", "화", "수", "목", "금", "토"];
 const MONTHS = ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
 const START_H = 6, END_H = 22, HOUR_H = 60, TIME_LABEL_W = 52;
 
-const STATUS_COLOR: Record<string, string> = {
-  REQUESTED: "#f59e0b", CONFIRMED: "#3b82f6", CANCEL_REQUESTED: "#f97316",
-  COMPLETED: "#16a34a", CANCELLED: "#9ca3af", NO_SHOW: "#ef4444",
-};
-const STATUS_LABEL: Record<string, string> = {
-  REQUESTED: "대기", CONFIRMED: "확정", CANCEL_REQUESTED: "취소신청",
-  COMPLETED: "완료", CANCELLED: "취소", NO_SHOW: "노쇼",
-};
+// bookingUtils에서 import: STATUS_COLOR, STATUS_LABEL, toDateStr, fmtTime, parseTime, makeBookingGroups
 
-function toDateStr(y: number, m: number, d: number) {
-  return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-}
-function fmtTime(t: string) { return t.slice(0, 5); }
-function parseTime(t: string) { const [h, m] = t.split(":").map(Number); return { h, m }; }
-function timeToY(t: string) { const { h, m } = parseTime(t); return (h - START_H) * HOUR_H + (m / 60) * HOUR_H; }
-function timeDiff(s: string, e: string) {
-  const sv = parseTime(s), ev = parseTime(e);
-  return ((ev.h - sv.h) * 60 + (ev.m - sv.m)) / 60 * HOUR_H;
-}
+// START_H, HOUR_H를 사용하는 로컬 래퍼
+const timeToY = (t: string) => _timeToY(t, START_H, HOUR_H);
+const timeDiff = (s: string, e: string) => _timeDiff(s, e, HOUR_H);
 
 // ─── MonthGrid ──────────────────────────────────────────
 function MonthGrid({
-  year, month, bookings, selectedDate, onSelect, customerMap, recurringOffDays,
+  year, month, bookings, selectedDate, onSelect, customerMap, recurringOffDays, slots,
 }: {
   year: number; month: number;
   bookings: BookingRead[];
@@ -44,15 +35,18 @@ function MonthGrid({
   onSelect: (d: string) => void;
   customerMap: Record<string, string>;
   recurringOffDays: number[];
+  slots: { id: number; start_time: string; end_time: string }[];
 }) {
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const today = new Date().toISOString().slice(0, 10);
+  const slotMap = Object.fromEntries(slots.map(s => [s.id, s])) as Record<number, { start_time: string; end_time: string }>;
   const cells: (number | null)[] = [
     ...Array(firstDay).fill(null),
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
   ];
   while (cells.length % 7 !== 0) cells.push(null);
+  while (cells.length < 42) cells.push(null); // 항상 6행
   const weeks: (number | null)[][] = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
@@ -69,16 +63,17 @@ function MonthGrid({
             if (!day) return <View key={di} style={mg.cell} />;
             const ds = toDateStr(year, month, day);
             const jsDay = new Date(ds + "T00:00:00").getDay();
-            const pyDay = (jsDay + 6) % 7;
+            const pyDay = jsWeekdayToPy(jsDay);
             const isRecurringOff = recurringOffDays.includes(pyDay);
             const bk = bookings.filter(b => b.when === ds);
             const isHoliday = !isRecurringOff && bk.some(b => b.type === "HOLIDAY" && b.status !== "CANCELLED");
             const hasWorkOverride = isRecurringOff && bk.some(b => b.type === "WORK_OVERRIDE" && b.status !== "CANCELLED");
-            const regularBk = bk.filter(b => b.type !== "HOLIDAY");
+            const regularBk = bk.filter(b => b.type !== "HOLIDAY" && b.type !== "WORK_OVERRIDE");
+            const sessionGroups = makeBookingGroups(regularBk, slotMap);
             const isToday = ds === today;
             const isSelected = ds === selectedDate;
             return (
-              <Pressable key={di} style={[mg.cell, (isHoliday || isRecurringOff) && mg.holidayCell]} onPress={() => onSelect(ds)}>
+              <Pressable key={di} style={[mg.cell, (isHoliday || (isRecurringOff && !hasWorkOverride)) && mg.holidayCell]} onPress={() => onSelect(ds)}>
                 <View style={[mg.numWrap, isToday && mg.todayWrap, isSelected && mg.selectedWrap]}>
                   <Text style={[mg.num, di === 0 && mg.sun, di === 6 && mg.sat, (isToday || isSelected) && mg.whiteNum]}>
                     {day}
@@ -93,22 +88,24 @@ function MonthGrid({
                     <Text style={mg.holidayTxt}>휴무</Text>
                   </View>
                 ) : null}
-                {!isHoliday && !isRecurringOff && regularBk.slice(0, 2).map(b => {
+                {!isHoliday && !(isRecurringOff && !hasWorkOverride) && sessionGroups.slice(0, 2).map((g, gi) => {
+                  const b = g.bookings[0];
                   const cname = customerMap[b.guest_id] ?? "예약";
                   const shortName = cname.length > 3 ? cname.slice(0, 3) : cname;
-                  const isCancelled = b.status === "CANCELLED";
+                  const isCancelled = g.bookings.every(bk => bk.status === "CANCELLED");
+                  const rep = g.bookings.find(bk => bk.status !== "CANCELLED") ?? b;
                   const detail = isCancelled
-                    ? (b.cancel_reason ? b.cancel_reason.slice(0, 4) : "거절")
-                    : (b.topic ? b.topic.slice(0, 4) : null);
+                    ? (rep.cancel_reason ? rep.cancel_reason.slice(0, 4) : "거절")
+                    : (rep.topic ? rep.topic.slice(0, 4) : null);
                   const label = detail ? `${shortName}·${detail}` : shortName;
-                  const color = isCancelled ? "#9ca3af" : (STATUS_COLOR[b.status] ?? "#9ca3af");
+                  const color = isCancelled ? "#9ca3af" : (STATUS_COLOR[rep.status] ?? "#9ca3af");
                   return (
-                    <View key={b.id} style={[mg.chip, { backgroundColor: color + "20", borderLeftColor: color, borderLeftWidth: 2 }]}>
-                      <Text style={[mg.chipTxt, { color, textDecorationLine: isCancelled ? "line-through" : "none" }]} numberOfLines={1}>{label}</Text>
+                    <View key={gi} style={[mg.chip, { backgroundColor: color + "20", borderLeftColor: color, borderLeftWidth: 2 }]}>
+                      <Text style={[mg.chipTxt, { color }]} numberOfLines={1}>{label}</Text>
                     </View>
                   );
                 })}
-                {!isHoliday && !isRecurringOff && regularBk.length > 2 && <Text style={mg.more}>+{regularBk.length - 2}</Text>}
+                {!isHoliday && !(isRecurringOff && !hasWorkOverride) && sessionGroups.length > 2 && <Text style={mg.more}>+{sessionGroups.length - 2}</Text>}
               </Pressable>
             );
           })}
@@ -119,12 +116,12 @@ function MonthGrid({
 }
 
 const mg = StyleSheet.create({
-  wrap: { backgroundColor: "#fff" },
+  wrap: { flex: 1, backgroundColor: "#fff" },
   header: { flexDirection: "row" },
   dayLabel: { flex: 1, textAlign: "center", fontSize: 12, fontWeight: "600", color: "#9ca3af", paddingVertical: 8 },
   sun: { color: "#ef4444" },
   sat: { color: "#3b82f6" },
-  week: { flexDirection: "row", height: CELL_H },
+  week: { flex: 1, flexDirection: "row" },
   cell: { flex: 1, borderWidth: 0.5, borderColor: "#f3f4f6", padding: 4, overflow: "hidden" },
   numWrap: { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", marginBottom: 2 },
   todayWrap: { backgroundColor: "#1a1a1a" },
@@ -168,8 +165,7 @@ function DayPanel({
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const jsDay = new Date(date + "T00:00:00").getDay();
-  // JS getDay(): 0=일,1=월,...,6=토 / Python weekday(): 0=월,1=화,...,6=일
-  const pyDay = (jsDay + 6) % 7;
+  const pyDay = jsWeekdayToPy(jsDay);
 
   // 중복 시간대 제거 + 시간순 정렬
   const seen = new Set<string>();
@@ -208,7 +204,10 @@ function DayPanel({
   const [activateSelected, setActivateSelected] = useState<Set<number>>(new Set());
 
   function openActivateMode() {
-    setActivateSelected(new Set(workOverrideSlotIds));
+    const initial = new Set(workOverrideSlotIds);
+    // 예약/신청이 있는 슬롯은 항상 활성화 상태 유지
+    activeBookingSlotIds.forEach(id => initial.add(id));
+    setActivateSelected(initial);
     setActivateMode(true);
   }
   function toggleActivate(id: number) {
@@ -220,10 +219,47 @@ function DayPanel({
   }
   function handleActivateComplete() {
     const toAdd = daySlots.filter(s => activateSelected.has(s.id) && !workOverrideSlotIds.has(s.id)).map(s => s.id);
-    const toRemove = daySlots.filter(s => !activateSelected.has(s.id) && workOverrideSlotIds.has(s.id)).map(s => s.id);
+    // 예약/신청 있는 슬롯은 제거 불가
+    const toRemove = daySlots.filter(s => !activateSelected.has(s.id) && workOverrideSlotIds.has(s.id) && !activeBookingSlotIds.has(s.id)).map(s => s.id);
     if (toAdd.length > 0 || toRemove.length > 0) onSaveActivation(toAdd, toRemove);
     setActivateMode(false);
   }
+
+  // Session grouping
+  const slotMapInst = Object.fromEntries(slots.map(s => [s.id, s])) as Record<number, { start_time: string; end_time: string }>;
+  const activeBookings = bookings.filter(b => b.status !== "CANCELLED");
+  const cancelledBookings = bookings.filter(b => b.status === "CANCELLED");
+  const activeGroups = makeBookingGroups(activeBookings, slotMapInst);
+  const cancelledGroups = makeBookingGroups(cancelledBookings, slotMapInst);
+
+  const [bookingPage, setBookingPage] = useState(0);
+  const bookScrollRef = useRef<ScrollView>(null);
+  // 패널 paddingHorizontal: 20 → 사용가능 너비 = SCREEN_W - 40
+  // PEEK: 양쪽 8px씩 이전/다음 탭 미리보기
+  const PEEK = 8;
+  const PAGE_W = SCREEN_W - 40 - PEEK * 2;
+
+  // 탭 카테고리 — 지난날짜/오늘이후 구분
+  const isPastDate = date < today;
+  const pendingBookings = bookings.filter(b => b.status === "REQUESTED" || b.status === "CANCEL_REQUESTED");
+  const confirmedBookings = bookings.filter(b => b.status === "CONFIRMED");
+  const completedBookings = bookings.filter(b => b.status === "COMPLETED");
+  const noShowBookings = bookings.filter(b => b.status === "NO_SHOW");
+  const TABS = isPastDate ? [
+    { label: "완료됨", data: completedBookings },
+    { label: "노쇼", data: noShowBookings },
+    { label: "취소됨", data: cancelledBookings },
+  ] : [
+    { label: "대기중", data: pendingBookings },
+    { label: "확정", data: confirmedBookings },
+    { label: "취소됨", data: cancelledBookings },
+  ];
+
+  // 확정/신청 예약이 있는 슬롯 ID (work override 복원 방지용)
+  const activeBookingSlotIds = new Set(
+    bookings.filter(b => b.status === "REQUESTED" || b.status === "CONFIRMED").map(b => b.time_slot_id)
+  );
+  const hasActiveBookingsOnDay = activeBookingSlotIds.size > 0;
 
   return (
     <View style={dp.wrap}>
@@ -243,66 +279,116 @@ function DayPanel({
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* 예약 목록 */}
-        <Text style={dp.sectionTitle}>예약 ({bookings.length}건)</Text>
-        {bookings.length === 0 ? (
-          <Text style={dp.empty}>이 날 예약 없음</Text>
-        ) : bookings.map(b => (
-          <View key={b.id} style={[dp.bookCard, { borderLeftColor: STATUS_COLOR[b.status] ?? "#9ca3af" }]}>
-            <View style={dp.bookTop}>
-              <View style={[dp.badge, { backgroundColor: (STATUS_COLOR[b.status] ?? "#9ca3af") + "20" }]}>
-                <Text style={[dp.badgeTxt, { color: STATUS_COLOR[b.status] ?? "#9ca3af" }]}>
-                  {STATUS_LABEL[b.status] ?? b.status}
+        {/* 예약 섹션 헤더 + pill 탭 */}
+        <View style={dp.bookingHeader}>
+          <Text style={dp.sectionTitle}>예약</Text>
+          <View style={dp.tabRow}>
+            {TABS.map((tab, i) => (
+              <Pressable
+                key={i}
+                style={[dp.tabPill, bookingPage === i && dp.tabPillActive]}
+                onPress={() => {
+                  bookScrollRef.current?.scrollTo({ x: i * PAGE_W, animated: true });
+                  setBookingPage(i);
+                }}
+              >
+                <Text style={[dp.tabPillTxt, bookingPage === i && dp.tabPillTxtActive]}>
+                  {tab.label}{tab.data.length > 0 ? ` ${tab.data.length}` : ""}
                 </Text>
-              </View>
-              <Text style={dp.customerName}>{customerMap[b.guest_id] ?? b.guest_id.slice(0, 8)}</Text>
-            </View>
-            <Text style={dp.topic}>{b.topic ?? "-"}</Text>
-            {b.status === "REQUESTED" && (
-              <View style={dp.actions}>
-                <Pressable style={[dp.actionBtn, { backgroundColor: "#3b82f6" }]} onPress={() => onAction(b.id, "confirm")}>
-                  <Text style={dp.actionTxt}>확정</Text>
-                </Pressable>
-                <Pressable style={[dp.actionBtn, { backgroundColor: "#9ca3af" }]} onPress={() => onAction(b.id, "decline")}>
-                  <Text style={dp.actionTxt}>거절</Text>
-                </Pressable>
-              </View>
-            )}
-            {b.status === "CANCEL_REQUESTED" && (
-              <View>
-                <Text style={dp.cancelReqTxt}>고객이 취소를 신청했습니다</Text>
-                <View style={dp.actions}>
-                  <Pressable style={[dp.actionBtn, { backgroundColor: "#ef4444" }]} onPress={() => onAction(b.id, "approve-cancel")}>
-                    <Text style={dp.actionTxt}>취소 승인</Text>
-                  </Pressable>
-                  <Pressable style={[dp.actionBtn, { backgroundColor: "#3b82f6" }]} onPress={() => onAction(b.id, "reject-cancel")}>
-                    <Text style={dp.actionTxt}>취소 거절</Text>
-                  </Pressable>
-                </View>
-              </View>
-            )}
-            {b.status === "CONFIRMED" && date <= today && (
-              <View style={dp.actions}>
-                <Pressable style={[dp.actionBtn, { backgroundColor: "#16a34a" }]} onPress={() => onAction(b.id, "complete")}>
-                  <Text style={dp.actionTxt}>완료</Text>
-                </Pressable>
-                <Pressable style={[dp.actionBtn, { backgroundColor: "#ef4444" }]} onPress={() => onAction(b.id, "no-show")}>
-                  <Text style={dp.actionTxt}>노쇼</Text>
-                </Pressable>
-              </View>
-            )}
-            <Pressable style={dp.detailBtn} onPress={() => onSelectBooking(b)}>
-              <Text style={dp.detailBtnTxt}>상세 보기</Text>
-            </Pressable>
+              </Pressable>
+            ))}
           </View>
-        ))}
+        </View>
+
+        <ScrollView
+            ref={bookScrollRef}
+            horizontal
+            pagingEnabled={false}
+            snapToInterval={PAGE_W}
+            decelerationRate="fast"
+            showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={(e) => {
+              setBookingPage(Math.round(e.nativeEvent.contentOffset.x / PAGE_W));
+            }}
+            contentContainerStyle={{ paddingHorizontal: PEEK }}
+          >
+            {TABS.map((tab, ti) => {
+              const groups = makeBookingGroups(tab.data, slotMapInst);
+              return (
+                <View key={ti} style={{ width: PAGE_W, minHeight: 80 }}>
+                  {groups.length === 0 ? (
+                    <Text style={dp.empty}>{tab.label} 예약 없음</Text>
+                  ) : groups.map((group, gi) => {
+                    const b = group.bookings[0];
+                    const isCancelled = ti === 2;
+                    const color = isCancelled ? "#9ca3af" : (STATUS_COLOR[b.status] ?? "#9ca3af");
+                    return (
+                      <View key={`${ti}-${gi}`} style={[dp.bookCard, { borderLeftColor: color, opacity: isCancelled ? 0.65 : 1 }]}>
+                        <View style={dp.bookTop}>
+                          <View style={[dp.badge, { backgroundColor: color + "20" }]}>
+                            <Text style={[dp.badgeTxt, { color }]}>{STATUS_LABEL[b.status] ?? b.status}</Text>
+                          </View>
+                          <Text style={[dp.customerName, isCancelled && { color: "#9ca3af" }]}>{customerMap[b.guest_id] ?? b.guest_id.slice(0, 8)}</Text>
+                        </View>
+                        {group.startTime && group.endTime && (
+                          <Text style={[dp.bookTime, isCancelled && { color: "#9ca3af" }]}>{fmtTime(group.startTime)} ~ {fmtTime(group.endTime)}</Text>
+                        )}
+                        {b.topic ? <Text style={[dp.topic, isCancelled && { color: "#9ca3af" }]}>{b.topic}</Text> : null}
+                        {isCancelled && b.cancel_reason && (
+                          <Text style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>사유: {b.cancel_reason}</Text>
+                        )}
+                        {b.status === "REQUESTED" && (
+                          <View style={dp.actions}>
+                            <Pressable style={[dp.actionBtn, { backgroundColor: "#3b82f6" }]} onPress={() => onAction(b.id, "confirm")}>
+                              <Text style={dp.actionTxt}>확정</Text>
+                            </Pressable>
+                            <Pressable style={[dp.actionBtn, { backgroundColor: "#9ca3af" }]} onPress={() => onAction(b.id, "decline")}>
+                              <Text style={dp.actionTxt}>거절</Text>
+                            </Pressable>
+                          </View>
+                        )}
+                        {b.status === "CANCEL_REQUESTED" && (
+                          <View>
+                            <Text style={dp.cancelReqTxt}>고객이 취소를 신청했습니다</Text>
+                            <View style={dp.actions}>
+                              <Pressable style={[dp.actionBtn, { backgroundColor: "#ef4444" }]} onPress={() => onAction(b.id, "approve-cancel")}>
+                                <Text style={dp.actionTxt}>취소 승인</Text>
+                              </Pressable>
+                              <Pressable style={[dp.actionBtn, { backgroundColor: "#3b82f6" }]} onPress={() => onAction(b.id, "reject-cancel")}>
+                                <Text style={dp.actionTxt}>취소 거절</Text>
+                              </Pressable>
+                            </View>
+                          </View>
+                        )}
+                        {b.status === "CONFIRMED" && date <= today && (
+                          <View style={dp.actions}>
+                            <Pressable style={[dp.actionBtn, { backgroundColor: "#16a34a" }]} onPress={() => onAction(b.id, "complete")}>
+                              <Text style={dp.actionTxt}>완료</Text>
+                            </Pressable>
+                            <Pressable style={[dp.actionBtn, { backgroundColor: "#ef4444" }]} onPress={() => onAction(b.id, "no-show")}>
+                              <Text style={dp.actionTxt}>노쇼</Text>
+                            </Pressable>
+                          </View>
+                        )}
+                        {!isCancelled && (
+                          <Pressable style={dp.detailBtn} onPress={() => onSelectBooking(b)}>
+                            <Text style={dp.detailBtnTxt}>상세 보기</Text>
+                          </Pressable>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              );
+            })}
+          </ScrollView>
 
         {/* 타임슬롯 */}
         <View style={dp.slotHeader}>
           <Text style={dp.sectionTitle}>타임슬롯</Text>
           <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
             {/* 일반 날 */}
-            {!isBlocked && (
+            {!isBlocked && !isPastDate && (
               <>
                 <Pressable style={dp.blockBtn} onPress={onBlockDate}>
                   <Text style={dp.blockTxt}>휴일전환</Text>
@@ -313,24 +399,24 @@ function DayPanel({
               </>
             )}
             {/* 휴무 날 */}
-            {isHoliday && (
+            {isHoliday && !isPastDate && (
               <Pressable style={dp.unblockBtn} onPress={onUnblockDate}>
                 <Text style={dp.unblockTxt}>영업일전환</Text>
               </Pressable>
             )}
             {/* 정기 휴무 날 */}
-            {isRecurringOff && !hasWorkOverride && (
+            {isRecurringOff && !hasWorkOverride && !isPastDate && (
               <Pressable style={dp.overrideBtn} onPress={onOverrideDay}>
                 <Text style={dp.overrideTxt}>이번만 전체영업</Text>
               </Pressable>
             )}
-            {isRecurringOff && hasWorkOverride && (
+            {isRecurringOff && hasWorkOverride && !hasActiveBookingsOnDay && !isPastDate && (
               <Pressable style={dp.unblockBtn} onPress={onRestoreRecurring}>
-                <Text style={dp.unblockTxt}>전체복원</Text>
+                <Text style={dp.unblockTxt}>영업일전환 취소</Text>
               </Pressable>
             )}
             {/* 시간 활성화 — 휴무/정기휴무 공통 */}
-            {isBlocked && (
+            {isBlocked && !isPastDate && (
               <Pressable style={dp.activateBtn} onPress={openActivateMode}>
                 <Text style={dp.activateTxt}>시간 활성화</Text>
               </Pressable>
@@ -433,11 +519,12 @@ function DayPanel({
             </View>
             {daySlots.map(slot => {
               const isOn = activateSelected.has(slot.id);
+              const hasBooking = activeBookingSlotIds.has(slot.id);
               return (
                 <Pressable
                   key={slot.id}
                   style={[dp.slotRow, isOn && dp.slotRowActivated]}
-                  onPress={() => toggleActivate(slot.id)}
+                  onPress={() => !hasBooking && toggleActivate(slot.id)}
                 >
                   <View style={[dp.checkbox, isOn && dp.checkboxGreen]}>
                     {isOn && <Text style={dp.checkmark}>✓</Text>}
@@ -445,7 +532,10 @@ function DayPanel({
                   <Text style={[dp.slotTime, !isOn && { color: "#9ca3af" }]}>
                     {fmtTime(slot.start_time)} ~ {fmtTime(slot.end_time)}
                   </Text>
-                  {isOn && <View style={dp.activatedBadge}><Text style={dp.activatedTxt}>활성화</Text></View>}
+                  {hasBooking
+                    ? <View style={[dp.activatedBadge, { backgroundColor: "#dbeafe" }]}><Text style={[dp.activatedTxt, { color: "#1d4ed8" }]}>예약있음</Text></View>
+                    : isOn && <View style={dp.activatedBadge}><Text style={dp.activatedTxt}>활성화</Text></View>
+                  }
                 </Pressable>
               );
             })}
@@ -467,18 +557,25 @@ const dp = StyleSheet.create({
   closeTxt: { fontSize: 16, color: "#9ca3af" },
   sectionTitle: { fontSize: 13, fontWeight: "600", color: "#6b7280", marginBottom: 8, marginTop: 4 },
   empty: { textAlign: "center", color: "#9ca3af", fontSize: 13, marginVertical: 12 },
-  bookCard: { borderLeftWidth: 3, backgroundColor: "#f9fafb", borderRadius: 8, padding: 12, marginBottom: 8 },
+  bookCard: { borderLeftWidth: 3, backgroundColor: "#f9fafb", borderRadius: 10, padding: 14, marginBottom: 10 },
   bookTop: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
-  badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20 },
+  badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
   badgeTxt: { fontSize: 11, fontWeight: "600" },
-  customerName: { fontSize: 14, fontWeight: "600", color: "#111" },
+  customerName: { fontSize: 15, fontWeight: "600", color: "#111" },
   topic: { fontSize: 13, color: "#6b7280", marginBottom: 6 },
   actions: { flexDirection: "row", gap: 8 },
-  actionBtn: { flex: 1, padding: 8, borderRadius: 8, alignItems: "center" },
+  actionBtn: { flex: 1, padding: 10, borderRadius: 8, alignItems: "center" },
   actionTxt: { color: "#fff", fontSize: 13, fontWeight: "600" },
+  bookTime: { fontSize: 13, color: "#6b7280", marginBottom: 4 },
   cancelReqTxt: { fontSize: 12, color: "#c2410c", fontWeight: "600", marginBottom: 6, marginTop: 2 },
-  detailBtn: { marginTop: 8, padding: 7, borderRadius: 8, borderWidth: 1, borderColor: "#e5e7eb", alignItems: "center" },
+  detailBtn: { marginTop: 8, padding: 8, borderRadius: 8, borderWidth: 1, borderColor: "#e5e7eb", alignItems: "center" },
   detailBtnTxt: { fontSize: 12, color: "#6b7280", fontWeight: "600" },
+  bookingHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10, marginTop: 4 },
+  tabRow: { flexDirection: "row", gap: 6 },
+  tabPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: "#e5e7eb", backgroundColor: "#f9fafb" },
+  tabPillActive: { borderColor: "#3b82f6", backgroundColor: "#eff6ff" },
+  tabPillTxt: { fontSize: 12, color: "#6b7280", fontWeight: "500" },
+  tabPillTxtActive: { color: "#3b82f6", fontWeight: "700" },
   selectOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
   selectSheet: { backgroundColor: "#fff", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40 },
   selectHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
@@ -593,7 +690,7 @@ function TimelineView({
                     </View>
                   </View>
                   {slot && <Text style={tl.bkTime}>{fmtTime(slot.start_time)} ~ {fmtTime(slot.end_time)}</Text>}
-                  <Text style={tl.bkTopic}>{b.topic ?? "-"}</Text>
+                  {b.topic ? <Text style={tl.bkTopic}>{b.topic}</Text> : null}
                   {b.status === "REQUESTED" && (
                     <View style={tl.actions}>
                       <Pressable style={[tl.btn, { backgroundColor: "#3b82f6" }]} onPress={() => onAction(b.id, "confirm")}>
@@ -735,6 +832,46 @@ export default function ScheduleScreen() {
     load(ny, nm);
   }
 
+  // 달력 스와이프 애니메이션
+  const calSlideX = useRef(new Animated.Value(0)).current;
+  const prevGhostX = useRef(Animated.add(calSlideX, new Animated.Value(-SCREEN_W))).current;
+  const nextGhostX = useRef(Animated.add(calSlideX, new Animated.Value(SCREEN_W))).current;
+  const prevMonthRef = useRef(prevMonth);
+  const nextMonthRef = useRef(nextMonth);
+  const panelVisibleRef = useRef(panelVisible);
+  prevMonthRef.current = prevMonth;
+  nextMonthRef.current = nextMonth;
+  panelVisibleRef.current = panelVisible;
+  const prevY = month === 0 ? year - 1 : year;
+  const prevM = month === 0 ? 11 : month - 1;
+  const nextY = month === 11 ? year + 1 : year;
+  const nextM = month === 11 ? 0 : month + 1;
+
+  const isSwipingRef = useRef(false);
+  const calendarPan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gs) =>
+        !panelVisibleRef.current &&
+        !isSwipingRef.current &&
+        Math.abs(gs.dx) > 12 &&
+        Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5,
+      onPanResponderMove: (_, gs) => { calSlideX.setValue(gs.dx * 0.92); },
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dx > 60) {
+          isSwipingRef.current = true;
+          Animated.timing(calSlideX, { toValue: SCREEN_W, duration: 180, useNativeDriver: true })
+            .start(() => { prevMonthRef.current(); calSlideX.setValue(0); isSwipingRef.current = false; });
+        } else if (gs.dx < -60) {
+          isSwipingRef.current = true;
+          Animated.timing(calSlideX, { toValue: -SCREEN_W, duration: 180, useNativeDriver: true })
+            .start(() => { nextMonthRef.current(); calSlideX.setValue(0); isSwipingRef.current = false; });
+        } else {
+          Animated.spring(calSlideX, { toValue: 0, useNativeDriver: true }).start();
+        }
+      },
+    })
+  ).current;
+
   function openPanel(date: string) {
     setSelectedDate(date);
     setPanelVisible(true);
@@ -742,7 +879,9 @@ export default function ScheduleScreen() {
     Animated.spring(panelAnim, { toValue: 0, useNativeDriver: true, tension: 65, friction: 11 }).start();
   }
   function closePanel() {
-    Animated.timing(panelAnim, { toValue: PANEL_H, duration: 240, useNativeDriver: true }).start(() => setPanelVisible(false));
+    Animated.timing(panelAnim, { toValue: PANEL_H, duration: 240, useNativeDriver: true }).start(() => {
+      setPanelVisible(false);
+    });
   }
 
   function doAction(bookingId: number, action: "confirm" | "complete" | "no-show" | "decline" | "cancel" | "approve-cancel" | "reject-cancel") {
@@ -796,7 +935,7 @@ export default function ScheduleScreen() {
   const workOverrideBookings = bookings.filter(b => b.when === selectedDate && b.type === "WORK_OVERRIDE" && b.status !== "CANCELLED");
   const workOverrideSlotIds = new Set(workOverrideBookings.map(b => b.time_slot_id));
   const selectedJsDay = selectedDate ? new Date(selectedDate + "T00:00:00").getDay() : -1;
-  const selectedPyDay = selectedJsDay >= 0 ? (selectedJsDay + 6) % 7 : -1;
+  const selectedPyDay = selectedJsDay >= 0 ? jsWeekdayToPy(selectedJsDay) : -1;
   const isSelectedRecurringOff = selectedPyDay >= 0 && recurringOffDays.includes(selectedPyDay);
 
   function unblockDate() {
@@ -869,7 +1008,7 @@ export default function ScheduleScreen() {
     });
   }
 
-  const dayBookings = bookings.filter(b => b.when === selectedDate && b.status !== "CANCELLED" && b.type !== "HOLIDAY" && b.type !== "WORK_OVERRIDE");
+  const dayBookings = bookings.filter(b => b.when === selectedDate && b.type !== "HOLIDAY" && b.type !== "WORK_OVERRIDE");
 
   if (loading) {
     return <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}><ActivityIndicator size="large" color="#16a34a" /></View>;
@@ -946,26 +1085,22 @@ export default function ScheduleScreen() {
           </View>
         </View>
       </Modal>
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: panelVisible ? PANEL_H + 16 : 0 }}
-        scrollEnabled={panelVisible}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={s.monthNav}>
-          <Pressable onPress={prevMonth} style={s.navBtn}><Text style={s.navArrow}>‹</Text></Pressable>
-          <Text style={s.monthTitle}>{year}년 {MONTHS[month]}</Text>
-          <Pressable onPress={nextMonth} style={s.navBtn}><Text style={s.navArrow}>›</Text></Pressable>
-        </View>
-        <MonthGrid
-          year={year} month={month}
-          bookings={bookings}
-          selectedDate={selectedDate}
-          onSelect={openPanel}
-          customerMap={customerMap}
-          recurringOffDays={recurringOffDays}
-        />
-      </ScrollView>
+      <View style={s.monthNav}>
+        <Pressable onPress={prevMonth} style={s.navBtn}><Text style={s.navArrow}>‹</Text></Pressable>
+        <Text style={s.monthTitle}>{year}년 {MONTHS[month]}</Text>
+        <Pressable onPress={nextMonth} style={s.navBtn}><Text style={s.navArrow}>›</Text></Pressable>
+      </View>
+      <View style={{ flex: 1, overflow: "hidden" }} {...(!panelVisible ? calendarPan.panHandlers : {})}>
+        <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ translateX: prevGhostX }] }]} pointerEvents="none">
+          <MonthGrid year={prevY} month={prevM} bookings={bookings} selectedDate={selectedDate} onSelect={openPanel} customerMap={customerMap} recurringOffDays={recurringOffDays} slots={slots} />
+        </Animated.View>
+        <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ translateX: nextGhostX }] }]} pointerEvents="none">
+          <MonthGrid year={nextY} month={nextM} bookings={bookings} selectedDate={selectedDate} onSelect={openPanel} customerMap={customerMap} recurringOffDays={recurringOffDays} slots={slots} />
+        </Animated.View>
+        <Animated.View style={{ flex: 1, transform: [{ translateX: calSlideX }] }}>
+          <MonthGrid year={year} month={month} bookings={bookings} selectedDate={selectedDate} onSelect={openPanel} customerMap={customerMap} recurringOffDays={recurringOffDays} slots={slots} />
+        </Animated.View>
+      </View>
 
       <BookingDetailModal
         visible={detailBooking !== null}
@@ -1023,7 +1158,7 @@ function BookingDetailModal({ visible, booking, slots, customerMap, onClose, onA
   if (!booking) return null;
   const today = new Date().toISOString().slice(0, 10);
   const jsDay = new Date(booking.when + "T00:00:00").getDay();
-  const pyDay = (jsDay + 6) % 7;
+  const pyDay = jsWeekdayToPy(jsDay);
   const slot = slots.find(s => s.id === booking.time_slot_id && s.weekdays.includes(pyDay));
   const customerName = customerMap[booking.guest_id] ?? booking.guest_id.slice(0, 8);
   const sc = STATUS_COLOR[booking.status] ?? "#9ca3af";
