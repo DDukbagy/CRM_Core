@@ -294,23 +294,3 @@ async def add_comment(
     )
 
 
-# ─── 피드백 동의 ──────────────────────────────────────────────────────────────
-
-@router.patch("/customers/{customer_id}/feedback-consent", status_code=200)
-async def toggle_feedback_consent(
-    customer_id: UUID,
-    consent: bool,
-    session: AsyncSession = Depends(get_session),
-    user: CurrentUser = Depends(require_role({"INSTRUCTOR", "ADMIN"})),
-):
-    uid = UUID(str(user.id))
-    cust_res = await session.execute(select(User).where(User.id == customer_id))
-    customer = cust_res.scalar_one_or_none()
-    if not customer:
-        raise HTTPException(status_code=404, detail="Customer not found")
-    if user.role == "INSTRUCTOR" and customer.manager_id != uid:
-        raise HTTPException(status_code=403, detail="담당 고객만 설정할 수 있습니다.")
-    customer.feedback_consent = consent
-    session.add(customer)
-    await session.commit()
-    return {"ok": True, "customer_id": str(customer_id), "feedback_consent": consent}

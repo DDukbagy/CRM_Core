@@ -40,8 +40,7 @@ export default function BookingsScreen() {
     try {
       const data = await apiFetch<BookingRead[]>("/bookings/me");
       setBookings(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error("예약 목록 로딩 실패:", e);
+    } catch {
     } finally {
       setLoading(false);
       setRefreshing(false);

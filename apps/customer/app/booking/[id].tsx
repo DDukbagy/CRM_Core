@@ -44,7 +44,7 @@ export default function BookingDetailScreen() {
         const found = (Array.isArray(list) ? list : []).find((b) => String(b.id) === id);
         setBooking(found ?? null);
       })
-      .catch(console.error)
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, [id]);
 
