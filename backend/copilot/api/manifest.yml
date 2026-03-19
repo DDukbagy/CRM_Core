@@ -48,7 +48,7 @@ network:
 variables:
   SUPABASE_URL: "https://xkyklpdjfjveacqldiug.supabase.co"
   AWS_REGION: "ap-northeast-2"
-  CORS_ALLOW_ORIGINS: '["https://admin.albatro.site","https://albatro.site","http://localhost:3000","http://localhost:8081","http://localhost:19006"]'
+  CORS_ALLOW_ORIGINS: "https://admin.albatro.site,https://albatro.site,http://localhost:3000,http://localhost:8081,http://localhost:19006"
 
 secrets:
   DATABASE_URL: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/DATABASE_URL
