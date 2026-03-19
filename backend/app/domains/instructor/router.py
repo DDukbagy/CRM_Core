@@ -8,7 +8,7 @@ from app.core.auth.deps import require_role, CurrentUser, get_current_user
 from app.core.config import settings
 from app.db.session import get_session
 from app.domains.calendar.models import Booking
-from app.domains.instructor.models import MatchRequest
+from app.domains.instructor.models import InstructorStaff, MatchRequest
 from app.domains.instructor.schemas import (
     InstructorStaffCreate,
     InstructorStaffRead,
@@ -43,13 +43,11 @@ async def add_staff(
         raise HTTPException(status_code=400, detail="Cannot add yourself as staff")
 
     try:
-        await session.execute(
-            text(
-                "INSERT INTO public.instructor_staff (instructor_id, staff_user_id) "
-                "VALUES (:instructor_id, :staff_user_id)"
-            ),
-            {"instructor_id": str(instructor_id), "staff_user_id": str(staff_user.id)},
+        staff_entry = InstructorStaff(
+            instructor_id=instructor_id,
+            staff_user_id=staff_user.id,
         )
+        session.add(staff_entry)
         await session.commit()
     except Exception:
         await session.rollback()
@@ -66,14 +64,17 @@ async def remove_staff(
 ):
     instructor_id = UUID(str(user.id))
     res = await session.execute(
-        text(
-            "DELETE FROM public.instructor_staff "
-            "WHERE instructor_id = :instructor_id AND staff_user_id = :staff_user_id"
-        ),
-        {"instructor_id": str(instructor_id), "staff_user_id": str(staff_user_id)},
+        select(InstructorStaff).where(
+            and_(
+                InstructorStaff.instructor_id == instructor_id,
+                InstructorStaff.staff_user_id == staff_user_id,
+            )
+        )
     )
-    if res.rowcount == 0:
+    entry = res.scalar_one_or_none()
+    if not entry:
         raise HTTPException(status_code=404, detail="Staff relation not found")
+    await session.delete(entry)
     await session.commit()
     return None
 
@@ -85,16 +86,16 @@ async def list_staff(
 ):
     instructor_id = UUID(str(user.id))
     res = await session.execute(
-        text(
-            """
-            SELECT u.id AS staff_user_id, u.email, u.username, u.display_name, s.created_at
-            FROM public.instructor_staff s
-            JOIN public.users u ON u.id = s.staff_user_id
-            WHERE s.instructor_id = :instructor_id
-            ORDER BY s.created_at DESC
-            """
-        ),
-        {"instructor_id": str(instructor_id)},
+        select(
+            InstructorStaff.staff_user_id,
+            InstructorStaff.created_at,
+            User.email,
+            User.username,
+            User.display_name,
+        )
+        .join(User, User.id == InstructorStaff.staff_user_id)
+        .where(InstructorStaff.instructor_id == instructor_id)
+        .order_by(InstructorStaff.created_at.desc())
     )
     return [
         InstructorStaffRead(

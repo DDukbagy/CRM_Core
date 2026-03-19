@@ -16,6 +16,8 @@ import {
   X,
   Bell,
   UserCircle,
+  FileText,
+  TrendingUp,
 } from "lucide-react";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -24,6 +26,9 @@ const ICONS: Record<string, LucideIcon> = {
   target: Target,
   settings: Settings,
   calendar: Calendar,
+  filetext: FileText,
+  trending: TrendingUp,
+  user: UserCircle,
 };
 
 export type SidebarItem = {

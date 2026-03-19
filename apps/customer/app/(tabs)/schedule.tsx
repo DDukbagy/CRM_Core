@@ -644,6 +644,8 @@ export default function ScheduleScreen() {
   yearRef.current = year;
   monthRef.current = month;
 
+  const [noPassModalVisible, setNoPassModalVisible] = useState(false);
+
   const [selectedDate, setSelectedDate] = useState("");
   const [panelVisible, setPanelVisible] = useState(false);
   const calGridAnimH = useRef(new Animated.Value(GRID_H)).current;
@@ -680,7 +682,7 @@ export default function ScheduleScreen() {
       setAvailability(slotMap);
       setHolidayDates(holidays);
       setSlotTimeMap({ ...slotTimeAccum.current });
-    } catch (e) { console.error("가용 슬롯 로딩 실패:", e); }
+    } catch { }
   }
 
   async function load() {
@@ -716,7 +718,7 @@ export default function ScheduleScreen() {
           .catch(() => {});
         await loadAvailability(me.manager_id, yearRef.current, monthRef.current);
       }
-    } catch (e) { console.error("스케줄 로딩 실패:", e); }
+    } catch { }
     finally { setLoading(false); initialLoaded.current = true; }
   }
 
@@ -770,6 +772,12 @@ export default function ScheduleScreen() {
   }, [selectedDate]);
 
   function openPanel(date: string) {
+    const today = new Date().toISOString().slice(0, 10);
+    // 미래 날짜이고, 강사 있고, 수강권 없으면 → 수강권 없음 모달
+    if (date > today && managerIdRef.current && !activePass) {
+      setNoPassModalVisible(true);
+      return;
+    }
     setSelectedDate(date);
     setPanelVisible(true);
     calGridAnimH.setValue(gridAvailH.current);
@@ -1035,6 +1043,34 @@ export default function ScheduleScreen() {
           setDetailBooking(updated);
         }}
       />
+
+      {/* 수강권 없음 모달 */}
+      <Modal
+        visible={noPassModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setNoPassModalVisible(false)}
+      >
+        <View style={nm.overlay}>
+          <View style={nm.card}>
+            <Text style={nm.icon}>🎫</Text>
+            <Text style={nm.title}>수강권이 없습니다</Text>
+            <Text style={nm.desc}>예약을 신청하려면 먼저 수강권을 구매해주세요.</Text>
+            <Pressable
+              style={nm.payBtn}
+              onPress={() => {
+                setNoPassModalVisible(false);
+                router.push("/(tabs)/passes");
+              }}
+            >
+              <Text style={nm.payBtnTxt}>수강권 결제</Text>
+            </Pressable>
+            <Pressable style={nm.closeBtn} onPress={() => setNoPassModalVisible(false)}>
+              <Text style={nm.closeBtnTxt}>닫기</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1089,6 +1125,29 @@ const bm = StyleSheet.create({
   cancelTxt: { textAlign: "center", color: "#374151", fontWeight: "600" },
   submitBtn: { flex: 1, padding: 14, backgroundColor: "#1a1a1a", borderRadius: 10 },
   submitTxt: { textAlign: "center", color: "#fff", fontWeight: "600" },
+});
+
+const nm = StyleSheet.create({
+  overlay: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.5)",
+    alignItems: "center", justifyContent: "center",
+  },
+  card: {
+    backgroundColor: "#fff", borderRadius: 20, padding: 28,
+    width: "80%", alignItems: "center", gap: 8,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15, shadowRadius: 20, elevation: 10,
+  },
+  icon: { fontSize: 44, marginBottom: 4 },
+  title: { fontSize: 20, fontWeight: "800", color: "#111" },
+  desc: { fontSize: 14, color: "#6b7280", textAlign: "center", lineHeight: 20, marginBottom: 8 },
+  payBtn: {
+    width: "100%", backgroundColor: "#1a1a1a",
+    borderRadius: 12, paddingVertical: 14, alignItems: "center",
+  },
+  payBtnTxt: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  closeBtn: { width: "100%", paddingVertical: 10, alignItems: "center" },
+  closeBtnTxt: { fontSize: 14, color: "#9ca3af" },
 });
 
 const s = StyleSheet.create({

@@ -15,6 +15,7 @@ from app.db.session import get_session
 from app.domains.users.models import User
 from app.security import verify_password, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES, get_password_hash
 
+from pydantic import BaseModel
 from app.domains.users.schemas import (
     UserRead,
     UsersListResponse,
@@ -166,8 +167,6 @@ async def update_my_account(
         user.gender = data["gender"]
     if "lesson_purpose" in data:
         user.lesson_purpose = data["lesson_purpose"]
-    if "feedback_consent" in data and data["feedback_consent"] is not None:
-        user.feedback_consent = data["feedback_consent"]
     if "recurring_off_days" in data:
         user.recurring_off_days = data["recurring_off_days"]
 
@@ -233,6 +232,38 @@ async def list_users(
         "limit": limit,
         "offset": offset,
     }
+
+class RegisterCustomerByEmail(BaseModel):
+    email: str
+
+
+@router.post("/me/customers", response_model=UserRead, status_code=200)
+async def register_customer_by_email(
+    body: RegisterCustomerByEmail,
+    session: AsyncSession = Depends(get_session),
+    current_user: CurrentUser = Depends(require_role({"INSTRUCTOR"})),
+):
+    """강사가 이메일로 고객을 담당 고객으로 등록."""
+    instructor_id = _safe_uuid(str(current_user.id))
+
+    result = await session.execute(select(User).where(User.email == body.email))
+    customer = result.scalar_one_or_none()
+
+    if not customer:
+        raise HTTPException(status_code=404, detail="등록되지 않은 고객입니다.")
+    if customer.role != "CUSTOMER":
+        raise HTTPException(status_code=400, detail="고객 계정이 아닙니다.")
+    if customer.manager_id and customer.manager_id != instructor_id:
+        raise HTTPException(status_code=409, detail="이미 담당 강사가 있는 고객입니다.")
+
+    if customer.manager_id != instructor_id:
+        customer.manager_id = instructor_id
+        session.add(customer)
+        await session.commit()
+        await session.refresh(customer)
+
+    return customer
+
 
 @router.put("/me/push-token", status_code=204)
 async def update_push_token(

@@ -215,8 +215,7 @@ export default function HomeScreen() {
       setTodayBookings(list.filter((b) => b.when === today));
       setWeekBookings(list.filter((b) => b.when >= wStart && b.when <= wEnd && b.when !== today));
       setMonthBookings(list.filter((b) => b.when >= mStart && b.when <= mEnd && b.when > wEnd));
-    } catch (e) {
-      console.error("홈 로딩 실패:", e);
+    } catch {
     } finally {
       setLoading(false);
       setRefreshing(false);

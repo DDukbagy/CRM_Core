@@ -25,7 +25,7 @@ export default function ProfileScreen() {
       if (!initialLoaded.current) setLoading(true);
       apiFetch<UserRead>("/users/me")
         .then(setUser)
-        .catch((e) => console.error("프로필 로딩 실패:", e))
+        .catch(() => {})
         .finally(() => { setLoading(false); initialLoaded.current = true; });
     }, [])
   );
@@ -84,7 +84,7 @@ export default function ProfileScreen() {
       )}
 
       {/* 프로필 수정 */}
-      <Pressable style={s.editBtn} onPress={() => router.push("/edit-profile" as any)}>
+      <Pressable style={s.editBtn} onPress={() => router.push({ pathname: "/edit-profile" as any, params: { user: JSON.stringify(user) } })}>
         <Text style={s.editBtnText}>프로필 수정</Text>
       </Pressable>
 

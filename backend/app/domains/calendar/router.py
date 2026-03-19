@@ -66,6 +66,27 @@ def _date_range_inclusive(start: date, end: date) -> list[date]:
     return days
 
 
+def _get_holiday_dates(booked_rows: list) -> set[date]:
+    """HOLIDAY 타입 예약에서 날짜 set 추출"""
+    return {row[1] for row in booked_rows if row[4] == "HOLIDAY"}
+
+
+def _get_recurring_off_dates(start: date, end: date, off_days: set[int]) -> set[date]:
+    """정기 휴무 요일(월0~일6)에 해당하는 날짜 set 생성"""
+    if not off_days:
+        return set()
+    return {d for d in _date_range_inclusive(start, end) if d.weekday() in off_days}
+
+
+def _get_booked_slot_ids(booked_rows: list, target_date: date) -> set:
+    """특정 날짜에 예약된 slot id set 반환 (HOLIDAY/WORK_OVERRIDE 제외)"""
+    return {
+        row[0]
+        for row in booked_rows
+        if row[1] == target_date and row[4] not in ("HOLIDAY", "WORK_OVERRIDE")
+    }
+
+
 async def _get_calendar_id_by_host(session: AsyncSession, host_id: UUID) -> int:
     result = await session.execute(select(Calendar.id).where(Calendar.host_id == host_id))
     cal_id = result.scalar_one_or_none()
@@ -408,14 +429,12 @@ async def get_availability(
     )
     booked_rows = booked_res.all()
     # HOLIDAY 예약이 있는 날짜 — 해당 날의 모든 슬롯 차단
-    holiday_dates: set = {row[1] for row in booked_rows if row[4] == "HOLIDAY"}
+    holiday_dates = _get_holiday_dates(booked_rows)
     # WORK_OVERRIDE: 날짜 → 활성화된 slot_id 집합 (특정 시간만 열기)
     work_override_by_date: dict = {}
     for row in booked_rows:
         if row[4] == "WORK_OVERRIDE":
             work_override_by_date.setdefault(row[1], set()).add(row[0])
-    # (slot_id, date) 집합 — 직접 예약된 슬롯
-    booked_slot_date: set[tuple] = {(row[0], row[1]) for row in booked_rows if row[4] not in ("HOLIDAY", "WORK_OVERRIDE")}
     # (start_time, end_time, date) 집합 — 같은 시간대가 중복 슬롯일 때 통째로 막기
     booked_time_date: set[tuple] = {(row[2], row[3], row[1]) for row in booked_rows if row[4] not in ("HOLIDAY", "WORK_OVERRIDE")}
 
@@ -445,12 +464,13 @@ async def get_availability(
 
         day_slots: list[AvailabilitySlot] = []
         seen_times: set[tuple] = set()  # 같은 시간대 중복 제거
+        day_booked_slot_ids = _get_booked_slot_ids(booked_rows, d)
 
         for s in slots:
             if wd not in (s.weekdays or []):
                 continue
             # 이 슬롯 자체가 예약됨
-            if (s.id, d) in booked_slot_date:
+            if s.id in day_booked_slot_ids:
                 continue
             # 동일 시간대의 다른 슬롯이 예약됨
             if (s.start_time, s.end_time, d) in booked_time_date:

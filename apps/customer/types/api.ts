@@ -23,7 +23,6 @@ export interface UserRead {
   birth_date: string | null;
   gender: string | null;
   lesson_purpose: string | null;
-  feedback_consent: boolean;
   recurring_off_days: number[];
   created_at: string;
   updated_at: string;
@@ -43,7 +42,6 @@ export interface UserUpdate {
   birth_date?: string | null;
   gender?: string | null;
   lesson_purpose?: string | null;
-  feedback_consent?: boolean;
 }
 
 export interface MembershipRead {
