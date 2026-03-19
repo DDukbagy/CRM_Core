@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
+import Image from "next/image";
 import { api } from "@/lib/axios";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { instructorNav } from "../page";
@@ -210,7 +211,7 @@ export default function PostsPage() {
                   {formMedia.map((m, i) => (
                     <div key={i} className="relative w-20 h-20 rounded-xl overflow-hidden bg-gray-100">
                       {m.media_type === "IMAGE"
-                        ? <img src={m.url} alt="" className="w-full h-full object-cover" />
+                        ? <Image src={m.url} alt="" fill className="object-cover" unoptimized />
                         : <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">동영상</div>
                       }
                       <button
@@ -308,7 +309,7 @@ function PostCard({ post, onEdit, onDelete }: { post: Post; onEdit: () => void; 
         {post.media_items.length > 0 && (
           <div className="w-40 shrink-0 bg-gray-900">
             {post.media_items[0].media_type === "IMAGE"
-              ? <img src={post.media_items[0].url} alt="" className="w-full h-full object-cover" style={{ maxHeight: 180 }} />
+              ? <div className="relative w-full h-44"><Image src={post.media_items[0].url} alt="" fill className="object-cover" unoptimized /></div>
               : <div className="w-full h-44 flex items-center justify-center text-gray-400 text-xs">동영상</div>
             }
           </div>
