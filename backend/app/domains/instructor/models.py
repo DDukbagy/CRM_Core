@@ -2,10 +2,34 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import Column, DateTime, Integer, String, Text
+from sqlalchemy import Column, DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy import text, ForeignKey
 from sqlmodel import SQLModel, Field, func
+
+
+class InstructorStaff(SQLModel, table=True):
+    __tablename__ = "instructor_staff"
+    __table_args__ = (
+        UniqueConstraint("instructor_id", "staff_user_id", name="uq_instructor_staff"),
+        {"extend_existing": True},
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    instructor_id: UUID = Field(
+        sa_type=PGUUID(as_uuid=True),
+        nullable=False,
+        foreign_key="users.id",
+    )
+    staff_user_id: UUID = Field(
+        sa_type=PGUUID(as_uuid=True),
+        nullable=False,
+        foreign_key="users.id",
+    )
+    created_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False),
+    )
 
 
 class MatchRequest(SQLModel, table=True):
