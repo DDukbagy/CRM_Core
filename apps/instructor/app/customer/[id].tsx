@@ -33,19 +33,6 @@ export default function CustomerDetailScreen() {
         {customer.lesson_purpose && <Row label="레슨 목표" value={customer.lesson_purpose} />}
       </View>
 
-      {/* 피드백 공개 동의 */}
-      <View style={s.card}>
-        <View style={s.rowBetween}>
-          <Text style={s.sectionLabel}>피드백 공개 동의</Text>
-          <View style={[s.badge, customer.feedback_consent ? s.badgeOn : s.badgeOff]}>
-            <Text style={[s.badgeText, customer.feedback_consent ? s.badgeTextOn : s.badgeTextOff]}>
-              {customer.feedback_consent ? "동의" : "미동의"}
-            </Text>
-          </View>
-        </View>
-        <Text style={s.hint}>고객이 직접 프로필에서 설정한 공개 여부입니다.</Text>
-      </View>
-
       {/* 활성 수강권 */}
       <Text style={s.section}>활성 수강권 ({active.length})</Text>
       {active.length === 0

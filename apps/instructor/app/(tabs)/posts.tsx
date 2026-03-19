@@ -42,6 +42,15 @@ function MediaViewer({ item, onClose }: { item: LocalMedia | null; onClose: () =
   );
 }
 
+// ─── 고객 라벨 헬퍼 ──────────────────────────────────────────────────────────
+function customerLabel(c: UserRead): string {
+  const genderMap: Record<string, string> = { MALE: "남", FEMALE: "여" };
+  const gender = c.gender ? genderMap[c.gender] : null;
+  const age = c.birth_date ? `${new Date().getFullYear() - parseInt(c.birth_date.slice(0, 4))}세` : null;
+  const info = [gender, age].filter(Boolean).join("/");
+  return info ? `${c.display_name} (${info})` : c.display_name;
+}
+
 // ─── 고객 드롭다운 ────────────────────────────────────────────────────────────
 function CustomerDropdown({ customers, selectedId, onSelect }: {
   customers: UserRead[];
@@ -54,7 +63,7 @@ function CustomerDropdown({ customers, selectedId, onSelect }: {
     <View style={{ zIndex: 10 }}>
       <Pressable style={dd.trigger} onPress={() => setOpen((v) => !v)}>
         <Text style={[dd.triggerText, !selected && { color: "#9ca3af" }]}>
-          {selected?.display_name ?? "고객 선택"}
+          {selected ? customerLabel(selected) : "고객 선택"}
         </Text>
         <Text style={dd.arrow}>{open ? "▲" : "▼"}</Text>
       </Pressable>
@@ -68,7 +77,7 @@ function CustomerDropdown({ customers, selectedId, onSelect }: {
                 onPress={() => { onSelect(c.id); setOpen(false); }}
               >
                 <Text style={[dd.itemText, c.id === selectedId && dd.itemTextSel]}>
-                  {c.display_name}
+                  {customerLabel(c)}
                 </Text>
                 {c.id === selectedId && <Text style={dd.check}>✓</Text>}
               </Pressable>

@@ -15,6 +15,7 @@ import * as Notifications from "expo-notifications";
 import { supabase } from "@/lib/supabase";
 import { apiFetch } from "@/lib/api";
 import type { Session } from "@supabase/supabase-js";
+import { CustomerRegisterProvider } from "@/lib/customerRegisterContext";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -71,11 +72,13 @@ export default function RootLayout() {
   }
 
   return (
-    <Stack>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
-      <Stack.Screen name="customer/[id]" options={{ title: "고객 상세" }} />
-      <Stack.Screen name="passes" options={{ headerShown: false }} />
-    </Stack>
+    <CustomerRegisterProvider>
+      <Stack>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
+        <Stack.Screen name="customer/[id]" options={{ title: "고객 상세" }} />
+        <Stack.Screen name="passes" options={{ headerShown: false }} />
+      </Stack>
+    </CustomerRegisterProvider>
   );
 }

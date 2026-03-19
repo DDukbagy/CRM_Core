@@ -1,7 +1,11 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { Pressable } from "react-native";
+import { useCustomerRegister } from "@/lib/customerRegisterContext";
 
 export default function TabsLayout() {
+  const { openModal } = useCustomerRegister();
+
   return (
     <Tabs screenOptions={{ headerTitleAlign: "center", tabBarActiveTintColor: "#16a34a", tabBarStyle: { height: 72, paddingBottom: 12 } }}>
       <Tabs.Screen
@@ -10,7 +14,15 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="customers"
-        options={{ title: "고객 관리", tabBarIcon: ({ color, size }) => <Ionicons name="people-outline" size={size} color={color} /> }}
+        options={{
+          title: "고객 관리",
+          tabBarIcon: ({ color, size }) => <Ionicons name="people-outline" size={size} color={color} />,
+          headerRight: () => (
+            <Pressable onPress={openModal} style={{ marginRight: 16 }}>
+              <Ionicons name="person-add-outline" size={24} color="#16a34a" />
+            </Pressable>
+          ),
+        }}
       />
       <Tabs.Screen
         name="schedule"
