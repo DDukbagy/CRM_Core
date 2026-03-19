@@ -67,7 +67,11 @@ cweb: ## Run customer Expo app in browser (web)
 
 .PHONY: ctunnel
 ctunnel: ## Run customer Expo app with tunnel (QR code for real device)
-	@cd apps/customer && npx expo start --tunnel
+	@NGROK_TOKEN=$$(grep -s '^NGROK_AUTHTOKEN=' apps/.env | cut -d= -f2); \
+	if [ -n "$$NGROK_TOKEN" ]; then \
+		apps/customer/node_modules/@expo/ngrok-bin-linux-x64/ngrok authtoken "$$NGROK_TOKEN" 2>/dev/null || true; \
+	fi; \
+	cd apps/customer && npx expo start --tunnel
 
 .PHONY: iweb
 iweb: ## Run instructor Expo app in browser (web)
@@ -75,7 +79,11 @@ iweb: ## Run instructor Expo app in browser (web)
 
 .PHONY: itunnel
 itunnel: ## Run instructor Expo app with tunnel (QR code for real device)
-	@cd apps/instructor && npx expo start --tunnel --port 8082
+	@NGROK_TOKEN=$$(grep -s '^NGROK_AUTHTOKEN=' apps/.env | cut -d= -f2); \
+	if [ -n "$$NGROK_TOKEN" ]; then \
+		apps/customer/node_modules/@expo/ngrok-bin-linux-x64/ngrok authtoken "$$NGROK_TOKEN" 2>/dev/null || true; \
+	fi; \
+	cd apps/instructor && npx expo start --tunnel --port 8082
 
 .PHONY: server
 server: ## Run backend server (reload)
