@@ -8,6 +8,7 @@ from app.core.auth.deps import require_role, CurrentUser, get_current_user
 from app.core.config import settings
 from app.db.session import get_session
 from app.domains.calendar.models import Booking
+from app.domains.chat.models import ChatRoom
 from app.domains.instructor.models import InstructorStaff, MatchRequest
 from app.domains.instructor.schemas import (
     InstructorStaffCreate,
@@ -407,6 +408,24 @@ async def accept_match(
     if customer and getattr(mr, "request_type", "MATCH") == "MATCH":
         customer.manager_id = mr.instructor_id
         session.add(customer)
+
+    # 채팅방 생성 (중복 방지)
+    existing_room = await session.execute(
+        select(ChatRoom).where(
+            and_(
+                ChatRoom.customer_id == mr.customer_id,
+                ChatRoom.instructor_id == mr.instructor_id,
+                ChatRoom.match_request_id == mr.id,
+            )
+        )
+    )
+    if not existing_room.scalar_one_or_none():
+        room = ChatRoom(
+            customer_id=mr.customer_id,
+            instructor_id=mr.instructor_id,
+            match_request_id=mr.id,
+        )
+        session.add(room)
 
     await session.commit()
     await session.refresh(mr)

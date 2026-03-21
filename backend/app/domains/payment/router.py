@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,7 +24,9 @@ _VALID_STATUSES = {"COMPLETED", "FAILED", "REFUNDED"}
 
 
 @router.post("", response_model=PaymentRead, status_code=status.HTTP_201_CREATED)
+@limiter.limit("20/minute")
 async def create_payment(
+    request: Request,
     data: PaymentCreate,
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(require_role({"INSTRUCTOR", "ADMIN"})),

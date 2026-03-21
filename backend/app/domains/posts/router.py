@@ -4,7 +4,7 @@ from typing import List, Optional
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File, Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -19,7 +19,7 @@ from app.domains.posts.schemas import (
     MatchRequestCreate, MatchRequestRead, MatchDecision
 )
 from app.domains.posts.repository import PostRepository
-from app.core.s3 import upload_file_to_s3, create_presigned_url, delete_file_from_s3 
+from app.core.s3 import upload_file_to_s3, create_presigned_url, delete_file_from_s3, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES
 from app.domains.calendar.models import Booking, BookingType
 
 router = APIRouter(tags=["Posts"])
@@ -119,6 +119,21 @@ async def upload_post_media(
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(require_role({"INSTRUCTOR", "CONTENT_MANAGER", "ADMIN"})),
 ):
+    ALLOWED_CONTENT_TYPES = {
+        "image/jpeg", "image/png", "image/gif", "image/webp",
+        "video/mp4", "video/quicktime",
+    }
+    content_type = file.content_type or ""
+    if content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail="허용되지 않는 파일 형식입니다.")
+
+    is_video = "video" in content_type
+    max_bytes = MAX_VIDEO_BYTES if is_video else MAX_IMAGE_BYTES
+    file_bytes = await file.read()
+    if len(file_bytes) > max_bytes:
+        limit_mb = max_bytes // (1024 * 1024)
+        raise HTTPException(status_code=413, detail=f"파일 크기가 {limit_mb}MB를 초과합니다.")
+
     repo = PostRepository(session)
     post = await repo.get_by_id(post_id)
     if not post:
@@ -127,15 +142,15 @@ async def upload_post_media(
     if (user.role != "ADMIN") and (post.owner_user_id != UUID(str(user.id))):
          raise HTTPException(status_code=403, detail="Not authorized to upload media to this post")
 
-    s3_result = upload_file_to_s3(file.file, file.filename, folder=str(post_id))
+    import io
+    s3_result = upload_file_to_s3(io.BytesIO(file_bytes), file.filename, content_type=content_type, folder=str(post_id))
     if not s3_result:
         raise HTTPException(status_code=500, detail="Failed to upload file to S3")
 
     real_s3_url = s3_result["url"]
     real_s3_key = s3_result["key"]
-    
-    content_type = file.content_type or ""
-    media_type = MediaType.VIDEO if "video" in content_type else MediaType.IMAGE
+
+    media_type = MediaType.VIDEO if is_video else MediaType.IMAGE
 
     media = await repo.add_media(
         post_id=post_id, 

@@ -29,6 +29,10 @@ export default function TabsLayout() {
         options={{ title: "스케줄", tabBarIcon: ({ color, size }) => <Ionicons name="calendar-outline" size={size} color={color} /> }}
       />
       <Tabs.Screen
+        name="chat"
+        options={{ title: "채팅", tabBarIcon: ({ color, size }) => <Ionicons name="chatbubble-outline" size={size} color={color} /> }}
+      />
+      <Tabs.Screen
         name="posts"
         options={{ title: "글쓰기", tabBarIcon: ({ color, size }) => <Ionicons name="create-outline" size={size} color={color} /> }}
       />
