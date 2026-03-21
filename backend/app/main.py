@@ -21,6 +21,7 @@ from app.core.middleware import RequestLoggingMiddleware
 from app.domains.auth.router import router as auth_router
 from app.domains.calendar.router import router as calendar_router
 from app.domains.calendar.lesson_note_router import router as lesson_note_router
+from app.domains.chat.router import router as chat_router
 from app.domains.content.router import router as content_router
 from app.domains.instructor.router import router as instructor_router
 from app.domains.membership.router import router as membership_router
@@ -91,6 +92,7 @@ app.include_router(membership_router)
 app.include_router(payment_router)
 app.include_router(passes_router)
 app.include_router(posts_router)
+app.include_router(chat_router)
 app.include_router(content_router)
 
 logger.info("CORS origins: %s", settings.cors_origins)

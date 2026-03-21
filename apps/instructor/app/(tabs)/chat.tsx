@@ -1,20 +1,16 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import {
   View, Text, StyleSheet, Pressable, FlatList, TextInput,
-  ActivityIndicator, RefreshControl, KeyboardAvoidingView, Platform, Dimensions,
-  Image,
+  ActivityIndicator, RefreshControl, KeyboardAvoidingView, Platform,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
-import { useVideoPlayer, VideoView } from "expo-video";
 import { apiFetch } from "@/lib/api";
-import type { InstructorPostRead, MediaItemRead } from "@/types/api";
 
 // ── 타입 ──────────────────────────────────────────────────────
 interface ChatRoom {
   id: string;
   customer_id: string;
   instructor_id: string;
-  match_request_id: string | null;
   other_name: string;
   other_id: string;
   last_message: string | null;
@@ -33,7 +29,6 @@ interface ChatMessage {
   created_at: string;
 }
 
-// ── 시간 포맷 ─────────────────────────────────────────────────
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
@@ -52,12 +47,8 @@ function formatTime(iso: string): string {
   return `${ampm} ${h % 12 || 12}:${m}`;
 }
 
-// ── 강사 채팅 방 목록 ──────────────────────────────────────────
-function RoomList({
-  onSelect,
-}: {
-  onSelect: (room: ChatRoom) => void;
-}) {
+// ── 채팅방 목록 ───────────────────────────────────────────────
+function RoomList({ onSelect }: { onSelect: (room: ChatRoom) => void }) {
   const [rooms, setRooms] = useState<ChatRoom[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -91,7 +82,7 @@ function RoomList({
         <View style={s.emptyBox}>
           <Text style={s.emptyIcon}>💬</Text>
           <Text style={s.emptyText}>채팅방이 없습니다</Text>
-          <Text style={s.emptySubText}>강사 매칭이 수락되면 채팅이 시작됩니다</Text>
+          <Text style={s.emptySubText}>매칭을 수락하면 고객과 채팅이 시작됩니다</Text>
         </View>
       }
       renderItem={({ item }) => (
@@ -124,13 +115,7 @@ function RoomList({
 }
 
 // ── 채팅 상세 ─────────────────────────────────────────────────
-function ChatDetail({
-  room,
-  onBack,
-}: {
-  room: ChatRoom;
-  onBack: () => void;
-}) {
+function ChatDetail({ room, onBack }: { room: ChatRoom; onBack: () => void }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -186,15 +171,13 @@ function ChatDetail({
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={90}
     >
-      {/* 헤더 */}
       <View style={s.detailHeader}>
         <Pressable onPress={onBack} style={s.backBtn}>
           <Text style={s.backBtnText}>‹</Text>
         </Pressable>
-        <Text style={s.detailTitle}>{room.other_name} 강사</Text>
+        <Text style={s.detailTitle}>{room.other_name}</Text>
       </View>
 
-      {/* 메시지 목록 */}
       <FlatList
         ref={flatRef}
         data={messages}
@@ -212,7 +195,6 @@ function ChatDetail({
         )}
       />
 
-      {/* 입력창 */}
       <View style={s.inputRow}>
         <TextInput
           style={s.input}
@@ -234,216 +216,29 @@ function ChatDetail({
   );
 }
 
-// ── 강사 채팅 탭 ──────────────────────────────────────────────
-function InstructorChatTab() {
+// ── 메인 ─────────────────────────────────────────────────────
+export default function ChatScreen() {
   const [selectedRoom, setSelectedRoom] = useState<ChatRoom | null>(null);
 
   if (selectedRoom) {
     return <ChatDetail room={selectedRoom} onBack={() => setSelectedRoom(null)} />;
   }
-  return <RoomList onSelect={setSelectedRoom} />;
-}
-
-// ── 모임 채팅 탭 (준비 중) ─────────────────────────────────────
-function GroupChatTab() {
-  return (
-    <View style={s.center}>
-      <Text style={s.emptyIcon}>🏌️</Text>
-      <Text style={s.emptyText}>모임 채팅</Text>
-      <Text style={s.emptySubText}>준비 중입니다</Text>
-    </View>
-  );
-}
-
-// ── 게시글 탭 ─────────────────────────────────────────────────
-const SW = Dimensions.get("window").width;
-const MEDIA_W = SW - 32;
-const MEDIA_H = Math.round(MEDIA_W * 0.6);
-
-function VideoItem({ uri }: { uri: string }) {
-  const player = useVideoPlayer(uri, (p) => { p.loop = false; });
-  return <VideoView player={player} style={{ width: MEDIA_W, height: MEDIA_H }} contentFit="cover" nativeControls />;
-}
-
-function MediaCarousel({ items }: { items: MediaItemRead[] }) {
-  const [page, setPage] = useState(0);
-  const listRef = useRef<FlatList>(null);
-  if (items.length === 0) return null;
-
-  function goTo(idx: number) {
-    const next = Math.max(0, Math.min(idx, items.length - 1));
-    listRef.current?.scrollToIndex({ index: next, animated: true });
-    setPage(next);
-  }
-
-  return (
-    <View style={mc.wrap}>
-      <View style={{ borderRadius: 8, overflow: "hidden" }}>
-        <FlatList
-          ref={listRef}
-          data={items}
-          keyExtractor={(item) => String(item.id)}
-          horizontal pagingEnabled showsHorizontalScrollIndicator={false}
-          snapToInterval={MEDIA_W} decelerationRate="fast"
-          onMomentumScrollEnd={(e) => setPage(Math.round(e.nativeEvent.contentOffset.x / MEDIA_W))}
-          getItemLayout={(_, index) => ({ length: MEDIA_W, offset: MEDIA_W * index, index })}
-          renderItem={({ item }) =>
-            item.media_type === "VIDEO"
-              ? <VideoItem uri={item.url} />
-              : <Image source={{ uri: item.url }} style={{ width: MEDIA_W, height: MEDIA_H }} resizeMode="cover" />
-          }
-        />
-        {items.length > 1 && (
-          <>
-            {page > 0 && (
-              <Pressable style={[mc.arrow, mc.arrowLeft]} onPress={() => goTo(page - 1)}>
-                <Text style={mc.arrowTxt}>‹</Text>
-              </Pressable>
-            )}
-            {page < items.length - 1 && (
-              <Pressable style={[mc.arrow, mc.arrowRight]} onPress={() => goTo(page + 1)}>
-                <Text style={mc.arrowTxt}>›</Text>
-              </Pressable>
-            )}
-          </>
-        )}
-      </View>
-      {items.length > 1 && (
-        <View style={mc.dots}>
-          {items.map((_, i) => (
-            <View key={i} style={[mc.dot, i === page && mc.dotActive]} />
-          ))}
-        </View>
-      )}
-    </View>
-  );
-}
-
-const mc = StyleSheet.create({
-  wrap: { marginBottom: 4 },
-  arrow: { position: "absolute", top: 0, bottom: 0, width: 36, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.28)" },
-  arrowLeft: { left: 0 },
-  arrowRight: { right: 0 },
-  arrowTxt: { color: "#fff", fontSize: 24, fontWeight: "700", lineHeight: 28 },
-  dots: { flexDirection: "row", justifyContent: "center", marginTop: 8, gap: 5 },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#d1d5db" },
-  dotActive: { backgroundColor: "#1a1a1a" },
-});
-
-function PostCard({ post }: { post: InstructorPostRead }) {
-  return (
-    <View style={s.card}>
-      <View style={s.cardHeader}>
-        <Text style={s.timeAgo}>{timeAgo(post.created_at)}</Text>
-      </View>
-      {post.content ? <Text style={s.content}>{post.content}</Text> : null}
-      {post.media_items.length > 0 && <MediaCarousel items={post.media_items} />}
-    </View>
-  );
-}
-
-function PostsTab() {
-  const [posts, setPosts] = useState<InstructorPostRead[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const initialLoaded = useRef(false);
-
-  async function load() {
-    try {
-      const data = await apiFetch<InstructorPostRead[]>("/instructor-posts?type=PROMOTION");
-      setPosts(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error("게시글 로딩 실패:", e);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-      initialLoaded.current = true;
-    }
-  }
-
-  useFocusEffect(useCallback(() => {
-    if (!initialLoaded.current) setLoading(true);
-    load();
-  }, []));
-
-  if (loading) return <View style={s.center}><ActivityIndicator size="large" /></View>;
-
-  return (
-    <FlatList
-      data={posts}
-      keyExtractor={(p) => p.id}
-      renderItem={({ item }) => <PostCard post={item} />}
-      contentContainerStyle={posts.length === 0 ? s.emptyContainer : { paddingVertical: 12 }}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
-      ListEmptyComponent={
-        <View style={s.emptyBox}>
-          <Text style={s.emptyText}>게시글이 없습니다</Text>
-          <Text style={s.emptySubText}>강사가 게시글을 올리면 여기에 표시됩니다</Text>
-        </View>
-      }
-    />
-  );
-}
-
-// ── 메인 화면 ─────────────────────────────────────────────────
-type TopTab = "instructor" | "group" | "posts";
-
-export default function ChatScreen() {
-  const [tab, setTab] = useState<TopTab>("instructor");
-
   return (
     <View style={s.container}>
-      <View style={s.topTabs}>
-        <Pressable
-          style={[s.topTab, tab === "instructor" && s.topTabActive]}
-          onPress={() => setTab("instructor")}
-        >
-          <Text style={[s.topTabText, tab === "instructor" && s.topTabTextActive]}>강사채팅</Text>
-        </Pressable>
-        <Pressable
-          style={[s.topTab, tab === "group" && s.topTabActive]}
-          onPress={() => setTab("group")}
-        >
-          <Text style={[s.topTabText, tab === "group" && s.topTabTextActive]}>모임채팅</Text>
-        </Pressable>
-        <Pressable
-          style={[s.topTab, tab === "posts" && s.topTabActive]}
-          onPress={() => setTab("posts")}
-        >
-          <Text style={[s.topTabText, tab === "posts" && s.topTabTextActive]}>게시글</Text>
-        </Pressable>
-      </View>
-
-      {tab === "instructor" && <InstructorChatTab />}
-      {tab === "group" && <GroupChatTab />}
-      {tab === "posts" && <PostsTab />}
+      <RoomList onSelect={setSelectedRoom} />
     </View>
   );
 }
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f9fafb" },
-  topTabs: {
-    flexDirection: "row",
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
-  },
-  topTab: {
-    flex: 1, paddingVertical: 13, alignItems: "center",
-    borderBottomWidth: 2, borderBottomColor: "transparent",
-  },
-  topTabActive: { borderBottomColor: "#16a34a" },
-  topTabText: { fontSize: 14, fontWeight: "600", color: "#9ca3af" },
-  topTabTextActive: { color: "#16a34a" },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
+  center: { flex: 1, alignItems: "center", justifyContent: "center" },
   emptyContainer: { flex: 1 },
   emptyBox: { flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 80 },
   emptyIcon: { fontSize: 48, marginBottom: 8 },
   emptyText: { fontSize: 15, fontWeight: "600", color: "#374151", marginBottom: 6 },
   emptySubText: { fontSize: 13, color: "#9ca3af", textAlign: "center", paddingHorizontal: 32 },
 
-  // 채팅방 목록
   roomItem: {
     flexDirection: "row", alignItems: "center",
     backgroundColor: "#fff", paddingHorizontal: 16, paddingVertical: 14,
@@ -467,7 +262,6 @@ const s = StyleSheet.create({
   },
   badgeText: { color: "#fff", fontSize: 11, fontWeight: "700" },
 
-  // 채팅 상세
   detailHeader: {
     flexDirection: "row", alignItems: "center",
     backgroundColor: "#fff", paddingHorizontal: 8, paddingVertical: 12,
@@ -477,7 +271,6 @@ const s = StyleSheet.create({
   backBtnText: { fontSize: 28, color: "#16a34a", lineHeight: 30 },
   detailTitle: { fontSize: 16, fontWeight: "700", color: "#111", marginLeft: 4 },
 
-  // 말풍선
   bubble: { maxWidth: "75%", borderRadius: 16, padding: 10 },
   bubbleMine: { alignSelf: "flex-end", backgroundColor: "#16a34a", borderBottomRightRadius: 4 },
   bubbleOther: { alignSelf: "flex-start", backgroundColor: "#fff", borderBottomLeftRadius: 4, elevation: 1, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 3, shadowOffset: { width: 0, height: 1 } },
@@ -488,7 +281,6 @@ const s = StyleSheet.create({
   bubbleTimeMine: { color: "rgba(255,255,255,0.7)", textAlign: "right" },
   bubbleTimeOther: { color: "#9ca3af" },
 
-  // 입력창
   inputRow: {
     flexDirection: "row", alignItems: "flex-end",
     backgroundColor: "#fff", padding: 10,
@@ -506,16 +298,4 @@ const s = StyleSheet.create({
   },
   sendBtnDisabled: { backgroundColor: "#d1d5db" },
   sendBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-
-  // 게시글
-  card: {
-    marginHorizontal: 16, marginBottom: 12,
-    backgroundColor: "#fff", borderRadius: 14,
-    padding: 14, elevation: 2,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.07, shadowRadius: 4,
-  },
-  cardHeader: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
-  timeAgo: { fontSize: 12, color: "#9ca3af", marginLeft: "auto" },
-  content: { fontSize: 14, color: "#374151", lineHeight: 20, marginBottom: 10 },
 });
