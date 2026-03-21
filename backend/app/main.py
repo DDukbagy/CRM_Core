@@ -60,16 +60,9 @@ app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# ── 미들웨어 (라우터 등록 전에 추가해야 모든 라우트에 적용됨) ──────────────
+# ── 미들웨어 (나중에 추가될수록 먼저 실행됨) ────────────────────────────────
 app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
-
-@app.middleware("http")
-async def allow_options_preflight(request, call_next):
-    if request.method == "OPTIONS":
-        return Response(status_code=204)
-    return await call_next(request)
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins if not settings.CORS_ORIGIN_REGEX else [],
@@ -78,6 +71,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# CORS보다 나중에 추가 → 가장 먼저 실행되어 OPTIONS를 가로챔
+@app.middleware("http")
+async def allow_options_preflight(request: Request, call_next):
+    if request.method == "OPTIONS":
+        origin = request.headers.get("origin", "*")
+        return Response(
+            status_code=204,
+            headers={
+                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Credentials": "true",
+                "Access-Control-Allow-Methods": "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT",
+                "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept",
+                "Access-Control-Max-Age": "86400",
+            },
+        )
+    return await call_next(request)
 
 register_exception_handlers(app)
 
