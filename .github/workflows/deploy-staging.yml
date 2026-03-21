@@ -23,7 +23,7 @@ jobs:
         run: |
           echo "루트 설정 파일(Makefile, 환경변수 등)의 형식을 검사합니다."
           # 여기에 전체 프로젝트 공통 검사 로직이 있다면 추가 (없으면 생략 가능)
-          
+
   # Backend CI 참조
   backend-check:
     uses: ./.github/workflows/backend-CI.yml
@@ -90,3 +90,35 @@ jobs:
             --title "🚀 Release: Staging to Main" \
             --body "Staging 환경 배포 및 테스트가 완료되었습니다. Main으로 병합을 요청합니다." \
             || echo "PR already exists"
+
+  # 작업브랜치 동기화 (deploy 성공/실패 무관하게 항상 실행)
+  sync:
+    name: 🔄 Sync source branch with staging
+    needs: [backend-check, frontend-check]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sync source branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SOURCE_BRANCH=$(gh pr list --base staging --state merged --limit 1 --json headRefName --jq '.[0].headRefName')
+          echo "Source branch: $SOURCE_BRANCH"
+
+          if [ -z "$SOURCE_BRANCH" ] || [ "$SOURCE_BRANCH" = "main" ] || [ "$SOURCE_BRANCH" = "staging" ]; then
+            echo "No feature branch to sync, skipping."
+            exit 0
+          fi
+
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git fetch origin
+          git checkout "$SOURCE_BRANCH"
+          git merge origin/staging --no-edit
+          git push origin "$SOURCE_BRANCH"
