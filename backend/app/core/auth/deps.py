@@ -141,10 +141,7 @@ def _verify_local_hs256_token(token: str) -> dict:
     key = LOCAL_SECRET_KEY
     alg = LOCAL_ALGORITHM
 
-    # 키 자체는 노출 금지: 길이/해시만
-    key_sig = hashlib.sha256(key.encode("utf-8")).hexdigest()[:8]
-    logger.info("local jwt verify: alg=%s key_len=%s key_sig=%s token_prefix=%s",
-                alg, len(key), key_sig, token[:10])
+    logger.info("local jwt verify: alg=%s key_len=%s", alg, len(key))
 
     try:
         payload = jose_jwt.decode(token, LOCAL_SECRET_KEY, algorithms=[LOCAL_ALGORITHM])

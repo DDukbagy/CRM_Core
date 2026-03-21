@@ -4,8 +4,12 @@ import secrets
 from uuid import UUID, uuid4
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -450,8 +454,10 @@ async def delete_user(
     return None
 
 @router.post("/login/access-token")
+@limiter.limit("5/minute")
 async def login_access_token(
-    form_data: OAuth2PasswordRequestForm = Depends(),
+    request: Request,
+    form_data: "OAuth2PasswordRequestForm" = Depends(OAuth2PasswordRequestForm),
     session: AsyncSession = Depends(get_session),
 ):
     """
