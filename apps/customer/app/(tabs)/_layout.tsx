@@ -26,7 +26,7 @@ type TabDef = {
 
 const TABS: TabDef[] = [
   { name: "chat",     label: "채팅",   icon: "chatbubble-ellipses-outline", activeIcon: "chatbubble-ellipses" },
-  { name: "store",    label: "스토어",  icon: "bag-outline",                 activeIcon: "bag"                 },
+  { name: "posts",    label: "게시글", icon: "newspaper-outline",           activeIcon: "newspaper"           },
   { name: "index",    label: "홈",     icon: "home-outline",                activeIcon: "home",   center: true },
   { name: "schedule", label: "달력",   icon: "calendar-outline",            activeIcon: "calendar"            },
   { name: "feedback", label: "피드백", icon: "star-outline",                activeIcon: "star"                },
@@ -107,6 +107,7 @@ export default function TabsLayout() {
   const DRAWER_ITEMS = [
     { label: "강사 찾기", icon: "search-outline" as const, route: "/(tabs)/match"  },
     { label: "수강권",    icon: "card-outline"   as const, route: "/(tabs)/passes" },
+    { label: "스토어",    icon: "bag-outline"    as const, route: "/(tabs)/store"  },
   ];
 
   async function handleLogout() {
@@ -142,10 +143,10 @@ export default function TabsLayout() {
       >
         <Tabs.Screen name="index"    options={{ title: "홈" }} />
         <Tabs.Screen name="chat"     options={{ title: "채팅" }} />
-        <Tabs.Screen name="store"    options={{ title: "스토어" }} />
+        <Tabs.Screen name="posts"    options={{ title: "게시글" }} />
+        <Tabs.Screen name="store"    options={{ href: null, title: "스토어" }} />
         <Tabs.Screen name="schedule" options={{ title: "달력" }} />
         <Tabs.Screen name="feedback" options={{ title: "피드백" }} />
-        <Tabs.Screen name="posts"    options={{ href: null, title: "게시글" }} />
         <Tabs.Screen name="match"    options={{ href: null, title: "강사 찾기" }} />
         <Tabs.Screen name="passes"   options={{ href: null, title: "수강권" }} />
         <Tabs.Screen name="profile"  options={{ href: null, title: "내 정보" }} />
