@@ -8,10 +8,15 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.albatro.instructor"
     },
     "android": {
-      "edgeToEdgeEnabled": true
+      "package": "com.albatro.instructor",
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "output": "static"
@@ -30,6 +35,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "6b7f5a1f-37c2-4961-a345-df373c0323c1"
+      }
+    },
+    "owner": "ddukbagy"
   }
 }

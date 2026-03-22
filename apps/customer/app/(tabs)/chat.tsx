@@ -1,13 +1,10 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import {
   View, Text, StyleSheet, Pressable, FlatList, TextInput,
-  ActivityIndicator, RefreshControl, KeyboardAvoidingView, Platform, Dimensions,
-  Image,
+  ActivityIndicator, RefreshControl, KeyboardAvoidingView, Platform,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
-import { useVideoPlayer, VideoView } from "expo-video";
 import { apiFetch } from "@/lib/api";
-import type { InstructorPostRead, MediaItemRead } from "@/types/api";
 
 // ── 타입 ──────────────────────────────────────────────────────
 interface ChatRoom {
@@ -255,138 +252,8 @@ function GroupChatTab() {
   );
 }
 
-// ── 게시글 탭 ─────────────────────────────────────────────────
-const SW = Dimensions.get("window").width;
-const MEDIA_W = SW - 32;
-const MEDIA_H = Math.round(MEDIA_W * 0.6);
-
-function VideoItem({ uri }: { uri: string }) {
-  const player = useVideoPlayer(uri, (p) => { p.loop = false; });
-  return <VideoView player={player} style={{ width: MEDIA_W, height: MEDIA_H }} contentFit="cover" nativeControls />;
-}
-
-function MediaCarousel({ items }: { items: MediaItemRead[] }) {
-  const [page, setPage] = useState(0);
-  const listRef = useRef<FlatList>(null);
-  if (items.length === 0) return null;
-
-  function goTo(idx: number) {
-    const next = Math.max(0, Math.min(idx, items.length - 1));
-    listRef.current?.scrollToIndex({ index: next, animated: true });
-    setPage(next);
-  }
-
-  return (
-    <View style={mc.wrap}>
-      <View style={{ borderRadius: 8, overflow: "hidden" }}>
-        <FlatList
-          ref={listRef}
-          data={items}
-          keyExtractor={(item) => String(item.id)}
-          horizontal pagingEnabled showsHorizontalScrollIndicator={false}
-          snapToInterval={MEDIA_W} decelerationRate="fast"
-          onMomentumScrollEnd={(e) => setPage(Math.round(e.nativeEvent.contentOffset.x / MEDIA_W))}
-          getItemLayout={(_, index) => ({ length: MEDIA_W, offset: MEDIA_W * index, index })}
-          renderItem={({ item }) =>
-            item.media_type === "VIDEO"
-              ? <VideoItem uri={item.url} />
-              : <Image source={{ uri: item.url }} style={{ width: MEDIA_W, height: MEDIA_H }} resizeMode="cover" />
-          }
-        />
-        {items.length > 1 && (
-          <>
-            {page > 0 && (
-              <Pressable style={[mc.arrow, mc.arrowLeft]} onPress={() => goTo(page - 1)}>
-                <Text style={mc.arrowTxt}>‹</Text>
-              </Pressable>
-            )}
-            {page < items.length - 1 && (
-              <Pressable style={[mc.arrow, mc.arrowRight]} onPress={() => goTo(page + 1)}>
-                <Text style={mc.arrowTxt}>›</Text>
-              </Pressable>
-            )}
-          </>
-        )}
-      </View>
-      {items.length > 1 && (
-        <View style={mc.dots}>
-          {items.map((_, i) => (
-            <View key={i} style={[mc.dot, i === page && mc.dotActive]} />
-          ))}
-        </View>
-      )}
-    </View>
-  );
-}
-
-const mc = StyleSheet.create({
-  wrap: { marginBottom: 4 },
-  arrow: { position: "absolute", top: 0, bottom: 0, width: 36, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.28)" },
-  arrowLeft: { left: 0 },
-  arrowRight: { right: 0 },
-  arrowTxt: { color: "#fff", fontSize: 24, fontWeight: "700", lineHeight: 28 },
-  dots: { flexDirection: "row", justifyContent: "center", marginTop: 8, gap: 5 },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#d1d5db" },
-  dotActive: { backgroundColor: "#1a1a1a" },
-});
-
-function PostCard({ post }: { post: InstructorPostRead }) {
-  return (
-    <View style={s.card}>
-      <View style={s.cardHeader}>
-        <Text style={s.timeAgo}>{timeAgo(post.created_at)}</Text>
-      </View>
-      {post.content ? <Text style={s.content}>{post.content}</Text> : null}
-      {post.media_items.length > 0 && <MediaCarousel items={post.media_items} />}
-    </View>
-  );
-}
-
-function PostsTab() {
-  const [posts, setPosts] = useState<InstructorPostRead[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const initialLoaded = useRef(false);
-
-  async function load() {
-    try {
-      const data = await apiFetch<InstructorPostRead[]>("/instructor-posts?type=PROMOTION");
-      setPosts(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error("게시글 로딩 실패:", e);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-      initialLoaded.current = true;
-    }
-  }
-
-  useFocusEffect(useCallback(() => {
-    if (!initialLoaded.current) setLoading(true);
-    load();
-  }, []));
-
-  if (loading) return <View style={s.center}><ActivityIndicator size="large" /></View>;
-
-  return (
-    <FlatList
-      data={posts}
-      keyExtractor={(p) => p.id}
-      renderItem={({ item }) => <PostCard post={item} />}
-      contentContainerStyle={posts.length === 0 ? s.emptyContainer : { paddingVertical: 12 }}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
-      ListEmptyComponent={
-        <View style={s.emptyBox}>
-          <Text style={s.emptyText}>게시글이 없습니다</Text>
-          <Text style={s.emptySubText}>강사가 게시글을 올리면 여기에 표시됩니다</Text>
-        </View>
-      }
-    />
-  );
-}
-
 // ── 메인 화면 ─────────────────────────────────────────────────
-type TopTab = "instructor" | "group" | "posts";
+type TopTab = "instructor" | "group";
 
 export default function ChatScreen() {
   const [tab, setTab] = useState<TopTab>("instructor");
@@ -406,17 +273,10 @@ export default function ChatScreen() {
         >
           <Text style={[s.topTabText, tab === "group" && s.topTabTextActive]}>모임채팅</Text>
         </Pressable>
-        <Pressable
-          style={[s.topTab, tab === "posts" && s.topTabActive]}
-          onPress={() => setTab("posts")}
-        >
-          <Text style={[s.topTabText, tab === "posts" && s.topTabTextActive]}>게시글</Text>
-        </Pressable>
       </View>
 
       {tab === "instructor" && <InstructorChatTab />}
       {tab === "group" && <GroupChatTab />}
-      {tab === "posts" && <PostsTab />}
     </View>
   );
 }
@@ -507,15 +367,4 @@ const s = StyleSheet.create({
   sendBtnDisabled: { backgroundColor: "#d1d5db" },
   sendBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
 
-  // 게시글
-  card: {
-    marginHorizontal: 16, marginBottom: 12,
-    backgroundColor: "#fff", borderRadius: 14,
-    padding: 14, elevation: 2,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.07, shadowRadius: 4,
-  },
-  cardHeader: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
-  timeAgo: { fontSize: 12, color: "#9ca3af", marginLeft: "auto" },
-  content: { fontSize: 14, color: "#374151", lineHeight: 20, marginBottom: 10 },
 });
