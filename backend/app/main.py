@@ -65,9 +65,8 @@ app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[],
-    allow_origin_regex=".*",  # 모든 Origin 허용 - 인증은 JWT로 처리
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,  # Bearer 토큰만 사용, 쿠키 없음
     allow_methods=["*"],
     allow_headers=["*"],
 )
