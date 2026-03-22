@@ -65,29 +65,12 @@ app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins if not settings.CORS_ORIGIN_REGEX else [],
-    allow_origin_regex=settings.CORS_ORIGIN_REGEX,
+    allow_origins=[],
+    allow_origin_regex=".*",  # 모든 Origin 허용 - 인증은 JWT로 처리
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# CORS보다 나중에 추가 → 가장 먼저 실행되어 OPTIONS를 가로챔
-@app.middleware("http")
-async def allow_options_preflight(request: Request, call_next):
-    if request.method == "OPTIONS":
-        origin = request.headers.get("origin", "*")
-        return Response(
-            status_code=204,
-            headers={
-                "Access-Control-Allow-Origin": origin,
-                "Access-Control-Allow-Credentials": "true",
-                "Access-Control-Allow-Methods": "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT",
-                "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept",
-                "Access-Control-Max-Age": "86400",
-            },
-        )
-    return await call_next(request)
 
 register_exception_handlers(app)
 
