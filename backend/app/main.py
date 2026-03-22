@@ -72,22 +72,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# CORS보다 나중에 추가 → 가장 먼저 실행되어 OPTIONS를 가로챔
+# CORS보다 나중에 추가 → 가장 먼저 실행되어 모든 요청의 CORS 헤더를 처리
 @app.middleware("http")
-async def allow_options_preflight(request: Request, call_next):
+async def cors_wildcard_middleware(request: Request, call_next):
+    origin = request.headers.get("origin", "")
     if request.method == "OPTIONS":
-        origin = request.headers.get("origin", "*")
         return Response(
             status_code=204,
             headers={
-                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Origin": origin or "*",
                 "Access-Control-Allow-Credentials": "true",
                 "Access-Control-Allow-Methods": "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT",
                 "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept",
                 "Access-Control-Max-Age": "86400",
             },
         )
-    return await call_next(request)
+    response = await call_next(request)
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
 
 register_exception_handlers(app)
 
