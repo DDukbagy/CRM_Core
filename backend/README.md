@@ -20,19 +20,20 @@ make verify
 
 ## Common Commands
 
-```bash
-make server              # 개발 서버 실행
-make test                # 테스트 실행
-make verify              # 원클릭 검증 (서버 + 토큰 + 플로우)
-make tokens              # 테스트 토큰 발급
-make flow                # 플로우 실행
-make release             # 스테이징 배포
-make rollback            # 롤백
-make rollback-dry        # 롤백 시뮬레이션
-make branch-reset        # 브랜치 리셋
-make copilot-logs-staging  # 스테이징 로그
-make copilot-logs-prod     # 운영 로그
-```
+| 명령 | 설명 |
+|------|------|
+| `make server` | 개발 서버 실행 |
+| `make test` | 테스트 실행 |
+| `make verify` | 원클릭 검증 (서버 + 토큰 + 플로우) |
+| `make tokens` | 테스트 토큰 발급 |
+| `make flow` | 플로우 실행 |
+| `make release` | 운영 배포 (main 태그 기반 · 대화형) |
+| `make rollback-safe` / `make rollback-dry` | 롤백 실행 / 롤백 시뮬레이션 |
+| `make branch-reset` | 브랜치 리셋 |
+| `make check-db` / `make check-schema` | DB 연결 / 스키마 검증 |
+| `make copilot-logs-staging` / `make copilot-logs-prod` | 스테이징 / 운영 로그 |
+
+전체 명령어 목록은 `Docs/dev-runbook.md` 참고.
 
 ---
 
@@ -60,16 +61,28 @@ poetry run uvicorn app.main:app --reload
 
 ## 도메인 구조
 
+| 도메인 | 기능 |
+|--------|------|
+| `auth` | 인증 · JIT 유저 생성 |
+| `users` | 사용자 관리 · RBAC (CUSTOMER / INSTRUCTOR / CONTENT_MANAGER / ADMIN) |
+| `instructor` | 강사 승인 · 담당 고객 등록 · 공개 프로필 검색 |
+| `calendar` | 캘린더 · 타임슬롯 · 예약 · 레슨노트 |
+| `membership` | 멤버십 (횟수제 / 기간제) |
+| `payment` | 결제 내역 기록 · 상태 관리 |
+| `passes` | 레슨 패스(수강권) 발급 · 사용 관리 |
+| `posts` | 게시물 · 댓글 · 좋아요 · 미디어 · 동의 정책 · 매칭 요청 |
+| `chat` | 채팅 |
+| `content` | 강사 콘텐츠 관리 |
+
 ```
-app/domains/
-├── users/          # 사용자 관리 (RBAC 역할 포함)
-├── calendar/       # 캘린더·타임슬롯·예약·레슨노트
-├── instructor/     # 강사 관리·매칭 요청·출석 통계
-├── membership/     # 멤버십 (횟수제/기간제)
-└── payment/        # 결제 내역
+backend/app/domains/{feature}/
+  ├── models.py
+  ├── schemas.py
+  ├── router.py
+  └── repository.py
 ```
 
-각 도메인은 `models.py / schemas.py / router.py / repository.py` 구조를 따릅니다.
+각 도메인은 위 4파일 구조를 따르며, router에 비즈니스 로직을 작성하지 않습니다.
 
 ---
 
@@ -86,12 +99,17 @@ poetry run alembic upgrade head
 poetry run alembic history --verbose
 ```
 
-**규칙**: 이미 공유/배포된 revision은 절대 수정하지 않는다.
-자세한 내용은 루트 `CLAUDE.md` 섹션 10 참고.
+> **규칙**: 이미 공유/배포된 revision은 절대 수정하지 않는다.
+> 자세한 내용은 루트 `CLAUDE.md` 섹션 10 참고.
 
 ---
 
 ## 테스트
+
+| 테스트 | 검증 내용 |
+|--------|-----------|
+| `tests/test_bookings.py` | 예약 생성 · 중복 예약 정책 (취소된 예약은 중복 판정에서 제외) |
+| `tests/test_consent_policy.py` | 게시물 · 미디어 동의 정책 |
 
 ```bash
 # 전체 테스트
@@ -99,9 +117,6 @@ poetry run pytest
 
 # 특정 파일
 poetry run pytest tests/test_bookings.py -v
-
-# 빠른 확인
-poetry run pytest tests/test_bookings.py -q
 ```
 
 테스트는 outer transaction + savepoint 방식으로 격리됩니다.
@@ -111,7 +126,9 @@ poetry run pytest tests/test_bookings.py -q
 
 ## 참고 문서
 
-- `docs/dev-runbook.md` — 개발 명령어 모음
-- `docs/troubleshooting.md` — 문제 해결
-- `docs/aws.md` — AWS / Copilot 운영 가이드
-- 배포 파이프라인 → 루트 `README.md` 참고
+| 문서 | 내용 |
+|------|------|
+| `Docs/dev-runbook.md` | 개발 명령어 모음 |
+| `Docs/troubleshooting.md` | 문제 해결 |
+| `Docs/aws.md` | AWS / Copilot 운영 가이드 |
+| 루트 `README.md` | 배포 파이프라인 |
