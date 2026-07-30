@@ -165,6 +165,16 @@ citrigger: ## Trigger CI with empty commit (then push)
 	git push
 
 # -----------------------------
+# PR trigger(staging -> main)
+# -----------------------------
+.PHONY: prtrigger
+prtrigger: ## Create staging->main PR manually (AWS offline workaround)
+	gh pr create --base main --head staging \
+		--title "🚀 Release: Staging to Main" \
+		--body "Manual release PR (AWS offline)" \
+		|| echo "PR already exists"
+
+# -----------------------------
 # Grep helpers
 # -----------------------------
 .PHONY: grep

@@ -23,13 +23,15 @@ npx expo start
 
 ## 환경변수
 
-`.env.local` 파일을 생성합니다.
+앱 루트에 `.env` 파일을 생성합니다.
 
 ```
 EXPO_PUBLIC_API_BASE_URL=http://localhost:8000
 EXPO_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 ```
+
+> **참고**: Expo는 상위 디렉터리의 `.env`를 읽지 않습니다. 반드시 `apps/customer/.env`에 생성하세요.
 
 ---
 
@@ -42,6 +44,7 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 | 인증 | Supabase Auth (signInWithPassword) |
 | 세션 유지 | AsyncStorage |
 | API | 공통 `lib/api.ts` (Supabase 세션 토큰 자동 첨부) |
+| 에러 트래킹 | Sentry (`@sentry/react-native`) |
 
 ---
 
@@ -56,8 +59,9 @@ app/
 │   ├── schedule.tsx # 스케줄 (강사 슬롯 + 예약 신청)
 │   ├── bookings.tsx # 내 예약 목록 + 취소/철회
 │   ├── match.tsx    # 강사 매칭·상담 신청
+│   ├── chat.tsx     # 강사 채팅 (모임 채팅 준비 중)
+│   ├── passes.tsx   # 수강권 현황·갱신
 │   └── profile.tsx  # 내 정보·로그아웃
-├── membership.tsx   # 수강권 현황
 └── _layout.tsx      # 인증 상태 → 라우팅 제어
 
 lib/
@@ -72,7 +76,11 @@ types/
 
 ## 주요 기능
 
-- **예약**: 강사 가용 슬롯 조회 → 예약 신청 → 취소/철회
-- **매칭**: 강사 목록 조회 → MATCH·CONSULTATION 요청
-- **수강권**: 횟수제(TIMES)/기간제(PERIOD) 멤버십 현황
-- **내 정보**: 프로필 확인 및 로그아웃
+| 기능 | 내용 |
+|------|------|
+| 예약 | 강사 가용 슬롯 조회 → 예약 신청 → 취소/철회 |
+| 매칭 | 강사 목록 조회 · 검색 → MATCH·CONSULTATION 요청 |
+| 채팅 | 담당 강사와 1:1 채팅 |
+| 수강권 | 레슨 패스 현황·사용 이력·갱신 요청 |
+| 멤버십 | 횟수제(TIMES) / 기간제(PERIOD) 현황 |
+| 내 정보 | 프로필 확인 및 로그아웃 |
