@@ -95,7 +95,6 @@ export default function RootLayout() {
       <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
       <Stack.Screen name="booking/[id]" options={{ title: "예약 상세" }} />
       <Stack.Screen name="edit-profile" options={{ headerShown: false, animation: "none" }} />
-      <Stack.Screen name="modal" options={{ presentation: "modal", title: "Modal" }} />
     </Stack>
   );
 }
