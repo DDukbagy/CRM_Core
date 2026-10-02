@@ -29,63 +29,63 @@ BEGIN
   END IF;
 
   -- 이미 게시물이 충분하면 스킵
-  IF (SELECT COUNT(*) FROM public.posts WHERE owner_user_id = v_owner) >= 5 THEN
+  IF (SELECT COUNT(*) FROM public.posts WHERE instructor_id = v_owner) >= 5 THEN
     RAISE NOTICE '게시물이 이미 있습니다. 스킵합니다.';
     RETURN;
   END IF;
 
   INSERT INTO public.posts
-    (id, owner_user_id, created_by_user_id, title, caption, post_type, status, is_consent_given, published_at, created_at, updated_at)
+    (id, instructor_id, created_by_user_id, title, content, type, is_public, created_at, updated_at)
   VALUES
     -- 커뮤니티
     (v_post1, v_owner, v_owner,
      '드라이버 스윙 교정 포인트 3가지',
      '백스윙에서 왼쪽 어깨가 충분히 돌아가지 않는 분들이 많습니다. 오늘은 어깨 회전을 극대화하는 드릴을 소개합니다. 꾸준히 연습하면 비거리가 늘어납니다.',
-     'COMMUNITY', 'PUBLIC', true, now() - interval '6 days', now() - interval '6 days', now()),
+     'COMMUNITY', true, now() - interval '6 days', now()),
 
     -- 공지
     (v_post2, v_owner, v_owner,
      '[공지] 6월 레슨 스케줄 변경 안내',
      '6월 6일(현충일) 레슨이 휴무입니다. 해당 날짜 예약 고객분들은 일정 재조율 부탁드립니다. 문의는 카카오톡으로 연락해 주세요.',
-     'NOTICE', 'PUBLIC', true, now() - interval '5 days', now() - interval '5 days', now()),
+     'NOTICE', true, now() - interval '5 days', now()),
 
     -- 커뮤니티
     (v_post3, v_owner, v_owner,
      '퍼팅 거리 감각 기르는 방법',
      '퍼팅에서 방향보다 거리 감각이 훨씬 중요합니다. 눈을 감고 퍼팅하는 연습을 통해 근육 기억을 활성화하세요. 3주만 꾸준히 하면 3퍼팅이 눈에 띄게 줄어듭니다.',
-     'COMMUNITY', 'PUBLIC', true, now() - interval '4 days', now() - interval '4 days', now()),
+     'COMMUNITY', true, now() - interval '4 days', now()),
 
-    -- 피드백
+    -- 커뮤니티 (여러 레슨생 공통 피드백 정리 글. FEEDBACK 종류는 특정 고객 대상 비공개 글이라 COMMUNITY로 둔다)
     (v_post4, v_owner, v_owner,
      '아이언 임팩트 개선 피드백 정리',
      '지난 달 레슨생분들의 공통적인 임팩트 문제를 정리했습니다. 클럽 페이스가 열린 채로 임팩트 되는 경우가 많았는데, 그립을 약하게 쥐는 것이 원인인 경우가 대부분입니다.',
-     'FEEDBACK', 'PUBLIC', true, now() - interval '2 days', now() - interval '2 days', now()),
+     'COMMUNITY', true, now() - interval '2 days', now()),
 
     -- 커뮤니티
     (v_post5, v_owner, v_owner,
      '필드 라운드 전 워밍업 루틴',
      '라운드 1시간 전 도착해서 퍼팅 → 어프로치 → 아이언 → 드라이버 순으로 워밍업하는 것을 추천합니다. 대부분의 아마추어는 드라이버부터 치다가 리듬을 잃습니다.',
-     'COMMUNITY', 'PUBLIC', true, now() - interval '1 day', now() - interval '1 day', now()),
+     'COMMUNITY', true, now() - interval '1 day', now()),
 
     -- 커뮤니티
     (v_post6, v_owner, v_owner,
      '하체 고정이 비거리를 만든다',
      '스윙 중 하체가 흔들리면 파워가 분산됩니다. 어드레스 때 발바닥 전체를 지면에 밀착하고, 다운스윙에서 왼 무릎이 흔들리지 않도록 의식적으로 고정해보세요. 비거리가 달라집니다.',
-     'COMMUNITY', 'PUBLIC', true, now() - interval '12 hours', now() - interval '12 hours', now()),
+     'COMMUNITY', true, now() - interval '12 hours', now()),
 
     -- 공지
     (v_post7, v_owner, v_owner,
      '[안내] 레슨 예약 앱 업데이트',
      '앱이 업데이트되어 이제 원하는 날짜와 시간을 직접 선택해서 예약할 수 있습니다. 아직 담당 강사가 없으신 분들은 강사 매칭 탭을 이용해 주세요.',
-     'NOTICE', 'PUBLIC', true, now(), now(), now());
+     'NOTICE', true, now(), now());
 
   -- 이미지 첨부
-  INSERT INTO public.post_media (post_id, media_type, url, s3_key_source, sort_order)
+  INSERT INTO public.post_media (post_id, media_type, url, sort_order)
   VALUES
-    (v_post1, 'IMAGE', 'https://images.unsplash.com/photo-1535131749006-b7f58c99034b?w=800', 'seed/golf-driver-swing.jpg', 0),
-    (v_post3, 'IMAGE', 'https://images.unsplash.com/photo-1622673038559-a6b1c7e2cf16?w=800', 'seed/golf-putting.jpg', 0),
-    (v_post5, 'IMAGE', 'https://images.unsplash.com/photo-1587174486073-ae5e5cff23aa?w=800', 'seed/golf-course.jpg', 0),
-    (v_post6, 'IMAGE', 'https://images.unsplash.com/photo-1593111774240-d529f12cf4bb?w=800', 'seed/golf-iron.jpg', 0);
+    (v_post1, 'IMAGE', 'https://images.unsplash.com/photo-1535131749006-b7f58c99034b?w=800', 0),
+    (v_post3, 'IMAGE', 'https://images.unsplash.com/photo-1622673038559-a6b1c7e2cf16?w=800', 0),
+    (v_post5, 'IMAGE', 'https://images.unsplash.com/photo-1587174486073-ae5e5cff23aa?w=800', 0),
+    (v_post6, 'IMAGE', 'https://images.unsplash.com/photo-1593111774240-d529f12cf4bb?w=800', 0);
 
   RAISE NOTICE '게시물 7개 + 이미지 4개 생성 완료 (owner: %)', v_owner;
 END $$;
