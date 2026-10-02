@@ -77,6 +77,6 @@ export PATH="$HOME/.local/bin:$PATH"
 ## 7. 포트 충돌
 
 ```bash
-make docker-ps
-make docker-stop ID=<container>
+make dockps
+make dockstop ID=<container>
 ```

@@ -235,13 +235,13 @@ secrets.*
 
 ## 7.2 환경
 
-* local · staging · production
+* local · staging · prod
 
 ## 7.3 현재 운영 상태
 
 * **AWS(백엔드 배포)는 현재 오프라인.** CI 검증 job은 정상 동작, deploy job은 실패가 예상된 상태.
-* staging → main Release PR은 `make prtrigger`로 생성한다. 의미 있는 작업 단위 완료 시에만 실행.
-* production 반영 전 실제 인프라에서 최소 1회 smoke test 필수.
+* staging → main Release PR은 `make gitpr`로 생성한다. 의미 있는 작업 단위 완료 시에만 실행.
+* prod 반영 전 실제 인프라에서 최소 1회 smoke test 필수.
 
 ## 7.4 절대 금지
 
@@ -254,20 +254,26 @@ secrets.*
 
 # 8 로컬 검증 명령 (Makefile)
 
-AWS 없이 로컬에서 먼저 검증한다.
+AWS·Supabase 없이 로컬에서 먼저 검증한다. 타깃 이름은 `<대상><동작>` (예: `apitest`, `iweb`). 전체 목록은 `make help`.
 
 ```bash
-make server        # 백엔드 로컬 서버
-make check-db      # DB 연결 확인
-make check-schema  # 모델 ↔ DB 스키마 확인
-make tokens        # 테스트 토큰
-make flow          # 주요 흐름 점검
-make test          # 테스트
-make verify        # 종합 검증
-make prtrigger     # staging → main Release PR 생성
+make check       # PR 전 전체 검증 (아래 4개)
+make apitest     # 백엔드: 로컬 DB 새로 만들기 → alembic check → pytest
+make webcheck    # 웹 lint + 타입 검사
+make ccheck      # 고객 앱 타입 검사
+make icheck      # 강사 앱 타입 검사
+make apiverify   # 원클릭 로컬 검증 (로컬 DB → 서버 → 토큰 → 주요 흐름)
+make api         # 백엔드 로컬 서버 (backend/.env)
+make dbcheck     # DB 연결 확인 (backend/.env)
+make dbschema    # 모델 ↔ DB 스키마 확인
+make migcheck    # alembic check (backend/.env 의 DB, 읽기 전용)
+make apitoken    # 실제 Supabase 토큰
+make gitpr       # staging → main Release PR 생성
 ```
 
-PR 전 최소 `make verify` 통과를 확인한다.
+* `apitest`·`apiverify`는 로컬 Postgres 컨테이너와 `backend/scripts/local_env.sh`(더미 값)를 쓰며 원격 DB에 연결하지 않는다.
+
+PR 전 최소 `make check` 통과를 확인한다.
 
 ---
 

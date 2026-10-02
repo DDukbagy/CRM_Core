@@ -56,7 +56,7 @@ CRM_Core/
 
 ```bash
 # 백엔드
-cd backend && make server
+make api
 
 # 관리자·강사 웹
 cd frontend && npm run dev
@@ -100,15 +100,15 @@ cd apps/instructor && npx expo start
 ### 수동 배포 (긴급 복구)
 
 ```bash
-make copilot-deploy-staging
-make copilot-deploy-prod
+make stgdeploy
+make proddeploy
 ```
 
 ### 로그 확인
 
 ```bash
-make copilot-logs-staging
-make copilot-logs-prod
+make stglogs
+make prodlogs
 ```
 
 ---
@@ -148,7 +148,7 @@ poetry run pytest
 
 1. CI 상태 확인
 2. Staging 상태 확인
-3. 로그 확인 (`make copilot-logs-staging` / `make copilot-logs-prod`)
+3. 로그 확인 (`make stglogs` / `make prodlogs`)
 4. 환경변수·시크릿 확인
 5. DB 진단
 
@@ -167,4 +167,6 @@ bash scripts/verify.sh                             # 전체 검증
 | `frontend/README.md` | 관리자·강사 웹 개발 가이드 |
 | `apps/customer/README.md` | 고객 앱 개발 가이드 |
 | `apps/instructor/README.md` | 강사 앱 개발 가이드 |
-| `backend/Docs/` | AWS 운영 · 개발 Runbook · 트러블슈팅 |
+| `docs/operations/` | AWS 운영 · 개발 Runbook · 트러블슈팅 · 실제 환경 검증 방법(`verification.md`) |
+| `docs/requirements/` | 요구사항 정의서 (`CRM_Requirements_v1.0.html`) |
+| `docs/progress.md` | 진행 현황 |

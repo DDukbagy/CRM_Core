@@ -8,13 +8,12 @@ FastAPI(async) + SQLModel + PostgreSQL(AsyncPG) + Alembic 기반.
 ## Quick Start
 
 ```bash
-# 최초 1회
-chmod +x scripts/verify.sh
-make verify
+# 저장소 루트에서 (Docker 필요, 외부 서비스·backend/.env 불필요)
+make apitest     # 로컬 DB로 테스트
+make apiverify   # 로컬 DB → 서버 → 토큰 → 플로우까지 원클릭
 ```
 
-- 서버가 꺼져 있으면 자동 실행
-- 토큰 발급 → 플로우 실행까지 원클릭
+- 로컬 Postgres 컨테이너(`crm-local-db`)를 자동으로 띄우고 더미 설정(`scripts/local_env.sh`)으로 실행
 
 ---
 
@@ -22,18 +21,18 @@ make verify
 
 | 명령 | 설명 |
 |------|------|
-| `make server` | 개발 서버 실행 |
-| `make test` | 테스트 실행 |
-| `make verify` | 원클릭 검증 (서버 + 토큰 + 플로우) |
-| `make tokens` | 테스트 토큰 발급 |
-| `make flow` | 플로우 실행 |
-| `make release` | 운영 배포 (main 태그 기반 · 대화형) |
-| `make rollback-safe` / `make rollback-dry` | 롤백 실행 / 롤백 시뮬레이션 |
-| `make branch-reset` | 브랜치 리셋 |
-| `make check-db` / `make check-schema` | DB 연결 / 스키마 검증 |
-| `make copilot-logs-staging` / `make copilot-logs-prod` | 스테이징 / 운영 로그 |
+| `make api` | 개발 서버 실행 |
+| `make apitest` | 테스트 실행 (로컬 DB 새로 만들기 + alembic check + pytest) |
+| `make apiverify` | 원클릭 로컬 검증 (로컬 DB + 서버 + 토큰 + 플로우) |
+| `make apitoken` | 실제 Supabase 토큰 발급 |
+| `make apiflow` | 실행 중인 서버에 플로우 실행 |
+| `make gitrelease` | main 버전 태그 생성 (롤백 기준점 · 대화형) |
+| `make gitrollback` / `make gitrollbackdry` | 롤백 실행 / 롤백 시뮬레이션 |
+| `make gitbranch` | 브랜치 리셋 |
+| `make dbcheck` / `make dbschema` | DB 연결 / 스키마 검증 |
+| `make stglogs` / `make prodlogs` | 스테이징 / 운영 로그 |
 
-전체 명령어 목록은 `Docs/dev-runbook.md` 참고.
+전체 명령어 목록은 `../docs/operations/dev-runbook.md` 참고.
 
 ---
 
@@ -128,7 +127,7 @@ poetry run pytest tests/test_bookings.py -v
 
 | 문서 | 내용 |
 |------|------|
-| `Docs/dev-runbook.md` | 개발 명령어 모음 |
-| `Docs/troubleshooting.md` | 문제 해결 |
-| `Docs/aws.md` | AWS / Copilot 운영 가이드 |
+| `../docs/operations/dev-runbook.md` | 개발 명령어 모음 |
+| `../docs/operations/troubleshooting.md` | 문제 해결 |
+| `../docs/operations/aws.md` | AWS / Copilot 운영 가이드 |
 | 루트 `README.md` | 배포 파이프라인 |
