@@ -10,7 +10,8 @@ import {
   StyleSheet,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import * as FileSystem from "expo-file-system";
+// SDK 54부터 cacheDirectory·downloadAsync 등 기존 API는 legacy 경로에 있다
+import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { apiFetch } from "@/lib/api";
 import { supabase } from "@/lib/supabase";

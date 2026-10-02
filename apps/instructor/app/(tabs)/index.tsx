@@ -5,6 +5,7 @@ import {
 } from "react-native";
 import { apiFetch } from "@/lib/api";
 import type { InstructorStats, BookingRead, UsersListResponse, TimeSlotRead } from "@/types/api";
+import { toLocalDateStr } from "@/lib/bookingUtils";
 
 const STATUS_COLOR: Record<string, string> = {
   REQUESTED: "#f59e0b", CONFIRMED: "#3b82f6", COMPLETED: "#16a34a",
@@ -106,10 +107,10 @@ export default function DashboardScreen() {
   const [cancelActionLoading, setCancelActionLoading] = useState(false);
   const [slotTimeMap, setSlotTimeMap] = useState<Record<number, { start_time: string; end_time: string }>>({});
 
-  const today = new Date().toISOString().slice(0, 10);
-  const futureEnd = (() => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); })();
+  const today = toLocalDateStr();
+  const futureEnd = (() => { const d = new Date(); d.setDate(d.getDate() + 30); return toLocalDateStr(d); })();
   // 취소 신청은 과거 기간 것도 있을 수 있으므로 넓게 조회
-  const wideStart = (() => { const d = new Date(); d.setDate(d.getDate() - 90); return d.toISOString().slice(0, 10); })();
+  const wideStart = (() => { const d = new Date(); d.setDate(d.getDate() - 90); return toLocalDateStr(d); })();
 
   const load = useCallback(async () => {
     try {

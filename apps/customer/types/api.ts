@@ -9,8 +9,9 @@ export interface UserRead {
   display_name: string;
   phone: string | null;
   role: UserRole;
-  status: string;
+  status: string; // ACTIVE | PENDING | SUSPENDED | WITHDRAWN(탈퇴)
   is_active: boolean;
+  withdrawn_at?: string | null; // 탈퇴 처리 시각
   manager_id: string | null;
   // 강사 필드
   instructor_tier: string | null;
@@ -95,7 +96,9 @@ export interface AvailabilitySlot {
 export interface AvailabilityDay {
   date: string; // YYYY-MM-DD
   slots: AvailabilitySlot[];
-  is_holiday?: boolean;
+  is_holiday?: boolean; // 임시 휴무일
+  // 휴무 종류: RECURRING(강사의 정기 휴무일) / TEMPORARY(임시 휴무일) / null(영업일)
+  off_type?: "RECURRING" | "TEMPORARY" | null;
 }
 
 export interface AvailabilityResponse {
@@ -145,10 +148,13 @@ export interface MediaItemRead {
   sort_order: number;
 }
 
+export type PostType = "PROMOTION" | "NOTICE" | "FEEDBACK" | "COMMUNITY";
+
 export interface InstructorPostRead {
   id: string;
   instructor_id: string;
-  type: "PROMOTION" | "FEEDBACK";
+  created_by_user_id: string | null;
+  type: PostType;
   title: string | null;
   content: string | null;
   media_items: MediaItemRead[];
@@ -157,6 +163,9 @@ export interface InstructorPostRead {
   is_public: boolean;
   created_at: string;
   updated_at: string;
+  like_count: number;
+  comment_count: number;
+  is_liked: boolean;
 }
 
 // ── 수강권 ────────────────────────────────────────────────────
@@ -200,40 +209,27 @@ export interface CustomerPassRead {
   pass_type: PassTypeRead | null;
 }
 
-export type PostType = "NOTICE" | "COMMUNITY" | "FEEDBACK";
-export type PostStatus = "PUBLIC" | "MEMBERS" | "PRIVATE";
-
-export interface PostMediaResponse {
-  id: string;
-  url: string;
-  media_type: "IMAGE" | "VIDEO";
-  sort_order: number;
-}
-
 export interface CommentRead {
   id: number;
   post_id: string;
   user_id: string;
   user_name: string | null;
-  content: string;
+  parent_id: number | null;
+  content: string; // 삭제된 댓글이면 "삭제된 댓글입니다"
   created_at: string;
+  updated_at: string | null;
+  is_deleted: boolean;
 }
 
-export interface PostResponse {
-  id: string;
-  owner_user_id: string;
-  instructor_id: string | null;
-  title: string | null;
-  caption: string | null;
-  post_type: PostType;
-  status: PostStatus;
-  is_consent_given: boolean;
-  when: string | null;
+// 특정 날짜에만 적용되는 예외 (time_slot_id 가 null 이면 그 날 전체)
+export interface CalendarBlockRead {
+  id: number;
+  calendar_id: number;
+  start_date: string;
+  end_date: string;
+  time_slot_id: number | null;
+  // CLOSE: 닫기(시간 없으면 임시 휴무일) / OPEN: 정기 휴무일 중 그날 열기
+  kind: "CLOSE" | "OPEN";
+  reason: string | null;
   created_at: string;
-  updated_at: string;
-  published_at: string | null;
-  media: PostMediaResponse[];
-  like_count: number;
-  comment_count: number;
-  is_liked: boolean;
 }

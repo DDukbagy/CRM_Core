@@ -12,6 +12,7 @@ import {
   STATUS_COLOR, STATUS_LABEL, CHIP_BG,
   toDateStr, fmtTime, parseTime, timeToY as _timeToY, timeDiff as _timeDiff,
   jsWeekdayToPy, isEffectiveOffDay, makeBookingGroups,
+  toLocalDateStr,
 } from "@/lib/bookingUtils";
 
 const { height: SCREEN_H, width: SCREEN_W } = Dimensions.get("window");
@@ -54,7 +55,7 @@ function MonthGrid({
 }) {
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toLocalDateStr();
 
   const cells: (number | null)[] = [
     ...Array(firstDay).fill(null),
@@ -112,7 +113,7 @@ function MonthGrid({
                 {sessions.length > 2 && <Text style={mg.more}>+{sessions.length - 2}</Text>}
                 {bk.length === 0 && isEffectiveOff && (
                   <View style={mg.noLessonWrap}>
-                    <Text style={mg.noLessonTxt}>{isHoliday ? "휴무" : "레슨없는날"}</Text>
+                    <Text style={mg.noLessonTxt}>{isHoliday ? "임시휴무" : isRecurringOff ? "정기휴무" : "레슨없는날"}</Text>
                   </View>
                 )}
                 {availability[ds] && bk.length === 0 && (
@@ -165,7 +166,7 @@ function DayPanel({
   onSelectBooking: (b: BookingRead) => void;
 }) {
   const [selectedSlotIds, setSelectedSlotIds] = useState<Set<number>>(new Set());
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toLocalDateStr();
   const isToday = date === today;
   const isPast = date < today;
   const canBook = !isPast && !isToday && !!managerId;
@@ -454,7 +455,7 @@ function TimelineView({
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const monthDates = Array.from({ length: daysInMonth }, (_, i) => {
     const d = new Date(year, month, i + 1);
-    return d.toISOString().slice(0, 10);
+    return toLocalDateStr(d);
   });
 
   const stripScrollRef = useRef<ScrollView>(null);
@@ -464,7 +465,7 @@ function TimelineView({
   const selDay = new Date(selectedDate).getDate() - 1;
   const scrollToX = Math.max(0, selDay * DAY_CELL_W - SCREEN_W / 2 + DAY_CELL_W / 2);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toLocalDateStr();
   const dayBookings = bookings.filter(b => b.when === selectedDate && b.status !== "CANCELLED");
   const daySlots = availability[selectedDate] ?? [];
   const timelineH = (END_H - START_H) * HOUR_H;
@@ -662,8 +663,8 @@ export default function ScheduleScreen() {
 
   // 특정 월의 가용 슬롯 로드 (슬롯 시간 누적)
   async function loadAvailability(mgId: string, y: number, m: number) {
-    const start = new Date(y, m, 1).toISOString().slice(0, 10);
-    const end   = new Date(y, m + 1, 0).toISOString().slice(0, 10);
+    const start = toLocalDateStr(new Date(y, m, 1));
+    const end   = toLocalDateStr(new Date(y, m + 1, 0));
     try {
       const avail = await apiFetch<AvailabilityResponse>(
         `/calendars/${mgId}/availability?start=${start}&end=${end}`
@@ -772,7 +773,7 @@ export default function ScheduleScreen() {
   }, [selectedDate]);
 
   function openPanel(date: string) {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = toLocalDateStr();
     // 미래 날짜이고, 강사 있고, 수강권 없으면 → 수강권 없음 모달
     if (date > today && managerIdRef.current && !activePass) {
       setNoPassModalVisible(true);
@@ -810,7 +811,7 @@ export default function ScheduleScreen() {
   }
 
   function openBookingModal(slots: AvailabilitySlot[]) {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = toLocalDateStr();
     if (selectedDate <= today) {
       Alert.alert("알림", "당일 및 지난 날짜는 예약 신청이 불가합니다.");
       return;
@@ -897,7 +898,7 @@ export default function ScheduleScreen() {
   if (loading) return <View style={s.center}><ActivityIndicator size="large" /></View>;
 
   const daysInMon = new Date(year, month + 1, 0).getDate();
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = toLocalDateStr();
 
   return (
     <View style={{ flex: 1, backgroundColor: "#fff" }} {...calendarPan.panHandlers}>

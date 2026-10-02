@@ -5,11 +5,12 @@ import {
 } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { apiFetch } from "@/lib/api";
-import type { BookingRead, TimeSlotRead, UserRead, UsersListResponse } from "@/types/api";
+import type { BookingRead, CalendarBlockRead, TimeSlotRead, UserRead, UsersListResponse } from "@/types/api";
 import {
   STATUS_COLOR, STATUS_LABEL,
   toDateStr, fmtTime, parseTime, timeToY as _timeToY, timeDiff as _timeDiff,
   jsWeekdayToPy, makeBookingGroups,
+  toLocalDateStr,
 } from "@/lib/bookingUtils";
 
 const { height: SCREEN_H, width: SCREEN_W } = Dimensions.get("window");
@@ -26,11 +27,17 @@ const timeToY = (t: string) => _timeToY(t, START_H, HOUR_H);
 const timeDiff = (s: string, e: string) => _timeDiff(s, e, HOUR_H);
 
 // ─── MonthGrid ──────────────────────────────────────────
+// 그 날짜에 걸친 블록인지
+function coversDate(b: CalendarBlockRead, ds: string) {
+  return b.start_date <= ds && ds <= b.end_date;
+}
+
 function MonthGrid({
-  year, month, bookings, selectedDate, onSelect, customerMap, recurringOffDays, slots,
+  year, month, bookings, blocks, selectedDate, onSelect, customerMap, recurringOffDays, slots,
 }: {
   year: number; month: number;
   bookings: BookingRead[];
+  blocks: CalendarBlockRead[];
   selectedDate: string;
   onSelect: (d: string) => void;
   customerMap: Record<string, string>;
@@ -39,7 +46,7 @@ function MonthGrid({
 }) {
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toLocalDateStr();
   const slotMap = Object.fromEntries(slots.map(s => [s.id, s])) as Record<number, { start_time: string; end_time: string }>;
   const cells: (number | null)[] = [
     ...Array(firstDay).fill(null),
@@ -66,9 +73,10 @@ function MonthGrid({
             const pyDay = jsWeekdayToPy(jsDay);
             const isRecurringOff = recurringOffDays.includes(pyDay);
             const bk = bookings.filter(b => b.when === ds);
-            const isHoliday = !isRecurringOff && bk.some(b => b.type === "HOLIDAY" && b.status !== "CANCELLED");
-            const hasWorkOverride = isRecurringOff && bk.some(b => b.type === "WORK_OVERRIDE" && b.status !== "CANCELLED");
-            const regularBk = bk.filter(b => b.type !== "HOLIDAY" && b.type !== "WORK_OVERRIDE");
+            // 임시 휴무일 = 하루 전체 닫기 블록, 정기 휴무일 열기 = OPEN 블록
+            const isHoliday = !isRecurringOff && blocks.some(b => b.kind === "CLOSE" && b.time_slot_id === null && coversDate(b, ds));
+            const hasWorkOverride = isRecurringOff && blocks.some(b => b.kind === "OPEN" && coversDate(b, ds));
+            const regularBk = bk;
             const sessionGroups = makeBookingGroups(regularBk, slotMap);
             const isToday = ds === today;
             const isSelected = ds === selectedDate;
@@ -141,9 +149,9 @@ const mg = StyleSheet.create({
 // ─── DayPanel ───────────────────────────────────────────
 function DayPanel({
   date, bookings, slots, customerMap, isHoliday, isRecurringOff,
-  workOverrideSlotIds,
+  workOverrideSlotIds, closedSlotBlocks,
   onAction, onBlockDate, onUnblockDate, onOverrideDay, onRestoreRecurring,
-  onDeactivateSlots, onSaveActivation, onClose, onTimeline, onSelectBooking,
+  onDeactivateSlots, onReopenSlot, onSaveActivation, onClose, onTimeline, onSelectBooking,
 }: {
   date: string;
   bookings: BookingRead[];
@@ -152,18 +160,21 @@ function DayPanel({
   isHoliday: boolean;
   isRecurringOff: boolean;
   workOverrideSlotIds: Set<number>;
+  // 이 날짜에만 닫은 시간: 슬롯 id → 블록 id
+  closedSlotBlocks: Map<number, number>;
   onAction: (id: number, action: "confirm" | "complete" | "no-show" | "decline" | "cancel" | "approve-cancel" | "reject-cancel") => void;
   onBlockDate: () => void;
   onUnblockDate: () => void;
   onOverrideDay: () => void;
   onRestoreRecurring: () => void;
   onDeactivateSlots: (ids: number[]) => void;
+  onReopenSlot: (blockId: number) => void;
   onSaveActivation: (toAdd: number[], toRemove: number[]) => void;
   onClose: () => void;
   onTimeline: () => void;
   onSelectBooking: (b: BookingRead) => void;
 }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toLocalDateStr();
   const jsDay = new Date(date + "T00:00:00").getDay();
   const pyDay = jsWeekdayToPy(jsDay);
 
@@ -387,8 +398,8 @@ function DayPanel({
         <View style={dp.slotHeader}>
           <Text style={dp.sectionTitle}>타임슬롯</Text>
           <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-            {/* 일반 날 */}
-            {!isBlocked && !isPastDate && (
+            {/* 일반 날 (그 요일에 슬롯이 없으면 이미 휴무라 숨김) */}
+            {!isBlocked && !isPastDate && daySlots.length > 0 && (
               <>
                 <Pressable style={dp.blockBtn} onPress={onBlockDate}>
                   <Text style={dp.blockTxt}>휴일전환</Text>
@@ -461,6 +472,11 @@ function DayPanel({
                   <Text style={dp.inactiveTxt}>비활성</Text>
                 </View>
               )}
+              {!isBlocked && slot.is_active && closedSlotBlocks.has(slot.id) && (
+                <Pressable style={dp.inactiveBadge} onPress={() => onReopenSlot(closedSlotBlocks.get(slot.id)!)}>
+                  <Text style={dp.inactiveTxt}>시간 휴무 · 해제</Text>
+                </Pressable>
+              )}
             </View>
           );
         })}
@@ -485,8 +501,8 @@ function DayPanel({
             {daySlots.map(slot => (
               <Pressable
                 key={slot.id}
-                style={[dp.slotRow, selectedSlotIds.has(slot.id) && dp.slotRowSelected, !slot.is_active && dp.slotRowInactive]}
-                onPress={() => slot.is_active && toggleSelect(slot.id)}
+                style={[dp.slotRow, selectedSlotIds.has(slot.id) && dp.slotRowSelected, (!slot.is_active || closedSlotBlocks.has(slot.id)) && dp.slotRowInactive]}
+                onPress={() => slot.is_active && !closedSlotBlocks.has(slot.id) && toggleSelect(slot.id)}
               >
                 <View style={[dp.checkbox, selectedSlotIds.has(slot.id) && dp.checkboxOn]}>
                   {selectedSlotIds.has(slot.id) && <Text style={dp.checkmark}>✓</Text>}
@@ -495,6 +511,7 @@ function DayPanel({
                   {fmtTime(slot.start_time)} ~ {fmtTime(slot.end_time)}
                 </Text>
                 {!slot.is_active && <View style={dp.inactiveBadge}><Text style={dp.inactiveTxt}>이미 비활성</Text></View>}
+                {slot.is_active && closedSlotBlocks.has(slot.id) && <View style={dp.inactiveBadge}><Text style={dp.inactiveTxt}>이미 휴무</Text></View>}
               </Pressable>
             ))}
           </View>
@@ -625,7 +642,7 @@ function TimelineView({
   onAction: (id: number, action: "confirm" | "complete" | "no-show" | "decline" | "cancel") => void;
   onBack: () => void;
 }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toLocalDateStr();
   const dow = new Date(date + "T00:00:00").getDay();
   const daySlots = slots.filter(s => s.weekdays.includes(dow));
   const dayBookings = bookings.filter(b => b.when === date && b.status !== "CANCELLED");
@@ -784,6 +801,7 @@ export default function ScheduleScreen() {
 
   const [bookings, setBookings] = useState<BookingRead[]>([]);
   const [slots, setSlots] = useState<TimeSlotRead[]>([]);
+  const [blocks, setBlocks] = useState<CalendarBlockRead[]>([]);
   const [customerMap, setCustomerMap] = useState<Record<string, string>>({});
   const [recurringOffDays, setRecurringOffDays] = useState<number[]>([]);
   const [detailBooking, setDetailBooking] = useState<BookingRead | null>(null);
@@ -792,16 +810,18 @@ export default function ScheduleScreen() {
   const currentMonth = useRef(month);
 
   async function load(y = currentYear.current, m = currentMonth.current) {
-    const start = new Date(y, m, 1).toISOString().slice(0, 10);
-    const end = new Date(y, m + 1, 0).toISOString().slice(0, 10);
-    const [bkRes, slRes, cuRes, meRes] = await Promise.allSettled([
+    const start = toLocalDateStr(new Date(y, m, 1));
+    const end = toLocalDateStr(new Date(y, m + 1, 0));
+    const [bkRes, slRes, cuRes, meRes, blRes] = await Promise.allSettled([
       apiFetch<BookingRead[]>(`/calendars/me/bookings?start=${start}&end=${end}`),
       apiFetch<TimeSlotRead[]>("/calendars/me/time-slots"),
       apiFetch<UsersListResponse>("/users?limit=200"),
       apiFetch<UserRead>("/users/me"),
+      apiFetch<CalendarBlockRead[]>(`/calendars/me/blocks?start=${start}&end=${end}`),
     ]);
     if (bkRes.status === "fulfilled") setBookings(Array.isArray(bkRes.value) ? bkRes.value : []);
     if (slRes.status === "fulfilled") setSlots(Array.isArray(slRes.value) ? slRes.value : []);
+    if (blRes.status === "fulfilled") setBlocks(Array.isArray(blRes.value) ? blRes.value : []);
     if (cuRes.status === "fulfilled") {
       const map: Record<string, string> = {};
       cuRes.value.items.forEach(u => { map[u.id] = u.display_name; });
@@ -904,48 +924,14 @@ export default function ScheduleScreen() {
     });
   }
 
+  // 시간 휴무: 선택한 날짜에만 닫는다 (슬롯 자체를 끄면 모든 날짜에 적용되므로 쓰지 않는다)
   function deactivateSlots(ids: number[]) {
     setConfirm({
       title: "시간 휴무 처리",
-      body: `선택한 ${ids.length}개 슬롯을 비활성화하시겠습니까?`,
-      onConfirm: async () => {
-        await Promise.all(ids.map(id =>
-          apiFetch(`/calendars/me/time-slots/${id}`, { method: "PATCH", body: { is_active: false } })
-        ));
-        await load();
-      },
-    });
-  }
-
-  function blockDate() {
-    const pyDay = selectedPyDay;
-    const slot = slots.find(s => s.is_active && (s.weekdays ?? []).includes(pyDay)) ?? slots.find(s => s.is_active);
-    if (!slot) { setInfoMsg("활성화된 타임슬롯이 없습니다."); return; }
-    setConfirm({
-      title: "휴무 등록",
-      body: `${selectedDate}을 휴무로 등록하시겠습니까?`,
-      onConfirm: async () => {
-        await apiFetch("/bookings", { method: "POST", body: { time_slot_id: slot.id, when: selectedDate, topic: "휴무", type: "HOLIDAY" } });
-        await load();
-      },
-    });
-  }
-
-  const holidayBooking = bookings.find(b => b.when === selectedDate && b.type === "HOLIDAY" && b.status !== "CANCELLED");
-  const workOverrideBookings = bookings.filter(b => b.when === selectedDate && b.type === "WORK_OVERRIDE" && b.status !== "CANCELLED");
-  const workOverrideSlotIds = new Set(workOverrideBookings.map(b => b.time_slot_id));
-  const selectedJsDay = selectedDate ? new Date(selectedDate + "T00:00:00").getDay() : -1;
-  const selectedPyDay = selectedJsDay >= 0 ? jsWeekdayToPy(selectedJsDay) : -1;
-  const isSelectedRecurringOff = selectedPyDay >= 0 && recurringOffDays.includes(selectedPyDay);
-
-  function unblockDate() {
-    if (!holidayBooking) return;
-    setConfirm({
-      title: "영업일 전환",
-      body: `${selectedDate}의 휴무를 해제하시겠습니까?`,
+      body: `${selectedDate}에만 선택한 ${ids.length}개 시간을 닫으시겠습니까?`,
       onConfirm: async () => {
         try {
-          await apiFetch(`/calendars/me/bookings/${holidayBooking.id}/cancel`, { method: "PATCH", body: { reason: null } });
+          await apiFetch("/calendars/me/blocks", { method: "POST", body: { date: selectedDate, kind: "CLOSE", time_slot_ids: ids } });
         } finally {
           await load();
         }
@@ -953,54 +939,103 @@ export default function ScheduleScreen() {
     });
   }
 
+  function reopenSlot(blockId: number) {
+    setConfirm({
+      title: "시간 휴무 해제",
+      body: `${selectedDate}의 이 시간을 다시 열까요?`,
+      onConfirm: async () => {
+        try {
+          await apiFetch(`/calendars/me/blocks/${blockId}`, { method: "DELETE" });
+        } finally {
+          await load();
+        }
+      },
+    });
+  }
+
+  const selectedJsDay = selectedDate ? new Date(selectedDate + "T00:00:00").getDay() : -1;
+  const selectedPyDay = selectedJsDay >= 0 ? jsWeekdayToPy(selectedJsDay) : -1;
+  const isSelectedRecurringOff = selectedPyDay >= 0 && recurringOffDays.includes(selectedPyDay);
+  const selectedDaySlotIds = slots.filter(s => s.is_active && (s.weekdays ?? []).includes(selectedPyDay)).map(s => s.id);
+
+  // 선택한 날짜의 블록: 임시 휴무일(하루 전체 CLOSE), 정기 휴무일 열기(OPEN), 시간 휴무(시간 지정 CLOSE)
+  const dateBlocks = blocks.filter(b => coversDate(b, selectedDate));
+  const holidayBlock = dateBlocks.find(b => b.kind === "CLOSE" && b.time_slot_id === null);
+  const openBlocks = dateBlocks.filter(b => b.kind === "OPEN");
+  const workOverrideSlotIds = new Set<number>(
+    openBlocks.some(b => b.time_slot_id === null)
+      ? selectedDaySlotIds
+      : openBlocks.map(b => b.time_slot_id as number)
+  );
+  const closedSlotBlocks = new Map<number, number>(
+    dateBlocks.filter(b => b.kind === "CLOSE" && b.time_slot_id !== null).map(b => [b.time_slot_id as number, b.id])
+  );
+
+  async function postBlock(body: { kind: "CLOSE" | "OPEN"; time_slot_ids?: number[]; reason?: string }) {
+    await apiFetch("/calendars/me/blocks", { method: "POST", body: { date: selectedDate, ...body } });
+  }
+  async function deleteBlocks(ids: number[]) {
+    for (const id of ids) await apiFetch(`/calendars/me/blocks/${id}`, { method: "DELETE" });
+  }
+
+  // 임시 휴무일: 정기 휴무일이 아닌 날 하루 전체 닫기
+  function blockDate() {
+    setConfirm({
+      title: "휴무 등록",
+      body: `${selectedDate}을 임시 휴무일로 등록하시겠습니까?`,
+      onConfirm: async () => {
+        try { await postBlock({ kind: "CLOSE", reason: "임시 휴무" }); } finally { await load(); }
+      },
+    });
+  }
+
+  function unblockDate() {
+    if (!holidayBlock) return;
+    setConfirm({
+      title: "영업일 전환",
+      body: `${selectedDate}의 휴무를 해제하시겠습니까?`,
+      onConfirm: async () => {
+        try { await deleteBlocks([holidayBlock.id]); } finally { await load(); }
+      },
+    });
+  }
+
+  // 정기 휴무일 중 이 날짜만 하루 전체 영업
   function overrideDay() {
-    const pyDay = selectedPyDay;
-    const daySlotList = slots.filter(s => s.is_active && (s.weekdays ?? []).includes(pyDay));
-    if (daySlotList.length === 0) { setInfoMsg("타임슬롯이 없습니다."); return; }
+    if (selectedDaySlotIds.length === 0) { setInfoMsg("타임슬롯이 없습니다."); return; }
     setConfirm({
       title: "이번만 전체 영업",
-      body: `${selectedDate}의 모든 시간(${daySlotList.length}개)을 활성화하시겠습니까?`,
+      body: `${selectedDate}의 모든 시간(${selectedDaySlotIds.length}개)을 활성화하시겠습니까?`,
       onConfirm: async () => {
-        await Promise.all(daySlotList.map(s =>
-          apiFetch("/bookings", { method: "POST", body: { time_slot_id: s.id, when: selectedDate, topic: "영업일전환", type: "WORK_OVERRIDE" } })
-        ));
-        await load();
+        try { await postBlock({ kind: "OPEN" }); } finally { await load(); }
       },
     });
   }
 
   function restoreRecurring() {
-    if (workOverrideBookings.length === 0) return;
+    if (openBlocks.length === 0) return;
     setConfirm({
       title: "전체 복원",
-      body: `${selectedDate}의 활성화된 ${workOverrideBookings.length}개 시간을 모두 비활성화하시겠습니까?`,
+      body: `${selectedDate}의 활성화된 ${workOverrideSlotIds.size}개 시간을 모두 비활성화하시겠습니까?`,
       onConfirm: async () => {
-        try {
-          await Promise.all(workOverrideBookings.map(b =>
-            apiFetch(`/calendars/me/bookings/${b.id}/cancel`, { method: "PATCH", body: { reason: null } })
-          ));
-        } finally {
-          await load();
-        }
+        try { await deleteBlocks(openBlocks.map(b => b.id)); } finally { await load(); }
       },
     });
   }
 
+  // 정기 휴무일 중 특정 시간만 열기/닫기: 원하는 시간을 먼저 열고, 필요 없어진 열기 블록을 지운다
   function saveActivation(toAdd: number[], toRemove: number[]) {
     setConfirm({
       title: "시간 활성화 저장",
       body: `열기: ${toAdd.length}개, 닫기: ${toRemove.length}개`,
       onConfirm: async () => {
         try {
-          // 새로 활성화
-          await Promise.all(toAdd.map(slotId =>
-            apiFetch("/bookings", { method: "POST", body: { time_slot_id: slotId, when: selectedDate, topic: "시간활성화", type: "WORK_OVERRIDE" } })
-          ));
-          // 기존 활성화 취소
-          const toRemoveBookings = workOverrideBookings.filter(b => toRemove.includes(b.time_slot_id));
-          await Promise.all(toRemoveBookings.map(b =>
-            apiFetch(`/calendars/me/bookings/${b.id}/cancel`, { method: "PATCH", body: { reason: null } })
-          ));
+          const desired = [...workOverrideSlotIds, ...toAdd].filter(id => !toRemove.includes(id));
+          const desiredSet = new Set(desired);
+          if (desired.length > 0) await postBlock({ kind: "OPEN", time_slot_ids: desired });
+          await deleteBlocks(
+            openBlocks.filter(b => b.time_slot_id === null || !desiredSet.has(b.time_slot_id)).map(b => b.id)
+          );
         } finally {
           await load();
         }
@@ -1008,7 +1043,7 @@ export default function ScheduleScreen() {
     });
   }
 
-  const dayBookings = bookings.filter(b => b.when === selectedDate && b.type !== "HOLIDAY" && b.type !== "WORK_OVERRIDE");
+  const dayBookings = bookings.filter(b => b.when === selectedDate);
 
   if (loading) {
     return <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}><ActivityIndicator size="large" color="#16a34a" /></View>;
@@ -1092,13 +1127,13 @@ export default function ScheduleScreen() {
       </View>
       <View style={{ flex: 1, overflow: "hidden" }} {...(!panelVisible ? calendarPan.panHandlers : {})}>
         <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ translateX: prevGhostX }] }]} pointerEvents="none">
-          <MonthGrid year={prevY} month={prevM} bookings={bookings} selectedDate={selectedDate} onSelect={openPanel} customerMap={customerMap} recurringOffDays={recurringOffDays} slots={slots} />
+          <MonthGrid year={prevY} month={prevM} bookings={bookings} blocks={blocks} selectedDate={selectedDate} onSelect={openPanel} customerMap={customerMap} recurringOffDays={recurringOffDays} slots={slots} />
         </Animated.View>
         <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ translateX: nextGhostX }] }]} pointerEvents="none">
-          <MonthGrid year={nextY} month={nextM} bookings={bookings} selectedDate={selectedDate} onSelect={openPanel} customerMap={customerMap} recurringOffDays={recurringOffDays} slots={slots} />
+          <MonthGrid year={nextY} month={nextM} bookings={bookings} blocks={blocks} selectedDate={selectedDate} onSelect={openPanel} customerMap={customerMap} recurringOffDays={recurringOffDays} slots={slots} />
         </Animated.View>
         <Animated.View style={{ flex: 1, transform: [{ translateX: calSlideX }] }}>
-          <MonthGrid year={year} month={month} bookings={bookings} selectedDate={selectedDate} onSelect={openPanel} customerMap={customerMap} recurringOffDays={recurringOffDays} slots={slots} />
+          <MonthGrid year={year} month={month} bookings={bookings} blocks={blocks} selectedDate={selectedDate} onSelect={openPanel} customerMap={customerMap} recurringOffDays={recurringOffDays} slots={slots} />
         </Animated.View>
       </View>
 
@@ -1118,15 +1153,17 @@ export default function ScheduleScreen() {
             bookings={dayBookings}
             slots={slots}
             customerMap={customerMap}
-            isHoliday={!!holidayBooking}
+            isHoliday={!!holidayBlock}
             isRecurringOff={isSelectedRecurringOff}
             workOverrideSlotIds={workOverrideSlotIds}
+            closedSlotBlocks={closedSlotBlocks}
             onAction={doAction}
             onBlockDate={blockDate}
             onUnblockDate={unblockDate}
             onOverrideDay={overrideDay}
             onRestoreRecurring={restoreRecurring}
             onDeactivateSlots={deactivateSlots}
+            onReopenSlot={reopenSlot}
             onSaveActivation={saveActivation}
             onClose={closePanel}
             onTimeline={() => { closePanel(); setTimeout(() => setViewMode("timeline"), 260); }}
@@ -1156,7 +1193,7 @@ function BookingDetailModal({ visible, booking, slots, customerMap, onClose, onA
   onAction: (id: number, action: "confirm" | "complete" | "no-show" | "decline" | "cancel" | "approve-cancel" | "reject-cancel") => void;
 }) {
   if (!booking) return null;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toLocalDateStr();
   const jsDay = new Date(booking.when + "T00:00:00").getDay();
   const pyDay = jsWeekdayToPy(jsDay);
   const slot = slots.find(s => s.id === booking.time_slot_id && s.weekdays.includes(pyDay));

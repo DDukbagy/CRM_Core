@@ -132,7 +132,7 @@ function CommentsSection({ postId }: { postId: string }) {
     if (loading) return;
     setLoading(true);
     try {
-      const data = await apiFetch<CommentRead[]>(`/instructor-posts/${postId}/comments`);
+      const data = await apiFetch<CommentRead[]>(`/posts/${postId}/comments`);
       setComments(Array.isArray(data) ? data : []);
       loaded.current = true;
     } catch (e) {
@@ -151,7 +151,7 @@ function CommentsSection({ postId }: { postId: string }) {
     if (!newText.trim() || submitting) return;
     setSubmitting(true);
     try {
-      const c = await apiFetch<CommentRead>(`/instructor-posts/${postId}/comments`, {
+      const c = await apiFetch<CommentRead>(`/posts/${postId}/comments`, {
         method: "POST",
         body: { content: newText.trim() },
       });
@@ -181,8 +181,14 @@ function CommentsSection({ postId }: { postId: string }) {
           ) : (
             comments.map(c => (
               <View key={c.id} style={cs.commentRow}>
-                <Text style={cs.name}>{c.user_name ?? "사용자"}</Text>
-                <Text style={cs.content}>{c.content}</Text>
+                {c.is_deleted ? (
+                  <Text style={cs.deleted}>{c.content}</Text>
+                ) : (
+                  <>
+                    <Text style={cs.name}>{c.user_name ?? "사용자"}</Text>
+                    <Text style={cs.content}>{c.content}</Text>
+                  </>
+                )}
               </View>
             ))
           )}
@@ -219,6 +225,7 @@ const cs = StyleSheet.create({
   commentRow: { paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: "#f9fafb" },
   name: { fontSize: 12, fontWeight: "700", color: "#374151", marginBottom: 2 },
   content: { fontSize: 13, color: "#374151" },
+  deleted: { fontSize: 13, color: "#9ca3af", fontStyle: "italic" },
   inputRow: { flexDirection: "row", alignItems: "center", marginTop: 8, gap: 8 },
   input: {
     flex: 1, borderWidth: 1, borderColor: "#e5e7eb",
@@ -230,6 +237,14 @@ const cs = StyleSheet.create({
 });
 
 // ─── 포스트 카드 ──────────────────────────────────────────
+// 배지 문구: 종류마다 다르게 (색은 피드백 / 그 외 두 가지 그대로)
+const POST_TYPE_LABEL: Record<string, string> = {
+  PROMOTION: "홍보",
+  NOTICE: "공지",
+  COMMUNITY: "커뮤니티",
+  FEEDBACK: "피드백",
+};
+
 function PostCard({ post }: { post: InstructorPostRead }) {
   const isFeedback = post.type === "FEEDBACK";
 
@@ -239,7 +254,7 @@ function PostCard({ post }: { post: InstructorPostRead }) {
       <View style={s.cardHeader}>
         <View style={[s.typeBadge, isFeedback ? s.feedbackBadge : s.promoBadge]}>
           <Text style={[s.typeBadgeText, isFeedback ? s.feedbackText : s.promoText]}>
-            {isFeedback ? "피드백" : "홍보"}
+            {POST_TYPE_LABEL[post.type] ?? "게시글"}
           </Text>
         </View>
         {isFeedback && post.customer_name && (
@@ -271,7 +286,7 @@ export default function PostsScreen() {
 
   async function load() {
     try {
-      const data = await apiFetch<InstructorPostRead[]>("/instructor-posts");
+      const data = await apiFetch<InstructorPostRead[]>("/posts");
       setPosts(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error("게시물 로딩 실패:", e);

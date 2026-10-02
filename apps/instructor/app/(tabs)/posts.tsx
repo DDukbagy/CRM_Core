@@ -119,7 +119,7 @@ function CommentsSection({ postId }: { postId: string }) {
 
   async function loadComments() {
     setLoading(true);
-    try { setComments(await apiFetch<CommentRead[]>(`/instructor-posts/${postId}/comments`)); }
+    try { setComments(await apiFetch<CommentRead[]>(`/posts/${postId}/comments`)); }
     catch { /* ignore */ } finally { setLoading(false); }
   }
 
@@ -129,7 +129,7 @@ function CommentsSection({ postId }: { postId: string }) {
     if (!input.trim()) return;
     setSending(true);
     try {
-      const c = await apiFetch<CommentRead>(`/instructor-posts/${postId}/comments`, {
+      const c = await apiFetch<CommentRead>(`/posts/${postId}/comments`, {
         method: "POST", body: { content: input.trim() },
       });
       setComments((p) => [...p, c]);
@@ -148,8 +148,14 @@ function CommentsSection({ postId }: { postId: string }) {
             : comments.length === 0 ? <Text style={cm.empty}>댓글이 없습니다</Text>
             : comments.map((c) => (
               <View key={c.id} style={cm.row}>
-                <Text style={cm.name}>{c.user_name ?? "알 수 없음"}</Text>
-                <Text style={cm.content}>{c.content}</Text>
+                {c.is_deleted ? (
+                  <Text style={cm.deleted}>{c.content}</Text>
+                ) : (
+                  <>
+                    <Text style={cm.name}>{c.user_name ?? "알 수 없음"}</Text>
+                    <Text style={cm.content}>{c.content}</Text>
+                  </>
+                )}
               </View>
             ))
           }
@@ -432,7 +438,7 @@ export default function PostsScreen() {
   const uploadedUrisRef = useRef(new Set<string>());
 
   const load = useCallback(async () => {
-    try { setPosts(await apiFetch<PostRead[]>("/instructor-posts")); } catch { /* ignore */ }
+    try { setPosts(await apiFetch<PostRead[]>("/posts")); } catch { /* ignore */ }
   }, []);
 
   useEffect(() => {
@@ -523,7 +529,7 @@ export default function PostsScreen() {
           upload_url: string;
           key: string;
           public_url: string;
-        }>("/instructor-posts/upload-url", {
+        }>("/posts/upload-url", {
           method: "POST",
           body: { filename: fileName, content_type: contentType },
         });
@@ -585,7 +591,7 @@ export default function PostsScreen() {
     }
     try {
       setSubmitting(true);
-      await apiFetch("/instructor-posts", {
+      await apiFetch("/posts", {
         method: "POST",
         body: {
           type: ct,
@@ -635,7 +641,7 @@ export default function PostsScreen() {
     if (!et) return;
     try {
       setSubmitting(true);
-      await apiFetch(`/instructor-posts/${et.id}`, {
+      await apiFetch(`/posts/${et.id}`, {
         method: "PATCH",
         body: {
           content: f.content || null,
@@ -660,7 +666,7 @@ export default function PostsScreen() {
   }, [load]);
 
   async function deletePost(id: string) {
-    try { await apiFetch(`/instructor-posts/${id}`, { method: "DELETE" }); await load(); }
+    try { await apiFetch(`/posts/${id}`, { method: "DELETE" }); await load(); }
     catch { Alert.alert("오류", "삭제 실패"); }
   }
 
@@ -808,6 +814,7 @@ const cm = StyleSheet.create({
   row: { backgroundColor: "#f9fafb", borderRadius: 6, padding: 6 },
   name: { fontSize: 11, fontWeight: "700", color: "#374151", marginBottom: 2 },
   content: { fontSize: 12, color: "#374151" },
+  deleted: { fontSize: 12, color: "#9ca3af", fontStyle: "italic" },
   inputRow: { flexDirection: "row", gap: 6, marginTop: 4 },
   input: { flex: 1, borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5, fontSize: 12 },
   sendBtn: { backgroundColor: "#16a34a", borderRadius: 6, paddingHorizontal: 10, justifyContent: "center" },

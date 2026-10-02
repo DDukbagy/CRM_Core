@@ -5,8 +5,9 @@ export interface UserRead {
   display_name: string;
   phone: string | null;
   role: string;
-  status: string;
+  status: string; // ACTIVE | PENDING | SUSPENDED | WITHDRAWN(탈퇴)
   is_active: boolean;
+  withdrawn_at?: string | null; // 탈퇴 처리 시각
   manager_id: string | null;
   instructor_tier: string | null;
   instructor_location: string | null;
@@ -62,6 +63,19 @@ export interface TimeSlotRead {
   end_time: string;
   weekdays: number[];
   is_active: boolean;
+}
+
+// 특정 날짜에만 적용되는 예외 (time_slot_id 가 null 이면 그 날 전체)
+export interface CalendarBlockRead {
+  id: number;
+  calendar_id: number;
+  start_date: string;
+  end_date: string;
+  time_slot_id: number | null;
+  // CLOSE: 닫기(시간 없으면 임시 휴무일) / OPEN: 정기 휴무일 중 그날 열기
+  kind: "CLOSE" | "OPEN";
+  reason: string | null;
+  created_at: string;
 }
 
 export interface PaymentRead {
@@ -128,10 +142,13 @@ export interface CustomerPassRead {
   customer_name: string | null;
 }
 
+export type PostType = "PROMOTION" | "NOTICE" | "FEEDBACK" | "COMMUNITY";
+
 export interface PostRead {
   id: string;
   instructor_id: string;
-  type: "PROMOTION" | "FEEDBACK";
+  created_by_user_id: string | null;
+  type: PostType;
   title: string | null;
   content: string | null;
   media_items: MediaItemRead[];
@@ -140,6 +157,9 @@ export interface PostRead {
   is_public: boolean;
   created_at: string;
   updated_at: string;
+  like_count: number;
+  comment_count: number;
+  is_liked: boolean;
 }
 
 export interface CommentRead {
@@ -147,8 +167,11 @@ export interface CommentRead {
   post_id: string;
   user_id: string;
   user_name: string | null;
-  content: string;
+  parent_id: number | null;
+  content: string; // 삭제된 댓글이면 "삭제된 댓글입니다"
   created_at: string;
+  updated_at: string | null;
+  is_deleted: boolean;
 }
 
 export interface UsersListResponse {

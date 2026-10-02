@@ -172,7 +172,7 @@ export default function FeedbackScreen() {
 
   async function load() {
     try {
-      const data = await apiFetch<InstructorPostRead[]>("/instructor-posts?type=FEEDBACK");
+      const data = await apiFetch<InstructorPostRead[]>("/posts?type=FEEDBACK");
       setPosts(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error("피드백 로딩 실패:", e);

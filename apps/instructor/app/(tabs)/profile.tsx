@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { View, Text, ScrollView, Pressable, TextInput, Alert, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, ScrollView, Pressable, TextInput, Alert, StyleSheet, ActivityIndicator, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { apiFetch } from "@/lib/api";
@@ -13,6 +13,9 @@ export default function ProfileScreen() {
   const [me, setMe] = useState<UserRead | null>(null);
   const [editing, setEditing] = useState(false);
   const [offDaysSaving, setOffDaysSaving] = useState(false);
+  // 정기 휴무 요일: "수정"을 눌러야 요일 버튼이 켜지고, "저장"을 눌러야 반영 (실수로 바로 바뀌지 않게)
+  const [offDaysEditing, setOffDaysEditing] = useState(false);
+  const [offDaysDraft, setOffDaysDraft] = useState<number[]>([]);
   const [form, setForm] = useState({
     display_name: "", phone: "", instructor_location: "",
     instructor_specialties: "", instructor_bio: "",
@@ -57,6 +60,33 @@ export default function ProfileScreen() {
   if (!me) return <View style={s.center}><Text>불러오는 중...</Text></View>;
 
   const tierLabel = me.instructor_tier === "NAMED" ? "네임드 강사" : "일반 강사";
+
+  // 회원 탈퇴: 개인정보는 지우고 결제·계약 기록은 법정 보존 기간(5년) 동안 남는다 (백엔드 POST /users/me/withdraw)
+  async function handleWithdraw() {
+    const title = "회원 탈퇴";
+    const message =
+      "탈퇴하면 이름·연락처 등 계정 정보가 삭제되고 다시 로그인할 수 없습니다.\n" +
+      "결제·멤버십·수강권 기록은 관련 법(전자상거래법)에 따라 5년간 보관됩니다.";
+    const doWithdraw = async () => {
+      try {
+        await apiFetch("/users/me/withdraw", { method: "POST" });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "탈퇴 처리에 실패했습니다.";
+        if (Platform.OS === "web") window.alert(msg); else Alert.alert("오류", msg);
+        return;
+      }
+      await supabase.auth.signOut();
+    };
+    if (Platform.OS === "web") {
+      if (!window.confirm(`${title}\n\n${message}`)) return;
+      await doWithdraw();
+    } else {
+      Alert.alert(title, message, [
+        { text: "취소", style: "cancel" },
+        { text: "탈퇴", style: "destructive", onPress: doWithdraw },
+      ]);
+    }
+  }
 
   return (
     <ScrollView style={s.container}>
@@ -115,31 +145,46 @@ export default function ProfileScreen() {
 
       {/* 정기 휴무 요일 */}
       <View style={s.card}>
-        <Text style={s.cardTitle}>정기 휴무 요일</Text>
+        <View style={s.cardHeaderRow}>
+          <Text style={s.cardTitle}>정기 휴무 요일</Text>
+          <Pressable
+            disabled={offDaysSaving}
+            onPress={async () => {
+              if (!offDaysEditing) {
+                setOffDaysDraft(me.recurring_off_days ?? []);
+                setOffDaysEditing(true);
+                return;
+              }
+              setOffDaysSaving(true);
+              try {
+                const updated = await apiFetch<UserRead>("/users/me", {
+                  method: "PATCH", body: { recurring_off_days: [...offDaysDraft].sort() },
+                });
+                setMe(updated);
+                setOffDaysEditing(false);
+              } catch (e: unknown) {
+                const msg = e instanceof Error ? e.message : "저장 실패";
+                if (Platform.OS === "web") window.alert(msg); else Alert.alert("오류", msg);
+              } finally {
+                setOffDaysSaving(false);
+              }
+            }}
+            style={s.editBtn}
+          >
+            <Text style={s.editBtnText}>{offDaysEditing ? "저장" : "수정"}</Text>
+          </Pressable>
+        </View>
         <Text style={s.offDayDesc}>레슨 없는 요일을 선택하면 고객 예약이 차단됩니다</Text>
         <View style={s.weekdayRow}>
           {WEEKDAY_LABELS.map((label, idx) => {
-            const isOff = (me.recurring_off_days ?? []).includes(idx);
+            const days = offDaysEditing ? offDaysDraft : (me.recurring_off_days ?? []);
+            const isOff = days.includes(idx);
             return (
               <Pressable
                 key={idx}
-                style={[s.weekdayBtn, isOff && s.weekdayBtnOff]}
-                disabled={offDaysSaving}
-                onPress={async () => {
-                  const current = me.recurring_off_days ?? [];
-                  const next = isOff ? current.filter(d => d !== idx) : [...current, idx].sort();
-                  setOffDaysSaving(true);
-                  try {
-                    const updated = await apiFetch<UserRead>("/users/me", {
-                      method: "PATCH", body: { recurring_off_days: next },
-                    });
-                    setMe(updated);
-                  } catch (e: unknown) {
-                    Alert.alert("오류", e instanceof Error ? e.message : "저장 실패");
-                  } finally {
-                    setOffDaysSaving(false);
-                  }
-                }}
+                style={[s.weekdayBtn, isOff && s.weekdayBtnOff, !offDaysEditing && s.weekdayBtnLocked]}
+                disabled={!offDaysEditing || offDaysSaving}
+                onPress={() => setOffDaysDraft(d => (d.includes(idx) ? d.filter(x => x !== idx) : [...d, idx]))}
               >
                 <Text style={[s.weekdayTxt, isOff && s.weekdayTxtOff]}>{label}</Text>
                 {isOff && <Text style={s.weekdayOffLabel}>휴무</Text>}
@@ -147,6 +192,11 @@ export default function ProfileScreen() {
             );
           })}
         </View>
+        {offDaysEditing && (
+          <Pressable onPress={() => setOffDaysEditing(false)} disabled={offDaysSaving} style={s.cancelBtn}>
+            <Text style={s.cancelText}>취소</Text>
+          </Pressable>
+        )}
         {offDaysSaving && <ActivityIndicator size="small" color="#6b7280" style={{ marginTop: 8 }} />}
       </View>
 
@@ -158,15 +208,26 @@ export default function ProfileScreen() {
 
       {/* 로그아웃 */}
       <Pressable style={s.logoutBtn} onPress={() => {
+        const doLogout = async () => {
+          try { await apiFetch("/users/me/push-token", { method: "DELETE" }); } catch {}
+          await supabase.auth.signOut();
+        };
+        // 웹(react-native-web)은 Alert.alert 가 아무것도 띄우지 않으므로 브라우저 확인창 사용 (고객 앱과 같은 방식)
+        if (Platform.OS === "web") {
+          if (window.confirm("로그아웃 하시겠습니까?")) doLogout();
+          return;
+        }
         Alert.alert("로그아웃", "로그아웃 하시겠습니까?", [
           { text: "취소", style: "cancel" },
-          { text: "로그아웃", style: "destructive", onPress: async () => {
-            try { await apiFetch("/users/me/push-token", { method: "DELETE" }); } catch {}
-            await supabase.auth.signOut();
-          }},
+          { text: "로그아웃", style: "destructive", onPress: doLogout },
         ]);
       }}>
         <Text style={s.logoutText}>로그아웃</Text>
+      </Pressable>
+
+      {/* 회원 탈퇴 */}
+      <Pressable style={s.withdrawBtn} onPress={handleWithdraw}>
+        <Text style={s.withdrawText}>회원 탈퇴</Text>
       </Pressable>
     </ScrollView>
   );
@@ -224,10 +285,13 @@ const s = StyleSheet.create({
   menuBtnArrow: { fontSize: 15, color: "#9ca3af" },
   logoutBtn: { margin: 16, marginTop: 8, padding: 14, backgroundColor: "#fff", borderRadius: 10, alignItems: "center", borderWidth: 1, borderColor: "#fecaca" },
   logoutText: { color: "#dc2626", fontWeight: "600", fontSize: 15 },
+  withdrawBtn: { marginHorizontal: 16, marginTop: 4, marginBottom: 24, padding: 10, alignItems: "center" },
+  withdrawText: { color: "#9ca3af", fontSize: 13, textDecorationLine: "underline" },
   offDayDesc: { fontSize: 12, color: "#9ca3af", marginBottom: 12, marginTop: -4 },
   weekdayRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
   weekdayBtn: { width: 40, height: 52, borderRadius: 10, backgroundColor: "#f0fdf4", borderWidth: 1, borderColor: "#bbf7d0", alignItems: "center", justifyContent: "center" },
   weekdayBtnOff: { backgroundColor: "#fee2e2", borderColor: "#fca5a5" },
+  weekdayBtnLocked: { opacity: 0.55 },  // 수정 전: 눌리지 않는 상태
   weekdayTxt: { fontSize: 14, fontWeight: "700", color: "#16a34a" },
   weekdayTxtOff: { color: "#dc2626" },
   weekdayOffLabel: { fontSize: 9, color: "#dc2626", fontWeight: "600", marginTop: 2 },
