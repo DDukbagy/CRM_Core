@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/axios";
 import DashboardLayout, { type SidebarItem } from "@/components/layout/DashboardLayout";
 import { Loader2, CheckCircle, XCircle, CheckSquare, AlertTriangle } from "lucide-react";
+import { toLocalDateStr } from "@/lib/date";
 
 export const instructorNav: SidebarItem[] = [
   { name: "대시보드", href: "/instructor", iconKey: "dashboard" },
@@ -80,9 +81,9 @@ export default function InstructorDashboard() {
 
   const [error, setError] = useState<string | null>(null);
 
-  const today = new Date().toISOString().slice(0, 10);
-  const futureEnd = (() => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); })();
-  const wideStart = (() => { const d = new Date(); d.setDate(d.getDate() - 90); return d.toISOString().slice(0, 10); })();
+  const today = toLocalDateStr();
+  const futureEnd = (() => { const d = new Date(); d.setDate(d.getDate() + 30); return toLocalDateStr(d); })();
+  const wideStart = (() => { const d = new Date(); d.setDate(d.getDate() - 90); return toLocalDateStr(d); })();
 
   const load = useCallback(async () => {
     try {

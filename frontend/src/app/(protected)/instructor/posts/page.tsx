@@ -10,7 +10,7 @@ import { Loader2, Plus, Trash2, Edit2, X, Image as ImageIcon, Send } from "lucid
 type MediaItem = { id?: number; url: string; media_type: "IMAGE" | "VIDEO"; sort_order?: number };
 type Post = {
   id: string;
-  type: "PROMOTION" | "FEEDBACK";
+  type: "PROMOTION" | "NOTICE" | "FEEDBACK" | "COMMUNITY";
   title: string | null;
   content: string | null;
   media_items: MediaItem[];
@@ -19,7 +19,7 @@ type Post = {
   is_public: boolean;
   created_at: string;
 };
-type Comment = { id: number; user_name: string | null; content: string; created_at: string };
+type Comment = { id: number; user_name: string | null; content: string; created_at: string; is_deleted: boolean };
 type Customer = { id: string; display_name: string };
 
 export default function PostsPage() {
@@ -44,7 +44,7 @@ export default function PostsPage() {
   const load = useCallback(async () => {
     try {
       const [postsRes, usersRes] = await Promise.allSettled([
-        api.get("/instructor-posts"),
+        api.get("/posts"),
         api.get("/users?role=CUSTOMER&limit=100"),
       ]);
       if (postsRes.status === "fulfilled") setPosts(postsRes.value.data ?? []);
@@ -67,7 +67,8 @@ export default function PostsPage() {
 
   function openEdit(post: Post) {
     setEditTarget(post);
-    setFormType(post.type);
+    // 작성 폼은 게시글/피드백 두 가지만 다룬다 (공지·커뮤니티는 게시글 폼으로 수정)
+    setFormType(post.type === "FEEDBACK" ? "FEEDBACK" : "PROMOTION");
     setFormContent(post.content ?? "");
     setFormCustomerId(post.customer_id ?? "");
     setFormMedia(post.media_items ?? []);
@@ -83,7 +84,7 @@ export default function PostsPage() {
       const uploaded: MediaItem[] = [];
       for (const file of files) {
         const isVideo = file.type.startsWith("video/");
-        const { data } = await api.post("/instructor-posts/upload-url", {
+        const { data } = await api.post("/posts/upload-url", {
           filename: file.name,
           content_type: file.type,
         });
@@ -105,12 +106,12 @@ export default function PostsPage() {
     setFormError("");
     try {
       if (editTarget) {
-        await api.patch(`/instructor-posts/${editTarget.id}`, {
+        await api.patch(`/posts/${editTarget.id}`, {
           content: formContent || null,
           media_items: formMedia.map((m, i) => ({ url: m.url, media_type: m.media_type, sort_order: i })),
         });
       } else {
-        await api.post("/instructor-posts", {
+        await api.post("/posts", {
           type: formType,
           title: formType === "PROMOTION" ? "게시글" : null,
           content: formContent || null,
@@ -126,7 +127,7 @@ export default function PostsPage() {
 
   async function handleDelete(id: string) {
     if (!confirm("게시물을 삭제하시겠습니까?")) return;
-    try { await api.delete(`/instructor-posts/${id}`); await load(); }
+    try { await api.delete(`/posts/${id}`); await load(); }
     catch { alert("삭제 실패"); }
   }
 
@@ -281,7 +282,7 @@ function PostCard({ post, onEdit, onDelete }: { post: Post; onEdit: () => void; 
   const [sending, setSending] = useState(false);
 
   async function loadComments() {
-    try { const res = await api.get(`/instructor-posts/${post.id}/comments`); setComments(res.data ?? []); }
+    try { const res = await api.get(`/posts/${post.id}/comments`); setComments(res.data ?? []); }
     catch { /* ignore */ }
   }
 
@@ -294,7 +295,7 @@ function PostCard({ post, onEdit, onDelete }: { post: Post; onEdit: () => void; 
     if (!commentInput.trim()) return;
     setSending(true);
     try {
-      const res = await api.post(`/instructor-posts/${post.id}/comments`, { content: commentInput.trim() });
+      const res = await api.post(`/posts/${post.id}/comments`, { content: commentInput.trim() });
       setComments(prev => [...prev, res.data]);
       setCommentInput("");
     } catch { /* ignore */ } finally { setSending(false); }
@@ -354,8 +355,14 @@ function PostCard({ post, onEdit, onDelete }: { post: Post; onEdit: () => void; 
             <p className="text-xs text-gray-400 italic">댓글이 없습니다</p>
           ) : comments.map(c => (
             <div key={c.id} className="bg-white rounded-lg p-2.5">
-              <p className="text-xs font-bold text-gray-700 mb-0.5">{c.user_name ?? "알 수 없음"}</p>
-              <p className="text-xs text-gray-600">{c.content}</p>
+              {c.is_deleted ? (
+                <p className="text-xs text-gray-400 italic">{c.content}</p>
+              ) : (
+                <>
+                  <p className="text-xs font-bold text-gray-700 mb-0.5">{c.user_name ?? "알 수 없음"}</p>
+                  <p className="text-xs text-gray-600">{c.content}</p>
+                </>
+              )}
             </div>
           ))}
           <div className="flex gap-2 pt-1">
