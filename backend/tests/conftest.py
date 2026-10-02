@@ -405,3 +405,60 @@ async def instructor_client(
         yield ac
 
     app.dependency_overrides.clear()
+
+
+# ── 로그인 사용자를 바꿔 가며 호출하는 클라이언트 ─────────────
+#   act("이름") 으로 그 사용자가 되어 호출한다. people 에 {이름: (id, 역할)} 을 등록해 쓴다.
+
+async def insert_user(
+    session: AsyncSession,
+    role: str,
+    *,
+    manager_id: Optional[uuid.UUID] = None,
+    status: str = "ACTIVE",
+    **fields,
+) -> uuid.UUID:
+    uid = uuid.uuid4()
+    values = {
+        "id": str(uid),
+        "username": f"u-{uid.hex[:10]}",
+        "email": f"u-{uid.hex[:10]}@example.com",
+        "display_name": f"{role.lower()}-{uid.hex[:4]}",
+        "is_active": True,
+        "status": status,
+        "role": role,
+        "manager_id": str(manager_id) if manager_id else None,
+        "feedback_consent": True,
+        **fields,
+    }
+    cols = ", ".join(values)
+    params = ", ".join(f":{k}" for k in values)
+    await session.execute(text(f"insert into public.users ({cols}) values ({params})"), values)
+    await session.commit()
+    return uid
+
+
+@pytest_asyncio.fixture
+async def actor(db_conn_and_sessionmaker: async_sessionmaker[AsyncSession]):
+    people: dict[str, tuple[uuid.UUID, str]] = {}
+    current: dict = {}
+
+    async def override_get_session() -> AsyncIterator[AsyncSession]:
+        async with db_conn_and_sessionmaker() as session:
+            yield session
+
+    async def override_get_current_user():
+        return current["user"]
+
+    app.dependency_overrides[get_session] = override_get_session
+    app.dependency_overrides[auth_deps.get_current_user] = override_get_current_user
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        def act(name: str) -> AsyncClient:
+            uid, role = people[name]
+            current["user"] = CurrentUser(
+                id=str(uid), email=None, phone=None, username=name, display_name=name,
+                role=role, status="ACTIVE", is_active=True,
+            )
+            return ac
+        yield act, people
+    app.dependency_overrides.clear()
