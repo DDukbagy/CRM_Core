@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import String, Integer, text
+from sqlalchemy import Column, ForeignKey, String, Integer, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy_utc import UtcDateTime
 from sqlmodel import SQLModel, Field, func
@@ -25,18 +25,15 @@ class Payment(SQLModel, table=True):
         sa_column_kwargs={"server_default": text("gen_random_uuid()")},
     )
 
+    # RESTRICT: 결제 기록은 보존 기간(PAYMENT_RETENTION_YEARS) 동안 회원 삭제로 함께 지워지면 안 된다
     customer_id: UUID = Field(
-        sa_type=PGUUID(as_uuid=True),
-        foreign_key="users.id",
-        nullable=False,
+        sa_column=Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False),
         description="결제한 고객 ID",
     )
 
     membership_id: Optional[UUID] = Field(
         default=None,
-        sa_type=PGUUID(as_uuid=True),
-        foreign_key="memberships.id",
-        nullable=True,
+        sa_column=Column(PGUUID(as_uuid=True), ForeignKey("memberships.id", ondelete="SET NULL"), nullable=True),
         description="연결된 멤버십 ID",
     )
 

@@ -2,7 +2,7 @@ from datetime import datetime, timezone, date
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import String, Text, Boolean, SmallInteger, Date, text
+from sqlalchemy import Column, ForeignKey, String, Text, Boolean, SmallInteger, Date, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy_utc import UtcDateTime
 from sqlmodel import SQLModel, Field, func
@@ -26,17 +26,14 @@ class Membership(SQLModel, table=True):
         sa_column_kwargs={"server_default": text("gen_random_uuid()")},
     )
 
+    # RESTRICT: 계약 기록은 보존 기간(app/core/retention.py) 동안 회원 삭제로 지워지지 않는다
     customer_id: UUID = Field(
-        sa_type=PGUUID(as_uuid=True),
-        foreign_key="users.id",
-        nullable=False,
+        sa_column=Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False),
         description="고객 ID",
     )
 
     instructor_id: UUID = Field(
-        sa_type=PGUUID(as_uuid=True),
-        foreign_key="users.id",
-        nullable=False,
+        sa_column=Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False),
         description="강사 ID",
     )
 

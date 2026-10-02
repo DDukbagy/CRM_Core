@@ -23,7 +23,13 @@ class Settings(BaseSettings):
     SUPABASE_URL: str
     SUPABASE_ANON_KEY: str
     SUPABASE_JWT_SECRET: str
-    SUPABASE_JWT_AUDIENCE: str = "authenticated"
+    # 토큰의 aud. 예전 이름 SUPABASE_JWT_AUD 도 받는다
+    SUPABASE_JWT_AUDIENCE: str = Field(
+        default="authenticated",
+        validation_alias=AliasChoices("SUPABASE_JWT_AUDIENCE", "SUPABASE_JWT_AUD"),
+    )
+    # 토큰의 iss. 비우면 SUPABASE_URL + /auth/v1 (커스텀 도메인 등으로 다를 때만 지정)
+    SUPABASE_JWT_ISSUER: str | None = None
 
     SECRET_KEY: SecretStr
     ALGORITHM: str = "HS256"
@@ -117,6 +123,8 @@ class Settings(BaseSettings):
 
     @property
     def SUPABASE_ISSUER(self) -> str:
+        if self.SUPABASE_JWT_ISSUER and self.SUPABASE_JWT_ISSUER.strip():
+            return self.SUPABASE_JWT_ISSUER.strip().rstrip("/")
         return self.SUPABASE_URL.rstrip("/") + "/auth/v1"
 
     @property

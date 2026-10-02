@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime, date
 from uuid import UUID
-from typing import Optional, List
+from typing import List
 from pydantic import BaseModel, EmailStr, ConfigDict, field_validator
+
+from app.core.auth.security import MAX_PASSWORD_BYTES
 
 
 class UserRead(BaseModel):
@@ -44,6 +46,7 @@ class UserRead(BaseModel):
         return v if v is not None else []
 
     is_active: bool = True
+    withdrawn_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -131,3 +134,14 @@ class UserCreate(BaseModel):
     role: str = "CUSTOMER"
     status: str = "ACTIVE"
     manager_id: UUID | None = None
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_length(cls, v: str) -> str:
+        if len(v.encode("utf-8")) > MAX_PASSWORD_BYTES:
+            raise ValueError(f"비밀번호는 {MAX_PASSWORD_BYTES}바이트 이하여야 합니다")
+        return v
+
+class RegisterCustomerByEmail(BaseModel):
+    """강사가 이메일로 담당 고객을 등록하는 요청"""
+    email: str

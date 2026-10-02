@@ -3,7 +3,7 @@ import os
 
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -26,7 +26,8 @@ def _get_s3_client():
         aws_secret_access_key=SECRET_KEY,
         region_name=REGION,
         endpoint_url=f"https://s3.{REGION}.amazonaws.com",
-        config=Config(signature_version="s3v4", region_name=REGION),
+        # 일시적인 네트워크·스로틀링 오류는 botocore가 지수 백오프로 최대 5회 재시도한다
+        config=Config(signature_version="s3v4", region_name=REGION, retries={"max_attempts": 5, "mode": "standard"}),
     )
 
 
@@ -117,6 +118,7 @@ def delete_file_from_s3(s3_key: str) -> bool:
         s3.delete_object(Bucket=BUCKET_NAME, Key=s3_key)
         logger.info("Deleted S3 object: %s", s3_key)
         return True
-    except ClientError as e:
-        logger.error("S3 delete error: %s", e)
+    except (ClientError, BotoCoreError) as e:
+        # 재시도 후에도 실패하면 객체가 남는다. 키를 남겨 수동 정리할 수 있게 한다
+        logger.error("S3 delete failed after retries (orphaned object) key=%s error=%s", s3_key, e)
         return False

@@ -3,8 +3,6 @@ from __future__ import annotations
 import base64
 import json
 import secrets
-import os
-import hashlib
 import logging
 from dataclasses import dataclass
 from typing import Optional, Any
@@ -14,7 +12,6 @@ from uuid import UUID
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer, OAuth2PasswordBearer
 from jose import jwt as jose_jwt
-from jose.exceptions import JWTError
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -161,13 +158,9 @@ async def verify_any_access_token(token: str) -> dict:
         return await verify_supabase_access_token(
             token=token,
             supabase_url=settings.SUPABASE_URL,
-            jwt_secret=getattr(settings, "SUPABASE_JWT_SECRET", None),
-            issuer_override=getattr(settings, "SUPABASE_JWT_ISSUER", None),
-            audience=getattr(
-                settings,
-                "SUPABASE_JWT_AUDIENCE",
-                getattr(settings, "SUPABASE_JWT_AUD", "authenticated"),
-            ),
+            jwt_secret=settings.SUPABASE_JWT_SECRET,
+            issuer_override=settings.SUPABASE_ISSUER,
+            audience=settings.SUPABASE_JWT_AUDIENCE,
         )
     except SupabaseJWTExpired:
         raise HTTPException(status_code=401, detail="Token expired")
@@ -277,6 +270,10 @@ async def _get_or_create_user_from_claims(
     result = await session.execute(select(User).where(User.id == user_uuid))
     user = result.scalar_one_or_none()
 
+    # 탈퇴한 계정은 같은 Supabase 계정으로 다시 로그인해도 막는다 (개인정보는 이미 익명화됨)
+    if user is not None and (user.status or "").upper() == "WITHDRAWN":
+        raise HTTPException(status_code=403, detail="탈퇴한 계정입니다.")
+
     # JIT 생성
     if user is None:
         username_base = _make_username(user_uuid, email)
@@ -312,6 +309,16 @@ async def _get_or_create_user_from_claims(
                 if existing is not None:
                     user = existing
                     break
+                # 같은 이메일이 다른 계정(id)에 이미 있으면 재시도해도 실패한다
+                # 예: Supabase에서 계정을 지우고 같은 이메일로 다시 가입
+                if email:
+                    taken = await session.execute(select(User.id).where(User.email == email))
+                    if taken.scalar_one_or_none() is not None:
+                        logger.warning("JIT provisioning blocked: email already used by another account (sub=%s)", user_uuid)
+                        raise HTTPException(
+                            status_code=409,
+                            detail="이미 다른 계정에 등록된 이메일입니다. 관리자에게 문의하세요.",
+                        )
 
         if user is None:
             raise HTTPException(status_code=500, detail="Failed to provision user")
