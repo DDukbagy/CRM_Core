@@ -1,14 +1,7 @@
 // app/booking/[id].tsx
 import { useEffect, useState } from "react";
-import {
-  View,
-  Text,
-  ScrollView,
-  Pressable,
-  Alert,
-  ActivityIndicator,
-  StyleSheet,
-} from "react-native";
+import { View, Text, ScrollView, Pressable, ActivityIndicator, StyleSheet } from "react-native";
+import { appAlert } from "@/lib/alert";
 import { useLocalSearchParams, useRouter } from "expo-router";
 // SDK 54부터 cacheDirectory·downloadAsync 등 기존 API는 legacy 경로에 있다
 import * as FileSystem from "expo-file-system/legacy";
@@ -50,7 +43,7 @@ export default function BookingDetailScreen() {
   }, [id]);
 
   async function handleCancel() {
-    Alert.alert("예약 취소", "확정된 예약을 취소하시겠습니까?", [
+    appAlert("예약 취소", "확정된 예약을 취소하시겠습니까?", [
       { text: "아니오", style: "cancel" },
       {
         text: "취소",
@@ -58,10 +51,10 @@ export default function BookingDetailScreen() {
         onPress: async () => {
           try {
             await apiFetch(`/bookings/${id}/cancel`, { method: "PATCH" });
-            Alert.alert("완료", "예약이 취소되었습니다.");
+            appAlert("완료", "예약이 취소되었습니다.");
             router.back();
           } catch (e: any) {
-            Alert.alert("오류", e?.message ?? "취소 실패");
+            appAlert("오류", e?.message ?? "취소 실패");
           }
         },
       },
@@ -69,7 +62,7 @@ export default function BookingDetailScreen() {
   }
 
   async function handleWithdraw() {
-    Alert.alert("신청 철회", "예약 신청을 철회하시겠습니까?", [
+    appAlert("신청 철회", "예약 신청을 철회하시겠습니까?", [
       { text: "아니오", style: "cancel" },
       {
         text: "철회",
@@ -77,10 +70,10 @@ export default function BookingDetailScreen() {
         onPress: async () => {
           try {
             await apiFetch(`/bookings/${id}/withdraw`, { method: "PATCH" });
-            Alert.alert("완료", "신청이 철회되었습니다.");
+            appAlert("완료", "신청이 철회되었습니다.");
             router.back();
           } catch (e: any) {
-            Alert.alert("오류", e?.message ?? "철회 실패");
+            appAlert("오류", e?.message ?? "철회 실패");
           }
         },
       },
@@ -104,7 +97,7 @@ export default function BookingDetailScreen() {
 
       const canShare = await Sharing.isAvailableAsync();
       if (!canShare) {
-        Alert.alert("알림", "이 기기에서는 공유가 지원되지 않습니다.");
+        appAlert("알림", "이 기기에서는 공유가 지원되지 않습니다.");
         return;
       }
 
@@ -114,7 +107,7 @@ export default function BookingDetailScreen() {
         UTI: "public.calendar-event",
       });
     } catch (e: any) {
-      Alert.alert("오류", e?.message ?? "캘린더 다운로드 실패");
+      appAlert("오류", e?.message ?? "캘린더 다운로드 실패");
     } finally {
       setDownloading(false);
     }

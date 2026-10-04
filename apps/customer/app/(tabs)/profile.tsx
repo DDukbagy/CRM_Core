@@ -1,6 +1,7 @@
 // app/(tabs)/profile.tsx
 import { useEffect, useRef, useState, useCallback } from "react";
-import { View, Text, Pressable, Alert, ActivityIndicator, StyleSheet, Platform, ScrollView } from "react-native";
+import { View, Text, Pressable, ActivityIndicator, StyleSheet, Platform, ScrollView } from "react-native";
+import { appAlert } from "@/lib/alert";
 import { useRouter, useFocusEffect } from "expo-router";
 import { apiFetch } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
@@ -39,7 +40,7 @@ export default function ProfileScreen() {
       if (!window.confirm("로그아웃 하시겠습니까?")) return;
       await doLogout();
     } else {
-      Alert.alert("로그아웃", "로그아웃 하시겠습니까?", [
+      appAlert("로그아웃", "로그아웃 하시겠습니까?", [
         { text: "취소", style: "cancel" },
         { text: "로그아웃", style: "destructive", onPress: doLogout },
       ]);
@@ -57,7 +58,7 @@ export default function ProfileScreen() {
         await apiFetch("/users/me/withdraw", { method: "POST" });
       } catch (e) {
         const msg = e instanceof Error ? e.message : "탈퇴 처리에 실패했습니다.";
-        if (Platform.OS === "web") window.alert(msg); else Alert.alert("오류", msg);
+        if (Platform.OS === "web") window.alert(msg); else appAlert("오류", msg);
         return;
       }
       await supabase.auth.signOut();
@@ -66,7 +67,7 @@ export default function ProfileScreen() {
       if (!window.confirm(`${title}\n\n${message}`)) return;
       await doWithdraw();
     } else {
-      Alert.alert(title, message, [
+      appAlert(title, message, [
         { text: "취소", style: "cancel" },
         { text: "탈퇴", style: "destructive", onPress: doWithdraw },
       ]);

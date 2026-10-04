@@ -1,10 +1,7 @@
 // app/(tabs)/schedule.tsx
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  View, Text, ScrollView, Pressable, TextInput, Alert,
-  ActivityIndicator, Modal, Animated, Dimensions, StyleSheet,
-  KeyboardAvoidingView, Platform, AppState, PanResponder,
-} from "react-native";
+import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Modal, Animated, Dimensions, StyleSheet, KeyboardAvoidingView, Platform, AppState, PanResponder } from "react-native";
+import { appAlert } from "@/lib/alert";
 import { useFocusEffect, useRouter } from "expo-router";
 import { apiFetch } from "@/lib/api";
 import type { UserRead, BookingRead, AvailabilityResponse, AvailabilitySlot, BookingCreate, CustomerPassRead } from "@/types/api";
@@ -813,7 +810,7 @@ export default function ScheduleScreen() {
   function openBookingModal(slots: AvailabilitySlot[]) {
     const today = toLocalDateStr();
     if (selectedDate <= today) {
-      Alert.alert("알림", "당일 및 지난 날짜는 예약 신청이 불가합니다.");
+      appAlert("알림", "당일 및 지난 날짜는 예약 신청이 불가합니다.");
       return;
     }
     if (slots.length === 0) return;
@@ -838,12 +835,12 @@ export default function ScheduleScreen() {
       const msg = selectedSlots.length > 1
         ? `${selectedSlots.length}개 시간 예약이 신청되었습니다.\n강사 수락 후 확정됩니다.`
         : "예약이 신청되었습니다.\n강사 수락 후 확정됩니다.";
-      Alert.alert("완료", msg);
+      appAlert("완료", msg);
       setModalVisible(false);
       load();
     } catch (e: any) {
       const detail = (e?.body as any)?.detail ?? e?.message ?? "예약 실패";
-      Alert.alert("오류", typeof detail === "string" ? detail : JSON.stringify(detail));
+      appAlert("오류", typeof detail === "string" ? detail : JSON.stringify(detail));
     } finally { setSubmitting(false); }
   }
 
@@ -1208,7 +1205,7 @@ function BookingDetailModal({ visible, booking, slotTimeMap, instructorName, onC
   }
 
   async function saveEdit() {
-    if (!editTopic.trim()) { Alert.alert("확인", "수업 주제를 입력해주세요."); return; }
+    if (!editTopic.trim()) { appAlert("확인", "수업 주제를 입력해주세요."); return; }
     setSaving(true);
     try {
       const updated = await apiFetch<BookingRead>(`/bookings/${booking!.id}`, {
@@ -1218,7 +1215,7 @@ function BookingDetailModal({ visible, booking, slotTimeMap, instructorName, onC
       onUpdated(updated);
       setEditing(false);
     } catch (e: any) {
-      Alert.alert("오류", e?.message ?? "수정에 실패했습니다.");
+      appAlert("오류", e?.message ?? "수정에 실패했습니다.");
     } finally {
       setSaving(false);
     }
@@ -1236,12 +1233,12 @@ function BookingDetailModal({ visible, booking, slotTimeMap, instructorName, onC
         onCancelled(res.id);
       } else {
         // 취소 신청(cancel) → CANCEL_REQUESTED 상태로 UI 갱신
-        Alert.alert("알림", "취소 신청이 완료되었습니다.\n강사 승인 후 취소됩니다.");
+        appAlert("알림", "취소 신청이 완료되었습니다.\n강사 승인 후 취소됩니다.");
         onUpdated({ ...booking!, status: res.status as BookingRead["status"], updated_at: res.updated_at });
       }
     } catch (e: any) {
       const msg = (e as any)?.body?.error?.message ?? (e as any)?.body?.detail ?? e?.message ?? "처리에 실패했습니다.";
-      Alert.alert("오류", typeof msg === "string" ? msg : JSON.stringify(msg));
+      appAlert("오류", typeof msg === "string" ? msg : JSON.stringify(msg));
     } finally {
       setSubmitting(false);
     }
@@ -1254,7 +1251,7 @@ function BookingDetailModal({ visible, booking, slotTimeMap, instructorName, onC
       onUpdated(res);
     } catch (e: any) {
       const msg = (e as any)?.body?.error?.message ?? (e as any)?.body?.detail ?? e?.message ?? "처리에 실패했습니다.";
-      Alert.alert("오류", typeof msg === "string" ? msg : JSON.stringify(msg));
+      appAlert("오류", typeof msg === "string" ? msg : JSON.stringify(msg));
     } finally {
       setSubmitting(false);
     }

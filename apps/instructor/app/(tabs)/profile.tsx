@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { View, Text, ScrollView, Pressable, TextInput, Alert, StyleSheet, ActivityIndicator, Platform } from "react-native";
+import { appAlert } from "@/lib/alert";
 import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { apiFetch } from "@/lib/api";
@@ -51,9 +52,9 @@ export default function ProfileScreen() {
       const updated = await apiFetch<UserRead>("/users/me", { method: "PATCH", body });
       setMe(updated);
       setEditing(false);
-      Alert.alert("저장됨", "프로필이 저장됐습니다.");
+      appAlert("저장됨", "프로필이 저장됐습니다.");
     } catch (e: unknown) {
-      Alert.alert("오류", e instanceof Error ? e.message : "저장 실패");
+      appAlert("오류", e instanceof Error ? e.message : "저장 실패");
     }
   }
 
@@ -72,7 +73,7 @@ export default function ProfileScreen() {
         await apiFetch("/users/me/withdraw", { method: "POST" });
       } catch (e) {
         const msg = e instanceof Error ? e.message : "탈퇴 처리에 실패했습니다.";
-        if (Platform.OS === "web") window.alert(msg); else Alert.alert("오류", msg);
+        if (Platform.OS === "web") window.alert(msg); else appAlert("오류", msg);
         return;
       }
       await supabase.auth.signOut();
@@ -81,7 +82,7 @@ export default function ProfileScreen() {
       if (!window.confirm(`${title}\n\n${message}`)) return;
       await doWithdraw();
     } else {
-      Alert.alert(title, message, [
+      appAlert(title, message, [
         { text: "취소", style: "cancel" },
         { text: "탈퇴", style: "destructive", onPress: doWithdraw },
       ]);
@@ -164,7 +165,7 @@ export default function ProfileScreen() {
                 setOffDaysEditing(false);
               } catch (e: unknown) {
                 const msg = e instanceof Error ? e.message : "저장 실패";
-                if (Platform.OS === "web") window.alert(msg); else Alert.alert("오류", msg);
+                if (Platform.OS === "web") window.alert(msg); else appAlert("오류", msg);
               } finally {
                 setOffDaysSaving(false);
               }
@@ -217,7 +218,7 @@ export default function ProfileScreen() {
           if (window.confirm("로그아웃 하시겠습니까?")) doLogout();
           return;
         }
-        Alert.alert("로그아웃", "로그아웃 하시겠습니까?", [
+        appAlert("로그아웃", "로그아웃 하시겠습니까?", [
           { text: "취소", style: "cancel" },
           { text: "로그아웃", style: "destructive", onPress: doLogout },
         ]);
