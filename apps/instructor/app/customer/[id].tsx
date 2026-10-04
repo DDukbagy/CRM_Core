@@ -2,24 +2,25 @@ import { useEffect, useState } from "react";
 import { View, Text, ScrollView, StyleSheet } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { apiFetch } from "@/lib/api";
-import type { UserRead, MembershipRead } from "@/types/api";
+import type { UserRead, CustomerPassRead } from "@/types/api";
 
 export default function CustomerDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [customer, setCustomer] = useState<UserRead | null>(null);
-  const [memberships, setMemberships] = useState<MembershipRead[]>([]);
+  // 이 고객에게 발급한 수강권 (멤버십은 수강권으로 통합, 2026-10-04)
+  const [passes, setPasses] = useState<CustomerPassRead[]>([]);
 
   useEffect(() => {
     Promise.all([
       apiFetch<UserRead>(`/users/${id}`),
-      apiFetch<MembershipRead[]>(`/memberships?customer_id=${id}&active_only=false`),
-    ]).then(([u, m]) => { setCustomer(u); setMemberships(m); }).catch(() => {});
+      apiFetch<CustomerPassRead[]>(`/passes/customer-passes?customer_id=${id}`),
+    ]).then(([u, p]) => { setCustomer(u); setPasses(p); }).catch(() => {});
   }, [id]);
 
   if (!customer) return <View style={s.center}><Text>불러오는 중...</Text></View>;
 
-  const active = memberships.filter(m => m.is_active);
-  const inactive = memberships.filter(m => !m.is_active);
+  const active = passes.filter(p => p.status === "ACTIVE");
+  const inactive = passes.filter(p => p.status !== "ACTIVE");
 
   return (
     <ScrollView style={s.container}>
@@ -37,13 +38,13 @@ export default function CustomerDetailScreen() {
       <Text style={s.section}>활성 수강권 ({active.length})</Text>
       {active.length === 0
         ? <View style={s.emptyBox}><Text style={s.emptyText}>활성 수강권이 없습니다.</Text></View>
-        : active.map(m => <MembershipCard key={m.id} m={m} />)
+        : active.map(p => <PassCard key={p.id} p={p} />)
       }
 
       {inactive.length > 0 && (
         <>
           <Text style={s.section}>만료/비활성 수강권 ({inactive.length})</Text>
-          {inactive.map(m => <MembershipCard key={m.id} m={m} />)}
+          {inactive.map(p => <PassCard key={p.id} p={p} />)}
         </>
       )}
     </ScrollView>
@@ -59,20 +60,18 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-function MembershipCard({ m }: { m: MembershipRead }) {
+const PASS_STATUS_LABEL: Record<string, string> = { COMPLETED: "완료", EXPIRED: "만료", CANCELLED: "취소" };
+
+function PassCard({ p }: { p: CustomerPassRead }) {
+  const active = p.status === "ACTIVE";
   return (
-    <View style={[s.memCard, !m.is_active && s.memCardInactive]}>
+    <View style={[s.memCard, !active && s.memCardInactive]}>
       <View style={s.memHeader}>
-        <Text style={s.memType}>{m.type === "TIMES" ? "횟수제" : "기간제"}</Text>
-        {!m.is_active && <Text style={s.inactiveTag}>비활성</Text>}
+        <Text style={s.memType}>{p.pass_name}</Text>
+        {!active && <Text style={s.inactiveTag}>{PASS_STATUS_LABEL[p.status] ?? "비활성"}</Text>}
       </View>
-      {m.type === "TIMES" && (
-        <Text style={s.memInfo}>잔여 {m.remaining_count ?? 0} / {m.total_count ?? 0}회</Text>
-      )}
-      {m.type === "PERIOD" && m.expires_at && (
-        <Text style={s.memInfo}>만료일: {m.expires_at}</Text>
-      )}
-      {m.notes && <Text style={s.memNotes}>{m.notes}</Text>}
+      <Text style={s.memInfo}>잔여 {p.sessions_remaining} / {p.sessions_total}회</Text>
+      {p.note && <Text style={s.memNotes}>{p.note}</Text>}
     </View>
   );
 }

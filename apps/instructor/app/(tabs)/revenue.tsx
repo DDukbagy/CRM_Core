@@ -1,5 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
-import { View, Text, ScrollView, RefreshControl, Pressable, Alert, Modal, TextInput, StyleSheet } from "react-native";
+import { View, Text, ScrollView, RefreshControl, Pressable, Modal, TextInput, StyleSheet } from "react-native";
+import { appAlert } from "@/lib/alert";
+import { useRouter } from "expo-router";
 import { apiFetch } from "@/lib/api";
 import type { PaymentRead, InstructorStats } from "@/types/api";
 
@@ -7,11 +9,12 @@ const METHODS = ["CASH", "TRANSFER", "TOSS", "KAKAO", "NAVER"];
 const METHOD_LABEL: Record<string, string> = { CASH: "현금", TRANSFER: "계좌이체", TOSS: "토스", KAKAO: "카카오페이", NAVER: "네이버페이" };
 
 export default function RevenueScreen() {
+  const router = useRouter();
   const [stats, setStats] = useState<InstructorStats | null>(null);
   const [payments, setPayments] = useState<PaymentRead[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ customer_id: "", amount: "", method: "CASH", membership_id: "" });
+  const [form, setForm] = useState({ customer_id: "", amount: "", method: "CASH", customer_pass_id: "" });
 
   const load = useCallback(async () => {
     try {
@@ -28,18 +31,18 @@ export default function RevenueScreen() {
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
   async function recordPayment() {
-    if (!form.customer_id || !form.amount) { Alert.alert("오류", "고객 ID와 금액을 입력해주세요."); return; }
+    if (!form.customer_id || !form.amount) { appAlert("오류", "고객 ID와 금액을 입력해주세요."); return; }
     const amount = parseInt(form.amount);
-    if (isNaN(amount) || amount <= 0) { Alert.alert("오류", "올바른 금액을 입력해주세요."); return; }
+    if (isNaN(amount) || amount <= 0) { appAlert("오류", "올바른 금액을 입력해주세요."); return; }
     try {
       const body: Record<string, unknown> = { customer_id: form.customer_id, amount, method: form.method };
-      if (form.membership_id) body.membership_id = form.membership_id;
+      if (form.customer_pass_id.trim()) body.customer_pass_id = Number(form.customer_pass_id.trim());
       await apiFetch("/payments", { method: "POST", body });
       setShowModal(false);
-      setForm({ customer_id: "", amount: "", method: "CASH", membership_id: "" });
+      setForm({ customer_id: "", amount: "", method: "CASH", customer_pass_id: "" });
       await load();
     } catch (e: unknown) {
-      Alert.alert("오류", e instanceof Error ? e.message : "등록 실패");
+      appAlert("오류", e instanceof Error ? e.message : "등록 실패");
     }
   }
 
@@ -56,6 +59,12 @@ export default function RevenueScreen() {
             <Text style={s.summaryDetail}>결제 {payments.filter(p => p.status === "COMPLETED").length}건 · 담당 고객 {stats.customer_count}명</Text>
           </View>
         )}
+
+        {/* 운영 현황(매출 분석·프로모션) — 확인 전용, 수정은 강사 웹 */}
+        <Pressable style={s.businessBtn} onPress={() => router.push("/business" as any)}>
+          <Text style={s.businessBtnText}>📊 매출 분석 · 프로모션 보기</Text>
+          <Text style={s.businessBtnArrow}>›</Text>
+        </Pressable>
 
         <View style={s.listHeader}>
           <Text style={s.listTitle}>결제 내역</Text>
@@ -109,8 +118,8 @@ export default function RevenueScreen() {
             </ScrollView>
 
             <Text style={s.label}>수강권 ID (선택)</Text>
-            <TextInput value={form.membership_id} onChangeText={v => setForm(f => ({ ...f, membership_id: v }))}
-              placeholder="수강권 UUID (선택)" style={s.input} autoCapitalize="none" />
+            <TextInput value={form.customer_pass_id} onChangeText={v => setForm(f => ({ ...f, customer_pass_id: v }))}
+              placeholder="수강권 번호 (선택)" style={s.input} autoCapitalize="none" />
 
             <Pressable onPress={recordPayment} style={s.submitBtn}>
               <Text style={s.submitText}>등록</Text>
@@ -125,6 +134,9 @@ export default function RevenueScreen() {
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f9fafb" },
   summaryCard: { backgroundColor: "#16a34a", margin: 16, borderRadius: 16, padding: 20 },
+  businessBtn: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginHorizontal: 16, marginBottom: 4, padding: 14, backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#e5e7eb" },
+  businessBtnText: { fontSize: 14, fontWeight: "600", color: "#111" },
+  businessBtnArrow: { fontSize: 20, color: "#9ca3af" },
   summaryLabel: { color: "#bbf7d0", fontSize: 13 },
   summaryAmount: { color: "#fff", fontSize: 32, fontWeight: "700", marginVertical: 4 },
   summaryDetail: { color: "#bbf7d0", fontSize: 12 },

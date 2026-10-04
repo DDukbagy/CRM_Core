@@ -12,6 +12,7 @@ export interface UserRead {
   status: string; // ACTIVE | PENDING | SUSPENDED | WITHDRAWN(탈퇴)
   is_active: boolean;
   withdrawn_at?: string | null; // 탈퇴 처리 시각
+  feedback_consent?: boolean;   // 피드백 공개 동의
   manager_id: string | null;
   // 강사 필드
   instructor_tier: string | null;
@@ -43,21 +44,7 @@ export interface UserUpdate {
   birth_date?: string | null;
   gender?: string | null;
   lesson_purpose?: string | null;
-}
-
-export interface MembershipRead {
-  id: string;
-  customer_id: string;
-  instructor_id: string;
-  type: "TIMES" | "PERIOD";
-  total_count: number | null;
-  remaining_count: number | null;
-  started_at: string | null;
-  expires_at: string | null;
-  is_active: boolean;
-  notes: string | null;
-  created_at: string;
-  updated_at: string;
+  feedback_consent?: boolean;
 }
 
 export type BookingStatus = "REQUESTED" | "CONFIRMED" | "CANCEL_REQUESTED" | "CANCELLED" | "COMPLETED" | "NO_SHOW";
@@ -74,7 +61,6 @@ export interface BookingRead {
   cancel_reason: string | null;
   time_slot_id: number;
   guest_id: string;
-  membership_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -122,6 +108,8 @@ export interface InstructorPublicRead {
   location: string | null;
   specialties: string[];
   bio: string | null;
+  career_years?: number | null;
+  certifications?: string | null;
 }
 
 export type MatchRequestType = "MATCH" | "CONSULTATION";
@@ -232,4 +220,41 @@ export interface CalendarBlockRead {
   kind: "CLOSE" | "OPEN";
   reason: string | null;
   created_at: string;
+}
+
+// 레슨 노트 (피드백 게시물을 통합, 2026-10-04). file_url 은 첨부 PDF 서명 주소
+export interface LessonNoteRead {
+  id: string;
+  customer_id: string;
+  booking_id: number | null;
+  instructor_id: string;
+  title: string | null;
+  content: string | null;
+  file_name: string | null;
+  file_url: string | null;
+  is_shared: boolean;
+  customer_name: string | null;
+  instructor_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// 할인·이벤트 프로모션 (프로토타입, 결제 연동 전 안내용)
+export interface PromotionRead {
+  id: number;
+  instructor_id: string;
+  pass_type_id: number | null;
+  pass_type_name: string | null;
+  pass_price: number | null;
+  discounted_price: number | null;
+  title: string;
+  description: string | null;
+  discount_type: "PERCENT" | "AMOUNT" | "NONE";
+  discount_value: number;
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+  status: "SCHEDULED" | "ONGOING" | "ENDED" | "PAUSED";
+  created_at: string;
+  updated_at: string;
 }

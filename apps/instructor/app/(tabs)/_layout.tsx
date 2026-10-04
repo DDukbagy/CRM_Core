@@ -37,6 +37,10 @@ export default function TabsLayout() {
         options={{ title: "글쓰기", tabBarIcon: ({ color, size }) => <Ionicons name="create-outline" size={size} color={color} /> }}
       />
       <Tabs.Screen
+        name="notes"
+        options={{ title: "레슨노트", tabBarIcon: ({ color, size }) => <Ionicons name="document-text-outline" size={size} color={color} /> }}
+      />
+      <Tabs.Screen
         name="revenue"
         options={{ title: "매출", tabBarIcon: ({ color, size }) => <Ionicons name="bar-chart-outline" size={size} color={color} /> }}
       />

@@ -271,8 +271,41 @@ function PostCard({ post }: { post: InstructorPostRead }) {
         <MediaCarousel items={post.media_items} />
       )}
 
+      {/* 좋아요 (2026-03 화면 개편 때 빠졌던 기능 복원) */}
+      <LikeButton post={post} />
+
       {/* 댓글 */}
       <CommentsSection postId={post.id} />
+    </View>
+  );
+}
+
+// ─── 좋아요 ──────────────────────────────────────────────
+function LikeButton({ post }: { post: InstructorPostRead }) {
+  const [isLiked, setIsLiked] = useState(post.is_liked);
+  const [likeCount, setLikeCount] = useState(post.like_count);
+
+  async function toggleLike() {
+    const wasLiked = isLiked;
+    // 낙관적 업데이트
+    setIsLiked(!wasLiked);
+    setLikeCount(c => c + (wasLiked ? -1 : 1));
+    try {
+      const res = await apiFetch<{ ok: boolean; is_liked: boolean }>(`/posts/${post.id}/like`, { method: "POST" });
+      setIsLiked(res.is_liked);
+    } catch {
+      // 롤백
+      setIsLiked(wasLiked);
+      setLikeCount(c => c + (wasLiked ? 1 : -1));
+    }
+  }
+
+  return (
+    <View style={s.actions}>
+      <Pressable style={s.actionBtn} onPress={toggleLike}>
+        <Text style={[s.heart, isLiked && s.heartLiked]}>{isLiked ? "♥" : "♡"}</Text>
+        <Text style={[s.actionCount, isLiked && s.actionCountLiked]}>{likeCount}</Text>
+      </Pressable>
     </View>
   );
 }
@@ -324,6 +357,12 @@ export default function PostsScreen() {
 }
 
 const s = StyleSheet.create({
+  actions: { flexDirection: "row", marginTop: 4, marginBottom: 4, gap: 18 },
+  actionBtn: { flexDirection: "row", alignItems: "center", gap: 5 },
+  heart: { fontSize: 22, color: "#6b7280" },
+  heartLiked: { color: "#ef4444" },
+  actionCount: { fontSize: 14, color: "#374151", fontWeight: "600" },
+  actionCountLiked: { color: "#ef4444" },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   emptyContainer: { flex: 1 },
   emptyBox: { flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 80 },

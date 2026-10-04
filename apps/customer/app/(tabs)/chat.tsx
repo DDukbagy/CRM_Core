@@ -3,8 +3,10 @@ import {
   View, Text, StyleSheet, Pressable, FlatList, TextInput,
   ActivityIndicator, RefreshControl, KeyboardAvoidingView, Platform,
 } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { apiFetch } from "@/lib/api";
+import { appAlert } from "@/lib/alert";
+import type { UserRead } from "@/types/api";
 
 // ── 타입 ──────────────────────────────────────────────────────
 interface ChatRoom {
@@ -131,6 +133,7 @@ function ChatDetail({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [me, setMe] = useState<UserRead | null>(null);
   const flatRef = useRef<FlatList>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -141,6 +144,26 @@ function ChatDetail({
     } catch (e) {
       console.error("메시지 로딩 실패:", e);
     }
+  }
+
+  useEffect(() => {
+    apiFetch<UserRead>("/users/me").then(setMe).catch(() => {});
+  }, []);
+
+  // 문의한 강사를 담당 강사로 지정 → 그 강사의 수강권 구매·예약이 열린다
+  function selectManager() {
+    appAlert("담당 강사 지정", `${room.other_name} 강사를 담당 강사로 지정할까요?\n지정하면 이 강사의 수강권 구매와 레슨 예약을 할 수 있습니다.`, [
+      { text: "취소", style: "cancel" },
+      {
+        text: "지정", onPress: async () => {
+          try {
+            setMe(await apiFetch<UserRead>("/users/me/manager", { method: "PUT", body: { instructor_id: room.other_id } }));
+          } catch (e) {
+            appAlert("오류", e instanceof Error ? e.message : "지정에 실패했습니다.");
+          }
+        },
+      },
+    ]);
   }
 
   useEffect(() => {
@@ -189,6 +212,13 @@ function ChatDetail({
           <Text style={s.backBtnText}>‹</Text>
         </Pressable>
         <Text style={s.detailTitle}>{room.other_name} 강사</Text>
+        {me && (me.manager_id === room.other_id ? (
+          <View style={s.managerBadge}><Text style={s.managerBadgeText}>담당 강사</Text></View>
+        ) : (
+          <Pressable style={s.managerBtn} onPress={selectManager}>
+            <Text style={s.managerBtnText}>담당 강사로 지정</Text>
+          </Pressable>
+        ))}
       </View>
 
       {/* 메시지 목록 */}
@@ -234,6 +264,19 @@ function ChatDetail({
 // ── 강사 채팅 탭 ──────────────────────────────────────────────
 function InstructorChatTab() {
   const [selectedRoom, setSelectedRoom] = useState<ChatRoom | null>(null);
+  // 강사 찾기 "문의하기" 에서 넘어오면 그 방을 바로 연다 (/chat?room=<id>)
+  const { room: roomParam } = useLocalSearchParams<{ room?: string }>();
+  const router = useRouter();
+  useEffect(() => {
+    if (!roomParam) return;
+    apiFetch<ChatRoom[]>("/chat/rooms")
+      .then(rooms => {
+        const r = rooms.find(x => x.id === roomParam);
+        if (r) setSelectedRoom(r);
+      })
+      .catch(() => {})
+      .finally(() => router.setParams({ room: undefined }));
+  }, [roomParam, router]);
 
   if (selectedRoom) {
     return <ChatDetail room={selectedRoom} onBack={() => setSelectedRoom(null)} />;
@@ -335,7 +378,11 @@ const s = StyleSheet.create({
   },
   backBtn: { padding: 8 },
   backBtnText: { fontSize: 28, color: "#16a34a", lineHeight: 30 },
-  detailTitle: { fontSize: 16, fontWeight: "700", color: "#111", marginLeft: 4 },
+  detailTitle: { fontSize: 16, fontWeight: "700", color: "#111", marginLeft: 4, flex: 1 },
+  managerBtn: { backgroundColor: "#16a34a", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, marginRight: 8 },
+  managerBtnText: { color: "#fff", fontSize: 12, fontWeight: "700" },
+  managerBadge: { backgroundColor: "#dcfce7", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, marginRight: 8 },
+  managerBadgeText: { color: "#16a34a", fontSize: 12, fontWeight: "700" },
 
   // 말풍선
   bubble: { maxWidth: "75%", borderRadius: 16, padding: 10 },

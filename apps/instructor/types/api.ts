@@ -23,21 +23,6 @@ export interface UserRead {
   updated_at: string;
 }
 
-export interface MembershipRead {
-  id: string;
-  customer_id: string;
-  instructor_id: string;
-  type: "TIMES" | "PERIOD";
-  total_count: number | null;
-  remaining_count: number | null;
-  started_at: string | null;
-  expires_at: string | null;
-  is_active: boolean;
-  notes: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
 export type BookingStatus = "REQUESTED" | "CONFIRMED" | "CANCEL_REQUESTED" | "CANCELLED" | "COMPLETED" | "NO_SHOW";
 export type BookingType = "LESSON" | "HOLIDAY" | "WORK_OVERRIDE";
 
@@ -50,7 +35,6 @@ export interface BookingRead {
   type: BookingType;
   guest_id: string;
   time_slot_id: number;
-  membership_id: string | null;
   cancel_reason: string | null;
   created_at: string;
   updated_at: string;
@@ -81,7 +65,6 @@ export interface CalendarBlockRead {
 export interface PaymentRead {
   id: string;
   customer_id: string;
-  membership_id: string | null;
   amount: number;
   method: string;
   status: string;
@@ -179,4 +162,54 @@ export interface UsersListResponse {
   total: number;
   limit: number;
   offset: number;
+}
+
+// 레슨 노트 (피드백 게시물을 통합, 2026-10-04). file_url 은 첨부 PDF 서명 주소
+export interface LessonNoteRead {
+  id: string;
+  customer_id: string;
+  booking_id: number | null;
+  instructor_id: string;
+  title: string | null;
+  content: string | null;
+  file_name: string | null;
+  file_url: string | null;
+  is_shared: boolean;
+  customer_name: string | null;
+  instructor_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// 강사 매출·운영 대시보드 (GET /instructors/me/dashboard)
+export interface InstructorDashboard {
+  months: { month: string; amount: number; count: number }[];
+  this_month: number;
+  last_month: number;
+  period_total: number;
+  by_method: { method: string; amount: number }[];
+  by_pass: { pass_name: string; amount: number }[];
+  customers: { total: number; new_this_month: number };
+  passes: { active: number; remaining_sessions: number; completed: number };
+  lessons_completed_this_month: number;
+}
+
+// 할인·이벤트 프로모션 (프로토타입, 결제 연동 전 안내용)
+export interface PromotionRead {
+  id: number;
+  instructor_id: string;
+  pass_type_id: number | null;
+  pass_type_name: string | null;
+  pass_price: number | null;
+  discounted_price: number | null;
+  title: string;
+  description: string | null;
+  discount_type: "PERCENT" | "AMOUNT" | "NONE";
+  discount_value: number;
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+  status: "SCHEDULED" | "ONGOING" | "ENDED" | "PAUSED";
+  created_at: string;
+  updated_at: string;
 }

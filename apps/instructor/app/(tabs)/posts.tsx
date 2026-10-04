@@ -1,9 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import {
-  View, Text, FlatList, Pressable, Alert, Modal,
-  TextInput, StyleSheet, Image, ActivityIndicator,
-  Dimensions, ScrollView, Platform,
-} from "react-native";
+import { View, Text, FlatList, Pressable, Modal, TextInput, StyleSheet, Image, ActivityIndicator, Dimensions, ScrollView, Platform } from "react-native";
+import { appAlert } from "@/lib/alert";
 import * as ImagePicker from "expo-image-picker";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { apiFetch, ApiError } from "@/lib/api";
@@ -134,7 +131,7 @@ function CommentsSection({ postId }: { postId: string }) {
       });
       setComments((p) => [...p, c]);
       setInput("");
-    } catch { Alert.alert("오류", "댓글 등록 실패"); } finally { setSending(false); }
+    } catch { appAlert("오류", "댓글 등록 실패"); } finally { setSending(false); }
   }
 
   return (
@@ -452,7 +449,7 @@ export default function PostsScreen() {
     if (Platform.OS !== "web") {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert("권한 필요", "사진/동영상 라이브러리 접근 권한이 필요합니다.");
+        appAlert("권한 필요", "사진/동영상 라이브러리 접근 권한이 필요합니다.");
         return;
       }
     }
@@ -470,11 +467,11 @@ export default function PostsScreen() {
     const toUpload = result.assets.filter((a) => !uploadedUrisRef.current.has(a.uri));
 
     if (toUpload.length === 0) {
-      Alert.alert("중복 파일", "이미 추가된 파일입니다.");
+      appAlert("중복 파일", "이미 추가된 파일입니다.");
       return;
     }
     if (dupCount > 0) {
-      Alert.alert("알림", `중복 파일 ${dupCount}개는 건너뜁니다.`);
+      appAlert("알림", `중복 파일 ${dupCount}개는 건너뜁니다.`);
     }
 
     // 파일 크기 클라이언트 검증 (이미지 10MB, 영상 100MB)
@@ -488,7 +485,7 @@ export default function PostsScreen() {
       const limit = isVideo ? MAX_VIDEO : MAX_IMAGE;
       const label = isVideo ? "100MB" : "10MB";
       if (asset.fileSize && asset.fileSize > limit) {
-        Alert.alert("파일 크기 초과", `${asset.fileName ?? "파일"} 크기가 ${label}를 초과합니다.`);
+        appAlert("파일 크기 초과", `${asset.fileName ?? "파일"} 크기가 ${label}를 초과합니다.`);
         return;
       }
     }
@@ -561,7 +558,7 @@ export default function PostsScreen() {
       });
     } catch (e: unknown) {
       // 로컬 프리뷰는 유지 — 롤백하지 않음
-      Alert.alert("업로드 오류", e instanceof Error ? e.message : "업로드에 실패했습니다.");
+      appAlert("업로드 오류", e instanceof Error ? e.message : "업로드에 실패했습니다.");
     } finally { setUploading(false); }
   }, []);
 
@@ -580,14 +577,14 @@ export default function PostsScreen() {
     const f = formRef.current;
     const ct = createTypeRef.current;
     if (!f.content && f.media_items.length === 0) {
-      Alert.alert("오류", "내용을 입력하거나 미디어를 추가해주세요."); return;
+      appAlert("오류", "내용을 입력하거나 미디어를 추가해주세요."); return;
     }
     if (ct === "FEEDBACK" && !f.customer_id) {
-      Alert.alert("오류", "피드백 대상 고객을 선택해주세요."); return;
+      appAlert("오류", "피드백 대상 고객을 선택해주세요."); return;
     }
     const hasLocalUri = f.media_items.some((m) => m.url.startsWith("file://") || m.url.startsWith("content://"));
     if (hasLocalUri) {
-      Alert.alert("업로드 미완료", "사진 업로드가 실패했습니다. 사진을 제거하고 다시 시도해주세요."); return;
+      appAlert("업로드 미완료", "사진 업로드가 실패했습니다. 사진을 제거하고 다시 시도해주세요."); return;
     }
     try {
       setSubmitting(true);
@@ -612,7 +609,7 @@ export default function PostsScreen() {
         msg = e.message;
       }
       console.error("[submitCreate]", e);
-      Alert.alert("등록 오류", msg);
+      appAlert("등록 오류", msg);
     } finally { setSubmitting(false); }
   }, [load]);
 
@@ -661,13 +658,13 @@ export default function PostsScreen() {
         msg = e.message;
       }
       console.error("[submitEdit]", e);
-      Alert.alert("수정 오류", msg);
+      appAlert("수정 오류", msg);
     } finally { setSubmitting(false); }
   }, [load]);
 
   async function deletePost(id: string) {
     try { await apiFetch(`/posts/${id}`, { method: "DELETE" }); await load(); }
-    catch { Alert.alert("오류", "삭제 실패"); }
+    catch { appAlert("오류", "삭제 실패"); }
   }
 
   // stable 콜백 — setForm 안에서 ref도 동기 업데이트
@@ -725,7 +722,6 @@ export default function PostsScreen() {
             <View style={s.typeCards}>
               {([
                 { key: "PROMOTION", icon: "📝", label: "게시글", sub: "홍보·소식" },
-                { key: "FEEDBACK", icon: "💬", label: "피드백", sub: "고객 피드백" },
               ] as { key: "PROMOTION" | "FEEDBACK"; icon: string; label: string; sub: string }[]).map((t) => (
                 <Pressable key={t.key} style={s.typeCard} onPress={() => openCreate(t.key)}>
                   <Text style={s.typeCardIcon}>{t.icon}</Text>
