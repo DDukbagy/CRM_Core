@@ -18,6 +18,9 @@ import {
   UserCircle,
   FileText,
   TrendingUp,
+  NotebookPen,
+  BarChart3,
+  Megaphone,
 } from "lucide-react";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -29,6 +32,9 @@ const ICONS: Record<string, LucideIcon> = {
   filetext: FileText,
   trending: TrendingUp,
   user: UserCircle,
+  notebook: NotebookPen,
+  chart: BarChart3,
+  megaphone: Megaphone,
 };
 
 export type SidebarItem = {

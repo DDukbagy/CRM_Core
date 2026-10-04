@@ -35,7 +35,7 @@ export default function RevenuePage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ customer_id: "", amount: "", method: "CASH", membership_id: "" });
+  const [form, setForm] = useState({ customer_id: "", amount: "", method: "CASH", customer_pass_id: "" });
   const [formError, setFormError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -67,10 +67,10 @@ export default function RevenuePage() {
         amount,
         method: form.method,
       };
-      if (form.membership_id.trim()) body.membership_id = form.membership_id.trim();
+      if (form.customer_pass_id.trim()) body.customer_pass_id = Number(form.customer_pass_id.trim());
       await api.post("/payments", body);
       setShowModal(false);
-      setForm({ customer_id: "", amount: "", method: "CASH", membership_id: "" });
+      setForm({ customer_id: "", amount: "", method: "CASH", customer_pass_id: "" });
       await load();
     } catch (err: unknown) {
       const e = err as { response?: { data?: { detail?: string } } };
@@ -113,7 +113,7 @@ export default function RevenuePage() {
                   결제 내역 <span className="ml-1 bg-gray-100 text-gray-600 text-xs font-bold px-2 py-0.5 rounded-full">{payments.length}</span>
                 </h2>
                 <button
-                  onClick={() => { setForm({ customer_id: "", amount: "", method: "CASH", membership_id: "" }); setFormError(""); setShowModal(true); }}
+                  onClick={() => { setForm({ customer_id: "", amount: "", method: "CASH", customer_pass_id: "" }); setFormError(""); setShowModal(true); }}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 text-white rounded-xl text-xs font-semibold hover:bg-gray-800 transition"
                 >
                   <Plus size={14} /> 수동 등록
@@ -210,9 +210,9 @@ export default function RevenuePage() {
                 <label className="block text-xs font-semibold text-gray-600 mb-1.5">수강권 ID (선택)</label>
                 <input
                   type="text"
-                  placeholder="수강권 UUID (선택)"
-                  value={form.membership_id}
-                  onChange={e => setForm(f => ({ ...f, membership_id: e.target.value }))}
+                  placeholder="수강권 번호 (선택)"
+                  value={form.customer_pass_id}
+                  onChange={e => setForm(f => ({ ...f, customer_pass_id: e.target.value }))}
                   className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
                 />
               </div>

@@ -177,7 +177,6 @@ export default function PostsPage() {
             <div className="grid grid-cols-2 gap-3">
               {([
                 { key: "PROMOTION" as const, icon: "📝", label: "게시글", sub: "홍보·소식" },
-                { key: "FEEDBACK" as const, icon: "💬", label: "피드백", sub: "고객 피드백" },
               ]).map(t => (
                 <button
                   key={t.key}

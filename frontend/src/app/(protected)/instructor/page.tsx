@@ -11,7 +11,10 @@ export const instructorNav: SidebarItem[] = [
   { name: "고객 관리", href: "/instructor/customers", iconKey: "users" },
   { name: "스케줄", href: "/instructor/schedule", iconKey: "calendar" },
   { name: "게시물", href: "/instructor/posts", iconKey: "filetext" },
+  { name: "레슨노트", href: "/instructor/notes", iconKey: "notebook" },
   { name: "매출", href: "/instructor/revenue", iconKey: "trending" },
+  { name: "매출 분석", href: "/instructor/insights", iconKey: "chart" },
+  { name: "프로모션", href: "/instructor/promotions", iconKey: "megaphone" },
   { name: "내 정보", href: "/instructor/profile", iconKey: "user" },
 ];
 
