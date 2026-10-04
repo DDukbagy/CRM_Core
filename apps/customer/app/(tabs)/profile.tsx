@@ -1,6 +1,7 @@
 // app/(tabs)/profile.tsx
 import { useEffect, useRef, useState, useCallback } from "react";
-import { View, Text, Pressable, Alert, ActivityIndicator, StyleSheet, Platform } from "react-native";
+import { View, Text, Pressable, ActivityIndicator, StyleSheet, Platform, ScrollView } from "react-native";
+import { appAlert } from "@/lib/alert";
 import { useRouter, useFocusEffect } from "expo-router";
 import { apiFetch } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
@@ -39,9 +40,36 @@ export default function ProfileScreen() {
       if (!window.confirm("로그아웃 하시겠습니까?")) return;
       await doLogout();
     } else {
-      Alert.alert("로그아웃", "로그아웃 하시겠습니까?", [
+      appAlert("로그아웃", "로그아웃 하시겠습니까?", [
         { text: "취소", style: "cancel" },
         { text: "로그아웃", style: "destructive", onPress: doLogout },
+      ]);
+    }
+  }
+
+  // 회원 탈퇴: 개인정보는 지우고 결제·계약 기록은 법정 보존 기간(5년) 동안 남는다 (백엔드 POST /users/me/withdraw)
+  async function handleWithdraw() {
+    const title = "회원 탈퇴";
+    const message =
+      "탈퇴하면 이름·연락처 등 계정 정보가 삭제되고 다시 로그인할 수 없습니다.\n" +
+      "결제·멤버십·수강권 기록은 관련 법(전자상거래법)에 따라 5년간 보관됩니다.";
+    const doWithdraw = async () => {
+      try {
+        await apiFetch("/users/me/withdraw", { method: "POST" });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "탈퇴 처리에 실패했습니다.";
+        if (Platform.OS === "web") window.alert(msg); else appAlert("오류", msg);
+        return;
+      }
+      await supabase.auth.signOut();
+    };
+    if (Platform.OS === "web") {
+      if (!window.confirm(`${title}\n\n${message}`)) return;
+      await doWithdraw();
+    } else {
+      appAlert(title, message, [
+        { text: "취소", style: "cancel" },
+        { text: "탈퇴", style: "destructive", onPress: doWithdraw },
       ]);
     }
   }
@@ -51,7 +79,8 @@ export default function ProfileScreen() {
   }
 
   return (
-    <View style={s.container}>
+    // 스크롤: 작은 화면에서도 아래쪽 버튼(로그아웃·회원 탈퇴)이 하단 탭·가운데 홈 버튼에 가리지 않게
+    <ScrollView style={s.container} contentContainerStyle={{ paddingBottom: 48 }}>
       {/* 프로필 헤더 */}
       <View style={s.header}>
         <View style={s.avatar}>
@@ -92,7 +121,12 @@ export default function ProfileScreen() {
       <Pressable style={s.logoutBtn} onPress={handleLogout}>
         <Text style={s.logoutText}>로그아웃</Text>
       </Pressable>
-    </View>
+
+      {/* 회원 탈퇴 */}
+      <Pressable style={s.withdrawBtn} onPress={handleWithdraw}>
+        <Text style={s.withdrawText}>회원 탈퇴</Text>
+      </Pressable>
+    </ScrollView>
   );
 }
 
@@ -124,4 +158,6 @@ const s = StyleSheet.create({
   editBtnText: { textAlign: "center", color: "#374151", fontWeight: "600", fontSize: 15 },
   logoutBtn: { marginHorizontal: 16, marginTop: 8, padding: 14, backgroundColor: "#fee2e2", borderRadius: 12 },
   logoutText: { textAlign: "center", color: "#ef4444", fontWeight: "700", fontSize: 15 },
+  withdrawBtn: { marginHorizontal: 16, marginTop: 4, marginBottom: 24, padding: 10, alignItems: "center" },
+  withdrawText: { color: "#9ca3af", fontSize: 13, textDecorationLine: "underline" },
 });

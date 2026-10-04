@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict
 
 class PaymentCreate(BaseModel):
     customer_id: UUID
-    membership_id: Optional[UUID] = None
+    customer_pass_id: Optional[int] = None   # 이 결제로 산 수강권 (선택)
     amount: int                    # 원 단위
     method: str                    # TOSS | KAKAO | NAVER | CASH | TRANSFER
     pg_payment_id: Optional[str] = None
@@ -20,7 +20,7 @@ class PaymentCreate(BaseModel):
 class PaymentRead(BaseModel):
     id: UUID
     customer_id: UUID
-    membership_id: Optional[UUID] = None
+    customer_pass_id: Optional[int] = None
     amount: int
     method: str
     status: str

@@ -2,18 +2,21 @@ from __future__ import annotations
 
 from datetime import datetime
 from uuid import UUID
-from typing import Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+# 고객 수강권 상태: ACTIVE → COMPLETED(자동) / EXPIRED / CANCELLED (models.CustomerPass 참고)
+CustomerPassStatus = Literal["ACTIVE", "COMPLETED", "EXPIRED", "CANCELLED"]
 
 
 # ─── Pass Type ────────────────────────────────────────────────────────────────
 
 class PassTypeCreate(BaseModel):
     name: str
-    duration_hours: int
-    session_count: int
-    price: Optional[int] = None
+    duration_hours: int = Field(gt=0)
+    session_count: int = Field(gt=0)
+    price: Optional[int] = Field(default=None, ge=0)
     description: Optional[str] = None
 
     model_config = ConfigDict(extra="forbid")
@@ -21,9 +24,9 @@ class PassTypeCreate(BaseModel):
 
 class PassTypeUpdate(BaseModel):
     name: Optional[str] = None
-    duration_hours: Optional[int] = None
-    session_count: Optional[int] = None
-    price: Optional[int] = None
+    duration_hours: Optional[int] = Field(default=None, gt=0)
+    session_count: Optional[int] = Field(default=None, gt=0)
+    price: Optional[int] = Field(default=None, ge=0)
     description: Optional[str] = None
     is_active: Optional[bool] = None
 
@@ -51,7 +54,7 @@ class CustomerPassAssign(BaseModel):
     """강사가 고객에게 수강권 발급"""
     customer_id: UUID
     pass_type_id: int
-    price_paid: Optional[int] = None
+    price_paid: Optional[int] = Field(default=None, ge=0)
     note: Optional[str] = None
 
     model_config = ConfigDict(extra="forbid")
@@ -59,8 +62,8 @@ class CustomerPassAssign(BaseModel):
 
 class CustomerPassUpdate(BaseModel):
     """수강권 상태/횟수 업데이트 (강사 전용)"""
-    sessions_used: Optional[int] = None
-    status: Optional[str] = None
+    sessions_used: Optional[int] = Field(default=None, ge=0)
+    status: Optional[CustomerPassStatus] = None
     note: Optional[str] = None
 
     model_config = ConfigDict(extra="forbid")

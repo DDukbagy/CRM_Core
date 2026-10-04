@@ -1,538 +1,314 @@
 from __future__ import annotations
 
-from typing import List, Optional 
-from datetime import datetime, timezone
+import uuid as _uuid
+from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File, Request
-from sqlalchemy import text
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select
-from sqlalchemy.orm import selectinload
 
-from app.core.auth.deps import CurrentUser, get_current_user, require_role, get_current_user_optional
+from app.core.auth.deps import CurrentUser, get_current_user, get_current_user_optional, require_role
+from app.core.s3 import (
+    BUCKET_NAME, REGION, create_presigned_upload_url, create_presigned_url, delete_file_from_s3,
+)
 from app.db.session import get_session
-from app.domains.posts.models import Post, MediaType, PostType, MatchRequest, MatchStatus
+from app.domains.posts.models import Post, PostComment
+from app.domains.posts.repository import PostRepository, WRITER_ROLES
 from app.domains.posts.schemas import (
-    PostCreate, PostResponse, PostMediaResponse, 
-    CommentCreate, CommentResponse, PostUpdate, CommentUpdate, NotificationResponse,
-    MatchRequestCreate, MatchRequestRead, MatchDecision
+    PostCreate, PostRead, PostUpdate, MediaItemRead,
+    UploadUrlRequest, UploadUrlResponse,
+    CommentCreate, CommentRead, CommentUpdate, DELETED_COMMENT_TEXT,
 )
-from app.domains.posts.repository import PostRepository
-from app.core.s3 import upload_file_to_s3, create_presigned_url, delete_file_from_s3, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES
-from app.domains.calendar.models import Booking, BookingType
 
-router = APIRouter(tags=["Posts"])
-admin_router = APIRouter(prefix="/admin", tags=["Admin Posts"])
+ALLOWED_CONTENT_TYPES = {
+    "image/jpeg", "image/png", "image/gif", "image/webp",
+    "video/mp4", "video/quicktime",
+}
 
-# 매니저 권한 확인 헬퍼
-async def _is_staff_of_instructor(session: AsyncSession, *, instructor_id: str, staff_user_id: str) -> bool:
-    res = await session.execute(
-        text(
-            """
-            select 1
-            from public.instructor_staff
-            where instructor_id = :instructor_id
-              and staff_user_id = :staff_user_id
-            limit 1
-            """
-        ),
-        {"instructor_id": instructor_id, "staff_user_id": staff_user_id},
-    )
-    return res.first() is not None
+router = APIRouter(prefix="/posts", tags=["Posts"])
 
-# S3 보안 URL 주입 헬퍼
-def _inject_presigned_urls(post: Post) -> Post:
-    if not post.media:
-        return post
-    
-    for m in post.media:
-        if m.s3_key_source:
-            signed_url = create_presigned_url(m.s3_key_source)
-            if signed_url:
-                m.url = signed_url
-    return post
 
-# 게시물 생성 (관리자/강사 전용)
-@admin_router.post(
-    "/posts",
-    response_model=PostResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_post_admin(
-    payload: PostCreate,
-    session: AsyncSession = Depends(get_session),
-    user: CurrentUser = Depends(require_role({"INSTRUCTOR", "CONTENT_MANAGER", "ADMIN"})),
-):
-    role = (user.role or "").upper()
-    target_instructor_id: UUID | None = payload.instructor_id
+# ─── 응답 변환 ────────────────────────────────────────────────────────────────
 
-    if role == "INSTRUCTOR":
-        if target_instructor_id is None:
-            payload.instructor_id = UUID(str(user.id))
-        elif str(target_instructor_id) != str(user.id):
-            raise HTTPException(status_code=403, detail="Instructor can create posts only in own scope")
+async def _to_post_reads(
+    repo: PostRepository, posts: list[Post], user: Optional[CurrentUser]
+) -> list[PostRead]:
+    post_ids = [p.id for p in posts]
+    user_id = UUID(str(user.id)) if user else None
 
-    if role == "CONTENT_MANAGER":
-        if target_instructor_id is None:
-            raise HTTPException(status_code=400, detail="instructor_id is required for CONTENT_MANAGER")
-        ok = await _is_staff_of_instructor(
-            session,
-            instructor_id=str(target_instructor_id),
-            staff_user_id=str(user.id),
+    media_map = await repo.media_by_post(post_ids)
+    name_map = await repo.display_names(list({p.customer_id for p in posts if p.customer_id}))
+    like_map, comment_map, liked_set = await repo.counts(post_ids, user_id)
+
+    result: list[PostRead] = []
+    for p in posts:
+        pr = PostRead.model_validate(p)
+        items: list[MediaItemRead] = []
+        for m in media_map.get(p.id, []):
+            item = MediaItemRead.model_validate(m)
+            # S3 객체는 조회할 때마다 임시 서명 URL로 내려준다 (발급 실패 시 저장된 주소 유지)
+            if m.s3_key:
+                item.url = create_presigned_url(m.s3_key) or m.url
+            items.append(item)
+        pr.media_items = items
+        if p.customer_id:
+            pr.customer_name = name_map.get(p.customer_id, str(p.customer_id))
+        pr.like_count = like_map.get(p.id, 0)
+        pr.comment_count = comment_map.get(p.id, 0)
+        pr.is_liked = p.id in liked_set
+        result.append(pr)
+    return result
+
+
+async def _to_post_read(repo: PostRepository, post: Post, user: Optional[CurrentUser]) -> PostRead:
+    return (await _to_post_reads(repo, [post], user))[0]
+
+
+async def _to_comment_reads(repo: PostRepository, comments: list[PostComment]) -> list[CommentRead]:
+    name_map = await repo.display_names(list({c.user_id for c in comments}))
+    result: list[CommentRead] = []
+    for c in comments:
+        deleted = c.deleted_at is not None
+        result.append(
+            CommentRead(
+                id=c.id, post_id=c.post_id, user_id=c.user_id,
+                user_name=None if deleted else (name_map.get(c.user_id) or str(c.user_id)),
+                parent_id=c.parent_id,
+                content=DELETED_COMMENT_TEXT if deleted else c.content,
+                created_at=c.created_at, updated_at=c.updated_at,
+                is_deleted=deleted,
+            )
         )
-        if not ok:
-            raise HTTPException(status_code=403, detail="Not assigned to this instructor")
+    return result
 
-    repo = PostRepository(session)
-    new_post = await repo.create(post_in=payload, created_by_user_id=UUID(str(user.id)))
-    return new_post
 
-# 게시물 수정 (관리자/강사/소유자 전용)
-@admin_router.patch("/posts/{post_id}", response_model=PostResponse)
-async def update_post(
-    post_id: UUID,
-    payload: PostUpdate,
-    session: AsyncSession = Depends(get_session),
-    user: CurrentUser = Depends(get_current_user),
+# ─── S3 업로드 URL ────────────────────────────────────────────────────────────
+
+@router.post("/upload-url", response_model=UploadUrlResponse)
+async def get_upload_url(
+    req: UploadUrlRequest,
+    user: CurrentUser = Depends(require_role(WRITER_ROLES)),
 ):
-    repo = PostRepository(session)
-    post = await repo.get_by_id(post_id)
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
-    
-    if user.role != "ADMIN" and post.owner_user_id != UUID(str(user.id)):
-        raise HTTPException(status_code=403, detail="Not authorized to update this post")
-        
-    updated_post = await repo.update(post, payload)
-    return _inject_presigned_urls(updated_post)
+    if req.content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail=f"허용되지 않는 파일 형식: {req.content_type}")
 
-# 미디어 파일 업로드 및 S3 연동
-@admin_router.post(
-    "/posts/{post_id}/media",
-    response_model=PostMediaResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def upload_post_media(
-    post_id: UUID,
-    file: UploadFile = File(...),
-    session: AsyncSession = Depends(get_session),
-    user: CurrentUser = Depends(require_role({"INSTRUCTOR", "CONTENT_MANAGER", "ADMIN"})),
-):
-    ALLOWED_CONTENT_TYPES = {
-        "image/jpeg", "image/png", "image/gif", "image/webp",
-        "video/mp4", "video/quicktime",
-    }
-    content_type = file.content_type or ""
-    if content_type not in ALLOWED_CONTENT_TYPES:
-        raise HTTPException(status_code=400, detail="허용되지 않는 파일 형식입니다.")
+    ext = req.filename.rsplit(".", 1)[-1].lower() if "." in req.filename else "bin"
+    # S3 키 접두사는 기존 객체·버킷 정책과 맞추기 위해 그대로 둔다
+    key = f"instructor-posts/{user.id}/{_uuid.uuid4()}.{ext}"
 
-    is_video = "video" in content_type
-    max_bytes = MAX_VIDEO_BYTES if is_video else MAX_IMAGE_BYTES
-    file_bytes = await file.read()
-    if len(file_bytes) > max_bytes:
-        limit_mb = max_bytes // (1024 * 1024)
-        raise HTTPException(status_code=413, detail=f"파일 크기가 {limit_mb}MB를 초과합니다.")
+    # presigned PUT — FormData 없이 직접 PUT, RN에서 더 안정적
+    upload_url = create_presigned_upload_url(key, req.content_type)
+    if not upload_url:
+        raise HTTPException(status_code=500, detail="S3 presigned URL 생성 실패")
 
-    repo = PostRepository(session)
-    post = await repo.get_by_id(post_id)
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
-
-    if (user.role != "ADMIN") and (post.owner_user_id != UUID(str(user.id))):
-         raise HTTPException(status_code=403, detail="Not authorized to upload media to this post")
-
-    import io
-    s3_result = upload_file_to_s3(io.BytesIO(file_bytes), file.filename, content_type=content_type, folder=str(post_id))
-    if not s3_result:
-        raise HTTPException(status_code=500, detail="Failed to upload file to S3")
-
-    real_s3_url = s3_result["url"]
-    real_s3_key = s3_result["key"]
-
-    media_type = MediaType.VIDEO if is_video else MediaType.IMAGE
-
-    media = await repo.add_media(
-        post_id=post_id, 
-        url=real_s3_url, 
-        s3_key=real_s3_key, 
-        media_type=media_type
+    public_url = f"https://{BUCKET_NAME}.s3.{REGION}.amazonaws.com/{key}"
+    return UploadUrlResponse(
+        upload_url=upload_url,
+        key=key,
+        public_url=public_url,
     )
-    return media
 
-# 게시물 및 관련 S3 파일 삭제
-@admin_router.delete("/posts/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_post(
-    post_id: UUID,
-    session: AsyncSession = Depends(get_session),
-    user: CurrentUser = Depends(require_role({"ADMIN", "INSTRUCTOR"})),
-):
-    stmt = select(Post).options(selectinload(Post.media)).where(Post.id == post_id)
-    res = await session.execute(stmt)
-    post = res.scalar_one_or_none()
 
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
+# ─── 게시물 목록 (고정 경로는 /{post_id} 보다 먼저 등록) ──────────────────────
 
-    if user.role != "ADMIN" and post.owner_user_id != UUID(str(user.id)):
-        raise HTTPException(status_code=403, detail="Not authorized to delete this post")
-
-    for m in post.media:
-        if m.s3_key_source:
-            delete_file_from_s3(m.s3_key_source)
-
-    await session.delete(post)
-    await session.commit()
-    return None
-
-# 게시물 키워드 검색
-@router.get("/search", response_model=List[PostResponse])
-async def search_posts(
-    q: Optional[str] = Query(None, min_length=2),
-    post_type: Optional[PostType] = None,
-    session: AsyncSession = Depends(get_session),
-):
-    repo = PostRepository(session)
-    posts = await repo.search_posts(keyword=q, post_type=post_type)
-    return [_inject_presigned_urls(p) for p in posts]
-
-# 내 게시물 목록 조회
-@router.get(
-    "/posts/me",
-    response_model=list[PostResponse],
-)
-async def list_my_posts(
+# 역할별 목록: 강사는 본인 글, 고객은 공개 글 + 본인 피드백
+@router.get("", response_model=list[PostRead])
+async def list_posts(
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(get_current_user),
+    customer_id: UUID | None = None,
+    type: str | None = Query(None, description="PROMOTION, NOTICE, FEEDBACK or COMMUNITY"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ):
-    owner_id = UUID(str(user.id))
-    stmt = (
-        select(Post)
-        .options(selectinload(Post.media)) 
-        .where(Post.owner_user_id == owner_id)
-        .order_by(Post.created_at.desc())
-        .limit(limit)
-        .offset(offset)
-    )
-    res = await session.execute(stmt)
-    posts = res.scalars().all()
-    return [_inject_presigned_urls(p) for p in posts]
+    repo = PostRepository(session)
+    posts = await repo.list_for_user(user, customer_id=customer_id, type=type, limit=limit, offset=offset)
+    return await _to_post_reads(repo, posts, user)
 
-# 공개 피드 조회
-@router.get(
-    "/feed",
-    response_model=list[PostResponse],
-)
+
+# 공개 피드 (비로그인 가능)
+@router.get("/feed", response_model=list[PostRead])
 async def public_feed(
     session: AsyncSession = Depends(get_session),
     user: CurrentUser | None = Depends(get_current_user_optional),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ):
-    stmt = (
-        select(Post)
-        .options(selectinload(Post.media))
-        .where(Post.status == "PUBLIC")
-        .order_by(Post.published_at.desc().nullslast(), Post.created_at.desc())
-        .limit(limit)
-        .offset(offset)
-    )
-    res = await session.execute(stmt)
-    posts = list(res.scalars().all())
-
-    user_id = UUID(str(user.id)) if user else None
     repo = PostRepository(session)
-    posts = await repo.inject_counts(posts, user_id)
+    posts = await repo.list_public(limit=limit, offset=offset)
+    return await _to_post_reads(repo, posts, user)
 
-    return [_inject_presigned_urls(p) for p in posts]
 
-# 게시물 상세 조회
-@router.get("/posts/{post_id}", response_model=PostResponse)
+# 공개 게시물 키워드 검색 (비로그인 가능)
+@router.get("/search", response_model=list[PostRead])
+async def search_posts(
+    q: Optional[str] = Query(None, min_length=2),
+    type: Optional[str] = None,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser | None = Depends(get_current_user_optional),
+):
+    repo = PostRepository(session)
+    posts = await repo.search_public(keyword=q, type=type)
+    return await _to_post_reads(repo, posts, user)
+
+
+# 내 게시물 목록
+@router.get("/me", response_model=list[PostRead])
+async def list_my_posts(
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(get_current_user),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+):
+    repo = PostRepository(session)
+    posts = await repo.list_mine(UUID(str(user.id)), limit=limit, offset=offset)
+    return await _to_post_reads(repo, posts, user)
+
+
+# ─── 댓글 수정·삭제 (댓글 ID 기준) ────────────────────────────────────────────
+
+@router.patch("/comments/{comment_id}", response_model=CommentRead)
+async def update_comment(
+    comment_id: int,
+    payload: CommentUpdate,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(get_current_user),
+):
+    repo = PostRepository(session)
+    comment = await repo.get_comment_or_404(comment_id)
+    comment = await repo.update_comment(comment, user, payload.content)
+    return (await _to_comment_reads(repo, [comment]))[0]
+
+
+@router.delete("/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_comment(
+    comment_id: int,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(get_current_user),
+):
+    repo = PostRepository(session)
+    comment = await repo.get_comment_or_404(comment_id)
+    await repo.delete_comment(comment, user)
+    return None
+
+
+# ─── 게시물 CRUD ──────────────────────────────────────────────────────────────
+
+@router.post("", response_model=PostRead, status_code=status.HTTP_201_CREATED)
+async def create_post(
+    data: PostCreate,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(require_role(WRITER_ROLES)),
+):
+    repo = PostRepository(session)
+    post = await repo.create(data, user)
+    return await _to_post_read(repo, post, user)
+
+
+# 게시물 상세 (공개 글은 비로그인 가능)
+@router.get("/{post_id}", response_model=PostRead)
 async def get_post(
     post_id: UUID,
     session: AsyncSession = Depends(get_session),
     user: CurrentUser | None = Depends(get_current_user_optional),
 ):
     repo = PostRepository(session)
-    user_id = UUID(str(user.id)) if user else None
-    post = await repo.get_post_with_counts(post_id, user_id)
-    
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
+    post = await repo.get_or_404(post_id)
+    repo.ensure_can_view(post, user)
+    return await _to_post_read(repo, post, user)
 
-    has_access = False
-    if post.status == "PUBLIC":
-        has_access = True
-    elif user:
-        role = (user.role or "").upper()
-        if post.owner_user_id == user_id or role == "ADMIN":
-            has_access = True
-        elif post.instructor_id is not None and str(post.instructor_id) == str(user_id):
-            has_access = True
 
-    if not has_access:
-        if not user:
-             raise HTTPException(status_code=401, detail="Authentication required")
-        raise HTTPException(status_code=403, detail="Not allowed to view this post")
-
-    return _inject_presigned_urls(post)
-
-# 댓글 작성
-@router.post("/posts/{post_id}/comments", response_model=CommentResponse, status_code=status.HTTP_201_CREATED)
-async def create_comment(
+@router.patch("/{post_id}", response_model=PostRead)
+async def update_post(
     post_id: UUID,
-    payload: CommentCreate,
+    data: PostUpdate,
     session: AsyncSession = Depends(get_session),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_role(WRITER_ROLES)),
 ):
     repo = PostRepository(session)
-    post = await repo.get_by_id(post_id)
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
-    
-    is_public = (post.status == "PUBLIC")
-    is_owner = (post.owner_user_id == UUID(str(user.id)))
-    is_admin = (user.role == "ADMIN")
-    
-    if not (is_public or is_owner or is_admin):
-         raise HTTPException(status_code=403, detail="Cannot comment on private post")
+    post = await repo.get_or_404(post_id)
+    post = await repo.update(post, data, user)
+    return await _to_post_read(repo, post, user)
 
-    comment = await repo.create_comment(post_id, UUID(str(user.id)), payload)
-    return comment
 
-# 댓글 수정
-@router.patch("/comments/{comment_id}", response_model=CommentResponse)
-async def update_comment(
-    comment_id: UUID,
-    payload: CommentUpdate,
+@router.delete("/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_post(
+    post_id: UUID,
     session: AsyncSession = Depends(get_session),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_role(WRITER_ROLES)),
 ):
     repo = PostRepository(session)
-    comment = await repo.get_comment_by_id(comment_id)
-    if not comment:
-        raise HTTPException(status_code=404, detail="Comment not found")
-    
-    if comment.user_id != UUID(str(user.id)):
-        raise HTTPException(status_code=403, detail="Only owner can update comment")
-        
-    return await repo.update_comment(comment_id, payload)
+    post = await repo.get_or_404(post_id)
+    s3_keys = await repo.delete(post, user)
+    for key in s3_keys:
+        delete_file_from_s3(key)
+    return None
 
-# 게시물별 댓글 목록 조회
-@router.get("/posts/{post_id}/comments", response_model=List[CommentResponse])
+
+# ─── 댓글 ─────────────────────────────────────────────────────────────────────
+
+@router.get("/{post_id}/comments", response_model=list[CommentRead])
 async def list_comments(
     post_id: UUID,
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(get_current_user),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100),
 ):
     repo = PostRepository(session)
-    comments = await repo.get_comments_by_post(post_id, skip, limit)
-    return comments
+    post = await repo.get_or_404(post_id)
+    repo.ensure_can_view(post, user)
+    return await _to_comment_reads(repo, await repo.list_comments(post_id))
 
-# 댓글 삭제
-@router.delete("/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_comment(
-    comment_id: UUID,
+
+@router.post("/{post_id}/comments", response_model=CommentRead, status_code=status.HTTP_201_CREATED)
+async def add_comment(
+    post_id: UUID,
+    data: CommentCreate,
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(get_current_user),
 ):
     repo = PostRepository(session)
-    comment = await repo.get_comment_by_id(comment_id)
-    
-    if not comment:
-        raise HTTPException(status_code=404, detail="Comment not found")
-    
-    if comment.user_id != UUID(str(user.id)) and user.role != "ADMIN":
-        raise HTTPException(status_code=403, detail="Not authorized")
-        
-    await repo.delete_comment(comment_id)
-    return None
+    post = await repo.get_or_404(post_id)
+    repo.ensure_can_view(post, user)
+    comment = await repo.create_comment(post, UUID(str(user.id)), data)
+    return (await _to_comment_reads(repo, [comment]))[0]
 
-# 좋아요 토글
-@router.post("/posts/{post_id}/like")
+
+# ─── 좋아요 ───────────────────────────────────────────────────────────────────
+
+@router.post("/{post_id}/like")
 async def toggle_like(
     post_id: UUID,
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(get_current_user),
 ):
     repo = PostRepository(session)
-    post = await repo.get_by_id(post_id)
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
-
-    is_liked = await repo.toggle_like(post_id, UUID(str(user.id)))
+    post = await repo.get_or_404(post_id)
+    repo.ensure_can_view(post, user)
+    is_liked = await repo.toggle_like(post, UUID(str(user.id)))
     return {"ok": True, "is_liked": is_liked}
 
-# 공개 권한 부여
-@router.post("/posts/{post_id}/consent/grant")
+
+# ─── 피드백 공개 동의 (대상 고객) ─────────────────────────────────────────────
+
+@router.post("/{post_id}/consent/grant")
 async def grant_public_consent(
-    post_id: UUID, 
-    session: AsyncSession = Depends(get_session), 
-    user: CurrentUser = Depends(get_current_user)
-):
-    me = UUID(str(user.id))
-    res = await session.execute(select(Post).where(Post.id == post_id))
-    post = res.scalar_one_or_none()
-    
-    if not post: 
-        raise HTTPException(status_code=404, detail="Post not found")
-    if post.owner_user_id != me: 
-        raise HTTPException(status_code=403, detail="Only owner can grant public consent")
-    
-    now = datetime.now(timezone.utc)
-    post.status = "PUBLIC"
-    post.published_at = now
-    post.updated_at = now
-    post.is_consent_given = True 
-    
-    session.add(post)
-    await session.commit()
-    await session.refresh(post)
-    return {"ok": True, "post_id": str(post.id), "status": post.status}
-
-# 공개 권한 철회
-@router.post("/posts/{post_id}/consent/revoke")
-async def revoke_public_consent(
-    post_id: UUID, 
-    session: AsyncSession = Depends(get_session), 
-    user: CurrentUser = Depends(get_current_user)
-):
-    me = UUID(str(user.id))
-    res = await session.execute(select(Post).where(Post.id == post_id))
-    post = res.scalar_one_or_none()
-    
-    if not post: 
-        raise HTTPException(status_code=404, detail="Post not found")
-    if post.owner_user_id != me: 
-        raise HTTPException(status_code=403, detail="Only owner can revoke public consent")
-    
-    now = datetime.now(timezone.utc)
-    post.status = "PRIVATE"
-    post.published_at = None
-    post.updated_at = now
-    post.is_consent_given = False
-    
-    session.add(post)
-    await session.commit()
-    await session.refresh(post)
-    return {"ok": True, "post_id": str(post.id), "status": post.status}
-
-# 내 알림 목록 조회
-@router.get("/notifications", response_model=List[NotificationResponse])
-async def list_my_notifications(
-    session: AsyncSession = Depends(get_session),
-    user: CurrentUser = Depends(get_current_user),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100),
-):
-    repo = PostRepository(session)
-    notifications = await repo.get_my_notifications(UUID(str(user.id)), skip, limit)
-    return notifications
-
-# 알림 읽음 처리
-@router.patch("/notifications/{notification_id}/read")
-async def mark_notification_as_read(
-    notification_id: UUID,
-    session: AsyncSession = Depends(get_session),
-    user: CurrentUser = Depends(get_current_user),
-):
-    repo = PostRepository(session)
-    success = await repo.mark_notification_as_read(UUID(str(user.id)), notification_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Notification not found or access denied")
-    return {"ok": True}
-
-# 매칭 참가 신청
-@router.post("/match/request", response_model=MatchRequestRead, status_code=201)
-async def request_match(
-    data: MatchRequestCreate,
-    session: AsyncSession = Depends(get_session),
-    user: CurrentUser = Depends(get_current_user),
-):
-    post_res = await session.execute(select(Post).where(Post.id == data.post_id))
-    post = post_res.scalar_one_or_none()
-    if not post:
-        raise HTTPException(404, "Post not found")
-        
-    if post.owner_user_id == user.id:
-        raise HTTPException(400, "Host cannot apply to their own post")
-
-    existing = await session.execute(select(MatchRequest).where(
-        MatchRequest.post_id == data.post_id,
-        MatchRequest.guest_id == user.id
-    ))
-    if existing.scalar_one_or_none():
-        raise HTTPException(409, "Already applied")
-
-    match_req = MatchRequest(
-        post_id=data.post_id,
-        guest_id=user.id,
-        status=MatchStatus.PENDING
-    )
-    session.add(match_req)
-    await session.commit()
-    await session.refresh(match_req)
-    return match_req
-
-# 매칭 신청자 목록 조회
-@router.get("/match/{post_id}/requests", response_model=list[MatchRequestRead])
-async def get_match_requests(
     post_id: UUID,
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(get_current_user),
 ):
-    result = await session.execute(
-        select(MatchRequest).where(MatchRequest.post_id == post_id)
-    )
-    return result.scalars().all()
+    repo = PostRepository(session)
+    post = await repo.get_or_404(post_id)
+    post = await repo.set_feedback_consent(post, user, granted=True)
+    return {"ok": True, "post_id": str(post.id), "is_public": post.is_public}
 
-# 매칭 수락/거절 결정 (수락 시 예약 자동 생성)
-@router.post("/match/decide", status_code=200)
-async def decide_match(
-    data: MatchDecision,
+
+@router.post("/{post_id}/consent/revoke")
+async def revoke_public_consent(
+    post_id: UUID,
     session: AsyncSession = Depends(get_session),
-    host: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(get_current_user),
 ):
-    req_res = await session.execute(select(MatchRequest).where(MatchRequest.id == data.match_request_id))
-    match_req = req_res.scalar_one_or_none()
-    if not match_req:
-        raise HTTPException(404, "Request not found")
-
-    post_res = await session.execute(select(Post).where(Post.id == match_req.post_id))
-    post = post_res.scalar_one_or_none()
-    
-    if post.owner_user_id != host.id:
-        raise HTTPException(403, "Only host can decide")
-
-    if not data.accept:
-        match_req.status = MatchStatus.REJECTED
-        session.add(match_req)
-        await session.commit()
-        return {"message": "Rejected"}
-
-    if match_req.status == MatchStatus.ACCEPTED:
-        return {"message": "Already accepted"}
-
-    match_req.status = MatchStatus.ACCEPTED
-    session.add(match_req)
-    
-    if post.time_slot_id and post.when:
-        booking = Booking(
-            when=post.when,
-            topic=f"Match from Post #{post.id}",
-            description=f"Approved match for {post.title}",
-            time_slot_id=post.time_slot_id,
-            guest_id=match_req.guest_id,
-            status="CONFIRMED",
-            type=BookingType.LESSON
-        )
-        session.add(booking)
-    
-    await session.commit()
-    return {"message": "Accepted and Booking Created"}
-
-router.include_router(admin_router)
+    repo = PostRepository(session)
+    post = await repo.get_or_404(post_id)
+    post = await repo.set_feedback_consent(post, user, granted=False)
+    return {"ok": True, "post_id": str(post.id), "is_public": post.is_public}

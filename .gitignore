@@ -2,3 +2,15 @@
 .vscode/
 .idea/
 *.log
+
+# --- 비밀값·인증서 (CLAUDE.md §4.2) — 하위 폴더 포함 전역 적용 ---
+.env
+.env.*
+*.env
+!.env.example
+*.pem
+*.key
+id_rsa*
+service-account*.json
+credentials*.json
+secrets.*

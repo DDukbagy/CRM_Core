@@ -50,6 +50,11 @@ export function toDateStr(y: number, m: number, d: number): string {
   return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
+// 로컬(기기 시간대) 기준 YYYY-MM-DD. toISOString() 은 UTC 라 한국에서는 0~9시에 하루 전 날짜가 된다
+export function toLocalDateStr(date: Date = new Date()): string {
+  return toDateStr(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
 export function fmtTime(t: string): string {
   return t.slice(0, 5);
 }

@@ -1,14 +1,8 @@
 // frontend/src/app/(protected)/admin/page.tsx
 export const dynamic = "force-dynamic";
 
-import DashboardLayout, { type SidebarItem } from "@/components/layout/DashboardLayout";
-
-const adminNav: SidebarItem[] = [
-  { name: "대시보드", href: "/admin", iconKey: "dashboard" },
-  { name: "강사 관리", href: "/admin/instructors", iconKey: "users" },
-  { name: "시스템 관리", href: "/admin/system", iconKey: "settings" },
-  { name: "영업/통계", href: "/admin/analytics", iconKey: "target" },
-];
+import DashboardLayout from "@/components/layout/DashboardLayout";
+import { adminNav } from "./nav";
 
 export default function AdminPage() {
   return (

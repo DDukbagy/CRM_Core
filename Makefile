@@ -1,72 +1,51 @@
 SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
+# =============================================================================
+# 타깃 이름 규칙: <대상><동작>, 소문자 붙여쓰기 (예: iweb = 강사 앱 웹 실행)
+#   대상  api 백엔드 | web 관리자·강사 웹 | c 고객 앱 | i 강사 앱 | db 데이터베이스
+#         mig 마이그레이션 | dock Docker | git 브랜치·배포 | aws AWS 도구 | stg / prod Copilot 환경
+#   예외  help, check(전체 검증), grep
+# =============================================================================
+
 # -----------------------------
-# Config (override like: make server PORT=9000)
+# Config (override like: make api PORT=9000)
 # -----------------------------
 PORT ?= 8000
 HOST ?= 0.0.0.0
-BASE_URL ?= http://127.0.0.1:$(PORT)
 APP ?= app.main:app
 
 # Docker
-DEV_IMAGE ?= crm-dev
-PROD_IMAGE ?= crm-prod
+IMAGE ?= crm-backend
 ENV_FILE ?= .env
+NAME ?= crm-backend
 
 # Grep
 Q ?=
-EXCLUDE_VENV ?= 1
-
-# Supabase (set in env or inline)
-SUPABASE_URL ?=
-SUPABASE_ANON_KEY ?=
-EMAIL ?=
-PASSWORD ?=
-
-# Docker container name filter for stop
-NAME ?= crm-backend
-
-# -----------------------------
-# Helpers
-# -----------------------------
-.PHONY: help
-help: ## Show this help
-	@echo "Available targets:"
-	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_]+:.*##/ {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
-
-.PHONY: _require
-_require:
-	@true
 
 define require_var
 	@if [ -z "$($1)" ]; then echo "❌ Missing required var: $1"; exit 1; fi
 endef
 
-# -----------------------------
-# Server
-# -----------------------------
+.PHONY: help
+help: ## Show this help
+	@awk 'BEGIN {FS = ":.*##"} /^##@/ {printf "\n\033[1m%s\033[0m\n", substr($$0, 5)} /^[a-zA-Z0-9_]+:.*##/ {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-.PHONY: frontend
-frontend: ## Run Next.js dev server (auto cd if needed, clear .next cache)
-	@set -e; \
-	if [ -f package.json ] && [ -d src ] && [ -d node_modules ]; then \
-		echo "[make] frontend: running in current directory"; \
-		rm -rf .next; \
-		npm run dev; \
-	else \
-		echo "[make] frontend: running in ./frontend"; \
-		cd frontend; \
-		rm -rf .next; \
-		npm run dev; \
-	fi
+##@ 실행
+.PHONY: api
+api: ## Run backend dev server (reload, uses backend/.env)
+	@cd backend && poetry run uvicorn $(APP) --reload --host $(HOST) --port $(PORT)
+
+.PHONY: web
+web: ## Run admin/instructor web (Next.js dev, clears .next cache)
+	@cd frontend && rm -rf .next && npm run dev
 
 .PHONY: cweb
-cweb: ## Run customer Expo app in browser (web)
+cweb: ## Run customer app in browser (Expo web)
 	@cd apps/customer && npx expo start --web
 
 .PHONY: ctunnel
-ctunnel: ## Run customer Expo app with tunnel (QR code for real device)
+ctunnel: ## Run customer app with tunnel (QR code for real device)
 	@NGROK_TOKEN=$$(grep -s '^NGROK_AUTHTOKEN=' apps/.env | cut -d= -f2); \
 	if [ -n "$$NGROK_TOKEN" ]; then \
 		apps/customer/node_modules/@expo/ngrok-bin-linux-x64/ngrok authtoken "$$NGROK_TOKEN" 2>/dev/null || true; \
@@ -74,73 +53,79 @@ ctunnel: ## Run customer Expo app with tunnel (QR code for real device)
 	cd apps/customer && npx expo start --tunnel
 
 .PHONY: iweb
-iweb: ## Run instructor Expo app in browser (web)
+iweb: ## Run instructor app in browser (Expo web, port 8082)
 	@cd apps/instructor && npx expo start --web --port 8082
 
 .PHONY: itunnel
-itunnel: ## Run instructor Expo app with tunnel (QR code for real device)
+itunnel: ## Run instructor app with tunnel (QR code for real device)
 	@NGROK_TOKEN=$$(grep -s '^NGROK_AUTHTOKEN=' apps/.env | cut -d= -f2); \
 	if [ -n "$$NGROK_TOKEN" ]; then \
 		apps/customer/node_modules/@expo/ngrok-bin-linux-x64/ngrok authtoken "$$NGROK_TOKEN" 2>/dev/null || true; \
 	fi; \
 	cd apps/instructor && npx expo start --tunnel --port 8082
 
-.PHONY: server
-server: ## Run backend server (reload)
-	@cd backend && poetry run uvicorn $(APP) --reload --host $(HOST) --port $(PORT)
+##@ 검사·테스트 (로컬 DB, 원격 연결 없음)
+.PHONY: check
+check: apitest webcheck ccheck icheck ## Run all checks (before PR)
+	@echo "✅ All checks passed"
 
-.PHONY: verify
-verify: ## One-click verify (auto start server if needed + tokens + flow)
-	@cd backend && ./scripts/verify.sh
+.PHONY: apitest
+apitest: ## Backend tests on local DB (fresh DB + alembic check + pytest). Args: ARGS="-k calendar"
+	@cd backend && bash scripts/test_local.sh -q $(ARGS)
 
-.PHONY: verifysetup
-verifysetup: ## chmod +x scripts/verify.sh (first time only)
-	@cd backend && chmod +x scripts/verify.sh
+.PHONY: apiverify
+apiverify: ## One-click local verify: local DB -> server -> tokens -> main flow (run_flow.sh)
+	@cd backend && bash scripts/verify.sh
 
-# -----------------------------
-# Supabase access token (password grant) / Flow
-# -----------------------------
-.PHONY: token
-token: ## Issue access token interactively (loads URL/Key from .env)
+.PHONY: webcheck
+webcheck: ## Web lint + type check
+	@cd frontend && npm run lint && npx tsc --noEmit
+
+.PHONY: ccheck
+ccheck: ## Customer app type check
+	@cd apps/customer && npx tsc --noEmit
+
+.PHONY: icheck
+icheck: ## Instructor app type check
+	@cd apps/instructor && npx tsc --noEmit
+
+##@ 백엔드 API 점검 (실행 중인 서버 대상)
+.PHONY: apitoken
+apitoken: ## Issue a real Supabase access token interactively
 	@cd backend && bash scripts/get_token.sh
 
-.PHONY: flow
-flow: ## Run flow (assumes server is running and tokens are available inside scripts)
-	@cd backend && ./scripts/run_flow.sh
+.PHONY: apiflow
+apiflow: ## Run main flow on a running server (needs BASE_URL, HOST_TOKEN, GUEST_TOKEN, HOST_ID)
+	@cd backend && bash scripts/run_flow.sh
 
-# -----------------------------
-# Docker (dev/prod)
-# -----------------------------
-.PHONY: ddbuild
-ddbuild: ## Build dev Docker image (Dockerfile.dev)
-	@cd backend && docker build -f Dockerfile.dev -t $(DEV_IMAGE) .
+.PHONY: apismoke
+apismoke: ## Booking smoke test with real Supabase accounts (needs API_URL, SUPABASE_URL, SUPABASE_ANON_KEY)
+	@bash backend/scripts/smoke_booking.sh
 
-.PHONY: ddrun
-ddrun: ## Run dev Docker image on :8000 using .env
-	@cd backend && docker run --rm -p $(PORT):8000 --env-file $(ENV_FILE) $(DEV_IMAGE)
+##@ 데이터베이스
+.PHONY: dbup
+dbup: ## Start local Postgres container (127.0.0.1:55433)
+	@bash backend/scripts/local_db.sh up
 
-.PHONY: dpbuild
-dpbuild: ## Build prod Docker image (Dockerfile)
-	@cd backend && docker build -t $(PROD_IMAGE) .
+.PHONY: dbdown
+dbdown: ## Stop local Postgres container
+	@bash backend/scripts/local_db.sh down
 
-.PHONY: dprun
-dprun: ## Run prod Docker image on :8000 using .env
-	@cd backend && docker run --rm -p $(PORT):8000 --env-file $(ENV_FILE) $(PROD_IMAGE)
+.PHONY: dbcheck
+dbcheck: ## Check connection to the DB in backend/.env
+	@cd backend && poetry run python -m scripts.check_db_connection
 
-.PHONY: dps
-dps: ## List containers filtered by name (usage: make dps NAME=crm-backend)
-	docker ps -a --filter name=$(NAME)
+.PHONY: dbschema
+dbschema: ## Compare model tables/columns with the DB in backend/.env
+	@cd backend && poetry run python -m scripts.check_schema
 
-.PHONY: dstop
-dstop: ## Stop container by ID or name (usage: make dstop ID=<container_id_or_name>)
-	@$(call require_var,ID)
-	docker stop "$(ID)"
+.PHONY: dbreset
+dbreset: ## Reset LOCAL db only (drop public schema + alembic upgrade head, asks DB name)
+	@cd backend && poetry run python -m scripts.reset_db
 
-# -----------------------------
-# Alembic migrations
-# -----------------------------
+##@ 마이그레이션 (backend/.env 의 DB 대상)
 .PHONY: mignew
-mignew: ## Create new migration (usage: make mignew M="message")
+mignew: ## Create new migration (usage: make mignew M="message"). Review every op before commit
 	@$(call require_var,M)
 	@cd backend && poetry run alembic revision --autogenerate -m "$(M)"
 
@@ -156,135 +141,36 @@ migcur: ## Show current migration
 migheads: ## Show heads
 	@cd backend && poetry run alembic heads
 
-# -----------------------------
-# CI trigger
-# -----------------------------
-.PHONY: citrigger
-citrigger: ## Trigger CI with empty commit (then push)
-	git commit --allow-empty -m "chore: trigger ci"
-	git push
+.PHONY: migcheck
+migcheck: ## Check models vs DB (alembic check, read-only)
+	@cd backend && poetry run alembic check
 
-# -----------------------------
-# PR trigger(staging -> main)
-# -----------------------------
-.PHONY: prtrigger
-prtrigger: ## Create staging->main PR manually (AWS offline workaround)
-	gh pr create --base main --head staging \
-		--title "🚀 Release: Staging to Main" \
-		--body "Manual release PR (AWS offline)" \
-		|| echo "PR already exists"
+##@ Docker (backend/Dockerfile)
+.PHONY: dockbuild
+dockbuild: ## Build backend image
+	@cd backend && docker build -t $(IMAGE) .
 
-# -----------------------------
-# Grep helpers
-# -----------------------------
-.PHONY: grep
-grep: ## Search string (usage: make grep Q="text")
-	@$(call require_var,Q)
-	@if [ "$(EXCLUDE_VENV)" = "1" ]; then \
-		grep -RIn --exclude-dir=.venv --exclude-dir=.git "$(Q)" . ; \
-	else \
-		grep -RIn "$(Q)" . ; \
-	fi
+.PHONY: dockrun
+dockrun: ## Run backend image on :$(PORT) using backend/.env
+	@cd backend && docker run --rm -p $(PORT):8080 --env-file $(ENV_FILE) $(IMAGE)
 
-# -----------------------------
-# AWS tools install/check
-# -----------------------------
-.PHONY: awstools
-awstools: ## Install AWS tools via script
-	@cd backend && ./scripts/install_aws_tools.sh
+.PHONY: dockdev
+dockdev: ## Run backend image with ./backend mounted and auto reload (dev)
+	@cd backend && docker run --rm -p $(PORT):8080 --env-file $(ENV_FILE) -v "$$(pwd)":/app $(IMAGE) \
+		sh -c "poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8080"
 
-.PHONY: awscheck
-awscheck: ## Check aws/copilot versions (and hint PATH if missing)
-	@set -e; \
-	if command -v aws >/dev/null 2>&1; then aws --version; else echo "aws: command not found (try: export PATH=\"$$HOME/.local/bin:$$PATH\")"; fi; \
-	if command -v copilot >/dev/null 2>&1; then copilot --version; else echo "copilot: command not found (try: export PATH=\"$$HOME/.local/bin:$$PATH\")"; fi
+.PHONY: dockps
+dockps: ## List containers filtered by name (usage: make dockps NAME=crm-backend)
+	docker ps -a --filter name=$(NAME)
 
-.PHONY: awswho
-awswho: ## Check current AWS identity
-	aws sts get-caller-identity
+.PHONY: dockstop
+dockstop: ## Stop container by ID or name (usage: make dockstop ID=<container_id_or_name>)
+	@$(call require_var,ID)
+	docker stop "$(ID)"
 
-# -----------------------------
-# Copilot
-# -----------------------------
-.PHONY: cpenvs
-cpenvs: ## List copilot environments
-	@cd backend && copilot env ls
-
-.PHONY: stgstatus
-stgstatus: ## Show staging service status
-	@cd backend && copilot svc status --name api --env staging
-
-.PHONY: prodstatus
-prodstatus: ## Show prod service status
-	@cd backend && copilot svc status --name api --env prod
-
-.PHONY: stgdeploy
-stgdeploy: ## Manually deploy to staging
-	@cd backend && copilot svc deploy --name api --env staging
-
-.PHONY: proddeploy
-proddeploy: ## Manually deploy to prod (use with caution)
-	@cd backend && copilot svc deploy --name api --env prod
-
-.PHONY: stglogs
-stglogs: ## Follow staging logs
-	@cd backend && copilot svc logs --name api --env staging --follow
-
-.PHONY: prodlogs
-prodlogs: ## Follow prod logs
-	@cd backend && copilot svc logs --name api --env prod --follow
-
-.PHONY: stgexec
-stgexec: ## Exec into staging task
-	@cd backend && copilot svc exec --name api --env staging
-
-# -----------------------------
-# DB helpers
-# -----------------------------
-.PHONY: checkdb
-checkdb: ## Check database connection status
-	@cd backend && poetry run python -m scripts.check_db_connection
-
-.PHONY: checkschema
-checkschema: ## Verify if database tables and columns are created correctly
-	@cd backend && poetry run python -m scripts.check_schema
-
-.PHONY: resetdb
-resetdb: ## db reset
-	@cd backend && poetry run python -m scripts.reset_db
-
-.PHONY: smokebook
-smokebook: ## Run smoke booking test
-	@set -e; \
-	if [ -f "backend/scripts/smoke_booking.sh" ]; then \
-		bash backend/scripts/smoke_booking.sh; \
-	elif [ -f "scripts/smoke_booking.sh" ]; then \
-		bash scripts/smoke_booking.sh; \
-	else \
-		exit 1; \
-	fi
-
-# -----------------------------
-# Release / Branch / Rollback
-# -----------------------------
-.PHONY: release
-release: ## Interactive: switch to main, pull, tag & push; then return to previous ref
-	@set -e; \
-	# remember current ref (branch or detached) \
-	ORIG_BRANCH="$$(git symbolic-ref --short -q HEAD || true)"; \
-	ORIG_COMMIT="$$(git rev-parse --verify HEAD)"; \
-	RETURNED=0; \
-	restore() { \
-		if [ "$$RETURNED" = "1" ]; then exit 0; fi; \
-		RETURNED=1; \
-		echo "==> Restoring previous state..."; \
-		if [ -n "$$ORIG_BRANCH" ]; then \
-			git switch "$$ORIG_BRANCH" >/dev/null 2>&1 || true; \
-		else \
-			git switc
-
-.PHONY: breset
-breset: ## Switch to staging, pull latest, delete local+remote branch, create new branch (interactive)
+##@ Git · 배포
+.PHONY: gitbranch
+gitbranch: ## Sync staging, delete a branch (local+remote), create a new one (interactive)
 	@bash -eu -o pipefail -c '\
 		# 1. 현재 상태 확인 및 Main 브랜치 동기화 \
 		echo "==> Current branch:"; \
@@ -352,8 +238,38 @@ breset: ## Switch to staging, pull latest, delete local+remote branch, create ne
 		echo "Done. Now on branch: $$(git rev-parse --abbrev-ref HEAD)"; \
 	'
 
-.PHONY: rollbackdry
-rollbackdry: ## [Safe] Simulate rollback: Show file changes without modifying anything
+.PHONY: gitci
+gitci: ## Trigger CI with empty commit (then push)
+	git commit --allow-empty -m "chore: trigger ci"
+	git push
+
+.PHONY: gitpr
+gitpr: ## Create staging->main release PR (AWS offline workaround)
+	gh pr create --base main --head staging \
+		--title "🚀 Release: Staging to Main" \
+		--body "Manual release PR (AWS offline)" \
+		|| echo "PR already exists"
+
+.PHONY: gitrelease
+gitrelease: ## Tag latest main as a version (vX.Y.Z) and push the tag (rollback point), then return
+	@bash -eu -o pipefail -c '\
+		if [ -n "$$(git status --porcelain)" ]; then echo "❌ Working tree is not clean. Commit or stash first."; exit 1; fi; \
+		orig="$$(git symbolic-ref --short -q HEAD || git rev-parse HEAD)"; \
+		trap "git switch \"$$orig\" >/dev/null 2>&1 || git checkout \"$$orig\" >/dev/null 2>&1; echo \"==> Back on $$orig\"" EXIT; \
+		git fetch origin main --tags; \
+		git switch main; \
+		git pull --ff-only origin main; \
+		echo "📜 Recent tags:"; git tag -l "v*" --sort=-v:refname | head -n 5; \
+		read -r -p "New tag (e.g. v0.2.0): " TAG; \
+		if ! [[ "$$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$$ ]]; then echo "❌ Tag must look like v1.2.3"; exit 1; fi; \
+		if git rev-parse -q --verify "refs/tags/$$TAG" >/dev/null; then echo "❌ Tag $$TAG already exists"; exit 1; fi; \
+		git tag -a "$$TAG" -m "release $$TAG"; \
+		git push origin "$$TAG"; \
+		echo "✅ Tagged main as $$TAG (rollback point: make gitrollback)"; \
+	'
+
+.PHONY: gitrollbackdry
+gitrollbackdry: ## [Safe] Show what a rollback to a tag would change (no changes)
 	@bash -eu -o pipefail -c '\
 		echo "🔍 [DRY RUN] checking rollback diff..."; \
 		# 1. Main 최신화 (변경사항 없이 확인만) \
@@ -375,11 +291,11 @@ rollbackdry: ## [Safe] Simulate rollback: Show file changes without modifying an
 		echo "-------------------------------------------------------------"; \
 		echo ""; \
 		echo "✅ Dry run complete. Nothing changed."; \
-		echo "👉 To execute for real: make rollback"; \
+		echo "👉 To execute for real: make gitrollback"; \
 	'
 
-.PHONY: rollback
-rollback: ## [Danger] Rollback Main branch to specific Tag/Commit (Triggers Deploy)
+.PHONY: gitrollback
+gitrollback: ## [Danger] Rollback main to a tag (new commit on main, triggers deploy)
 	@bash -eu -o pipefail -c '\
 		echo "⚠️  [DANGER] Rolling back MAIN branch content..."; \
 		if [ -n "$$(git status --porcelain)" ]; then \
@@ -423,35 +339,51 @@ rollback: ## [Danger] Rollback Main branch to specific Tag/Commit (Triggers Depl
 		echo "✅ Rollback initiated successfully!"; \
 	'
 
-# -----------------------------
-# CloudWatch alarm dimensions
-# -----------------------------
-.PHONY: alarmprod
-alarmprod: ## Print PROD ALB/TG suffix (for CloudWatch dimensions)
-	@bash -eu -o pipefail -c '\
-		STACK_NAME="$$(aws cloudformation list-stacks \
-		  --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE UPDATE_ROLLBACK_COMPLETE \
-		  --query "StackSummaries[?contains(StackName, \`crm-prod-api\`) == \`true\`].StackName" \
-		  --output text | tr "\t" "\n" | grep -v AddonsStack | head -n 1)"; \
-		if [ -z "$$STACK_NAME" ]; then echo "ERROR: prod stack not found (crm-prod-api)"; exit 1; fi; \
-		echo "==> Stack: $$STACK_NAME"; \
-		echo "==> TargetGroups:"; \
-		aws cloudformation describe-stack-resources \
-		  --stack-name "$$STACK_NAME" \
-		  --query "StackResources[?ResourceType==\`AWS::ElasticLoadBalancingV2::TargetGroup\`].[LogicalResourceId,PhysicalResourceId]" \
-		  --output table; \
-		echo ""; \
-		read -r -p "Enter TG_ARN from table: " TG_ARN; \
-		if [ -z "$$TG_ARN" ]; then echo "ERROR: TG_ARN is required."; exit 1; fi; \
-		LB_ARN="$$(aws elbv2 describe-target-groups --target-group-arns "$$TG_ARN" --query "TargetGroups[0].LoadBalancerArns[0]" --output text)"; \
-		PROD_TG_SUFFIX="$$(echo "$$TG_ARN" | sed "s#^.*targetgroup/##")"; \
-		PROD_LB_SUFFIX="$$(echo "$$LB_ARN" | sed "s#^.*loadbalancer/##")"; \
-		echo "PROD_LB_SUFFIX=$$PROD_LB_SUFFIX"; \
-		echo "PROD_TG_SUFFIX=$$PROD_TG_SUFFIX"; \
-	'
+##@ 검색
+.PHONY: grep
+grep: ## Search string, excluding .venv/.git/node_modules and env/secret files (usage: make grep Q="text")
+	@$(call require_var,Q)
+	@grep -RIn --exclude-dir=.venv --exclude-dir=.git --exclude-dir=node_modules \
+		--exclude='.env' --exclude='.env.*' --exclude='*.env' --exclude='*.pem' --exclude='*.key' \
+		"$(Q)" .
 
-.PHONY: alarmstg
-alarmstg: ## Print STAGING ALB/TG suffix (for CloudWatch dimensions)
+##@ AWS · Copilot
+.PHONY: awsinstall
+awsinstall: ## Install AWS CLI / Copilot via script
+	@cd backend && ./scripts/install_aws_tools.sh
+
+.PHONY: awscheck
+awscheck: ## Check aws/copilot versions (and hint PATH if missing)
+	@set -e; \
+	if command -v aws >/dev/null 2>&1; then aws --version; else echo "aws: command not found (try: export PATH=\"$$HOME/.local/bin:$$PATH\")"; fi; \
+	if command -v copilot >/dev/null 2>&1; then copilot --version; else echo "copilot: command not found (try: export PATH=\"$$HOME/.local/bin:$$PATH\")"; fi
+
+.PHONY: awswho
+awswho: ## Check current AWS identity
+	aws sts get-caller-identity
+
+.PHONY: awsenvs
+awsenvs: ## List copilot environments
+	@cd backend && copilot env ls
+
+.PHONY: stgstatus
+stgstatus: ## Show staging service status
+	@cd backend && copilot svc status --name api --env staging
+
+.PHONY: stglogs
+stglogs: ## Follow staging logs
+	@cd backend && copilot svc logs --name api --env staging --follow
+
+.PHONY: stgexec
+stgexec: ## Exec into staging task
+	@cd backend && copilot svc exec --name api --env staging
+
+.PHONY: stgdeploy
+stgdeploy: ## Manually deploy to staging
+	@cd backend && copilot svc deploy --name api --env staging
+
+.PHONY: stgalarm
+stgalarm: ## Print STAGING ALB/TG suffix (for CloudWatch dimensions)
 	@bash -eu -o pipefail -c '\
 		STACK_NAME="$$(aws cloudformation list-stacks \
 		  --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE UPDATE_ROLLBACK_COMPLETE \
@@ -472,4 +404,40 @@ alarmstg: ## Print STAGING ALB/TG suffix (for CloudWatch dimensions)
 		STG_LB_SUFFIX="$$(echo "$$LB_ARN" | sed "s#^.*loadbalancer/##")"; \
 		echo "STG_LB_SUFFIX=$$STG_LB_SUFFIX"; \
 		echo "STG_TG_SUFFIX=$$STG_TG_SUFFIX"; \
+	'
+
+.PHONY: prodstatus
+prodstatus: ## Show prod service status
+	@cd backend && copilot svc status --name api --env prod
+
+.PHONY: prodlogs
+prodlogs: ## Follow prod logs
+	@cd backend && copilot svc logs --name api --env prod --follow
+
+.PHONY: proddeploy
+proddeploy: ## Manually deploy to prod (use with caution)
+	@cd backend && copilot svc deploy --name api --env prod
+
+.PHONY: prodalarm
+prodalarm: ## Print PROD ALB/TG suffix (for CloudWatch dimensions)
+	@bash -eu -o pipefail -c '\
+		STACK_NAME="$$(aws cloudformation list-stacks \
+		  --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE UPDATE_ROLLBACK_COMPLETE \
+		  --query "StackSummaries[?contains(StackName, \`crm-prod-api\`) == \`true\`].StackName" \
+		  --output text | tr "\t" "\n" | grep -v AddonsStack | head -n 1)"; \
+		if [ -z "$$STACK_NAME" ]; then echo "ERROR: prod stack not found (crm-prod-api)"; exit 1; fi; \
+		echo "==> Stack: $$STACK_NAME"; \
+		echo "==> TargetGroups:"; \
+		aws cloudformation describe-stack-resources \
+		  --stack-name "$$STACK_NAME" \
+		  --query "StackResources[?ResourceType==\`AWS::ElasticLoadBalancingV2::TargetGroup\`].[LogicalResourceId,PhysicalResourceId]" \
+		  --output table; \
+		echo ""; \
+		read -r -p "Enter TG_ARN from table: " TG_ARN; \
+		if [ -z "$$TG_ARN" ]; then echo "ERROR: TG_ARN is required."; exit 1; fi; \
+		LB_ARN="$$(aws elbv2 describe-target-groups --target-group-arns "$$TG_ARN" --query "TargetGroups[0].LoadBalancerArns[0]" --output text)"; \
+		PROD_TG_SUFFIX="$$(echo "$$TG_ARN" | sed "s#^.*targetgroup/##")"; \
+		PROD_LB_SUFFIX="$$(echo "$$LB_ARN" | sed "s#^.*loadbalancer/##")"; \
+		echo "PROD_LB_SUFFIX=$$PROD_LB_SUFFIX"; \
+		echo "PROD_TG_SUFFIX=$$PROD_TG_SUFFIX"; \
 	'

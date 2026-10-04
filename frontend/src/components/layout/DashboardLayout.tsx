@@ -18,6 +18,9 @@ import {
   UserCircle,
   FileText,
   TrendingUp,
+  NotebookPen,
+  BarChart3,
+  Megaphone,
 } from "lucide-react";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -29,6 +32,9 @@ const ICONS: Record<string, LucideIcon> = {
   filetext: FileText,
   trending: TrendingUp,
   user: UserCircle,
+  notebook: NotebookPen,
+  chart: BarChart3,
+  megaphone: Megaphone,
 };
 
 export type SidebarItem = {
@@ -64,11 +70,17 @@ export default function DashboardLayout({
 
   const items = useMemo(() => navItems ?? defaultSidebarItems, [navItems]);
 
-  // active 판정: exact 또는 하위 경로 포함
-  const isActiveHref = (href: string) => {
+  // active 판정: exact 또는 하위 경로 포함. 여러 메뉴가 맞으면 가장 구체적인(긴) 경로 하나만
+  // (예: /instructor/posts 에서 "대시보드"(/instructor)와 "게시물"이 함께 선택되지 않게)
+  const matches = (href: string) => {
     if (href === "/") return pathname === "/";
     return pathname === href || pathname.startsWith(`${href}/`);
   };
+  const activeHref = items
+    .map((item) => item.href)
+    .filter(matches)
+    .sort((a, b) => b.length - a.length)[0];
+  const isActiveHref = (href: string) => href === activeHref;
 
   const currentTitle =
     items.find((item) => isActiveHref(item.href))?.name ?? headerFallback;

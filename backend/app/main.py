@@ -6,10 +6,8 @@ import sys
 import sentry_sdk
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from starlette.responses import Response
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -19,17 +17,19 @@ from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.middleware import RequestLoggingMiddleware
 from app.domains.auth.router import router as auth_router
+from app.domains.booking.router import router as booking_router
 from app.domains.calendar.router import router as calendar_router
-from app.domains.calendar.lesson_note_router import router as lesson_note_router
+from app.domains.lesson_notes.router import router as lesson_note_router
 from app.domains.chat.router import router as chat_router
-from app.domains.content.router import router as content_router
 from app.domains.instructor.router import router as instructor_router
-from app.domains.membership.router import router as membership_router
+from app.domains.matching.router import router as matching_router
+from app.domains.notifications.router import router as notifications_router
 from app.domains.payment.router import router as payment_router
 from app.domains.passes.router import router as passes_router
 from app.domains.posts.router import router as posts_router
+from app.domains.promotions.router import router as promotions_router
 from app.domains.users.router import router as users_router
-from app.api.health import router as health_router
+from app.core.health import router as health_router
 
 logger = logging.getLogger(__name__)
 
@@ -78,14 +78,16 @@ app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(instructor_router)
+app.include_router(matching_router)
 app.include_router(calendar_router)
+app.include_router(booking_router)
 app.include_router(lesson_note_router)
-app.include_router(membership_router)
 app.include_router(payment_router)
 app.include_router(passes_router)
 app.include_router(posts_router)
+app.include_router(promotions_router)
+app.include_router(notifications_router)
 app.include_router(chat_router)
-app.include_router(content_router)
 
 logger.info("CORS origins: %s", settings.cors_origins)
 logger.info("CORS regex: %s", settings.CORS_ORIGIN_REGEX)

@@ -1,19 +1,7 @@
 // app/edit-profile.tsx
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  Pressable,
-  Alert,
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Modal,
-  FlatList,
-  Animated,
-  Dimensions,
-} from "react-native";
+import { View, Text, TextInput, Pressable, ActivityIndicator, ScrollView, StyleSheet, Modal, FlatList, Animated, Dimensions, Switch } from "react-native";
+import { appAlert } from "@/lib/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { apiFetch } from "@/lib/api";
@@ -48,6 +36,7 @@ export default function EditProfileScreen() {
   const [pickerOpen, setPickerOpen] = useState<PickerField | null>(null);
   const [gender, setGender] = useState<string | null>(null);
   const [lessonPurpose, setLessonPurpose] = useState("");
+  const [feedbackConsent, setFeedbackConsent] = useState(false);
 
   // 슬라이드 다운 후 콜백
   const dismiss = useCallback((onDone: () => void) => {
@@ -85,6 +74,7 @@ export default function EditProfileScreen() {
       }
       setGender(me.gender ?? null);
       setLessonPurpose(me.lesson_purpose ?? "");
+      setFeedbackConsent(me.feedback_consent ?? false);
     };
 
     if (userParam) {
@@ -99,7 +89,7 @@ export default function EditProfileScreen() {
 
   async function handleSave() {
     if (!displayName.trim()) {
-      Alert.alert("확인", "이름을 입력해주세요.");
+      appAlert("확인", "이름을 입력해주세요.");
       return;
     }
     const birthDate =
@@ -116,12 +106,13 @@ export default function EditProfileScreen() {
         birth_date: birthDate,
         gender: gender,
         lesson_purpose: lessonPurpose.trim() || null,
+        feedback_consent: feedbackConsent,
       };
       await apiFetch("/users/me", { method: "PATCH", body });
       dismiss(() => router.back());
     } catch (e: any) {
       const detail = (e?.body as any)?.detail ?? e?.message ?? "저장 실패";
-      Alert.alert("오류", typeof detail === "string" ? detail : JSON.stringify(detail));
+      appAlert("오류", typeof detail === "string" ? detail : JSON.stringify(detail));
     } finally {
       setSaving(false);
     }
@@ -229,6 +220,20 @@ export default function EditProfileScreen() {
             style={[s.input, { height: 72, textAlignVertical: "top" }]}
           />
 
+          {/* 피드백 공개 동의 (2026-03 화면 개편 때 빠졌던 기능 복원) */}
+          <View style={s.consentRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.label}>피드백 게시물 공개 동의</Text>
+              <Text style={s.consentDesc}>강사가 작성한 나의 피드백을 다른 사람에게 공개합니다</Text>
+            </View>
+            <Switch
+              value={feedbackConsent}
+              onValueChange={setFeedbackConsent}
+              trackColor={{ false: "#e5e7eb", true: "#1a1a1a" }}
+              thumbColor="#fff"
+            />
+          </View>
+
           <View style={s.btnRow}>
             <Pressable
               style={s.cancelBtn}
@@ -308,6 +313,8 @@ const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f9fafb" },
   sectionTitle: { fontSize: 12, fontWeight: "700", color: "#9ca3af", letterSpacing: 0.5, marginTop: 24, marginBottom: 4, textTransform: "uppercase" },
   label: { fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6, marginTop: 16 },
+  consentRow: { flexDirection: "row", alignItems: "center", marginTop: 8, backgroundColor: "#fff", borderRadius: 10, padding: 14, borderWidth: 1, borderColor: "#d1d5db" },
+  consentDesc: { fontSize: 12, color: "#9ca3af", marginTop: 2, lineHeight: 17 },
   input: {
     borderWidth: 1,
     borderColor: "#d1d5db",

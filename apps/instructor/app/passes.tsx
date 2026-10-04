@@ -4,10 +4,8 @@
  * - 고객 수강권 현황 조회 및 서비스 횟수 추가
  */
 import { useCallback, useEffect, useState } from "react";
-import {
-  View, Text, ScrollView, Pressable, Modal, TextInput,
-  Alert, StyleSheet, ActivityIndicator, Switch,
-} from "react-native";
+import { View, Text, ScrollView, Pressable, Modal, TextInput, StyleSheet, ActivityIndicator, Switch } from "react-native";
+import { appAlert } from "@/lib/alert";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "expo-router";
 import { apiFetch } from "@/lib/api";
@@ -61,7 +59,7 @@ function PassTypeFormModal({
 
   async function handleSave() {
     if (!name.trim() || !sessionCount.trim()) {
-      Alert.alert("오류", "수강권명과 총 횟수는 필수입니다.");
+      appAlert("오류", "수강권명과 총 횟수는 필수입니다.");
       return;
     }
     setSaving(true);
@@ -82,7 +80,7 @@ function PassTypeFormModal({
       onSave();
       onClose();
     } catch (e: any) {
-      Alert.alert("오류", e?.message ?? "저장 실패");
+      appAlert("오류", e?.message ?? "저장 실패");
     } finally {
       setSaving(false);
     }
@@ -207,7 +205,7 @@ function AddSessionsModal({
   async function handleAdd() {
     const count = parseInt(sessions);
     if (!cp || isNaN(count) || count < 1) {
-      Alert.alert("오류", "추가할 횟수를 1 이상 입력해주세요.");
+      appAlert("오류", "추가할 횟수를 1 이상 입력해주세요.");
       return;
     }
     setSaving(true);
@@ -220,7 +218,7 @@ function AddSessionsModal({
       reset();
       onClose();
     } catch (e: any) {
-      Alert.alert("오류", e?.message ?? "처리 실패");
+      appAlert("오류", e?.message ?? "처리 실패");
     } finally {
       setSaving(false);
     }
@@ -303,7 +301,7 @@ export default function InstructorPassesScreen() {
   }
 
   async function deletePassType(pt: PassTypeRead) {
-    Alert.alert(
+    appAlert(
       "수강권 상품 삭제",
       `"${pt.name}"을(를) 삭제할까요?\n활성 수강권이 있으면 삭제되지 않습니다.`,
       [
@@ -316,7 +314,7 @@ export default function InstructorPassesScreen() {
               await apiFetch(`/passes/types/${pt.id}`, { method: "DELETE" });
               await load();
             } catch (e: any) {
-              Alert.alert("삭제 실패", e?.message ?? "오류가 발생했습니다.");
+              appAlert("삭제 실패", e?.message ?? "오류가 발생했습니다.");
             }
           },
         },
@@ -325,7 +323,7 @@ export default function InstructorPassesScreen() {
   }
 
   async function cancelCustomerPass(cp: CustomerPassRead) {
-    Alert.alert(
+    appAlert(
       "수강권 취소",
       `${cp.customer_name}의 "${cp.pass_name}"을(를) 취소할까요?`,
       [
@@ -341,7 +339,7 @@ export default function InstructorPassesScreen() {
               });
               await load();
             } catch (e: any) {
-              Alert.alert("오류", e?.message ?? "처리 실패");
+              appAlert("오류", e?.message ?? "처리 실패");
             }
           },
         },

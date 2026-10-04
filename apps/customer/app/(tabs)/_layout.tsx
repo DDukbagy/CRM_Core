@@ -1,9 +1,8 @@
 // app/(tabs)/_layout.tsx
 import { Tabs, useRouter } from "expo-router";
 import { useRef, useState, useEffect } from "react";
-import {
-  View, Text, Pressable, Animated, StyleSheet, Dimensions, Alert, Platform,
-} from "react-native";
+import { View, Text, Pressable, Animated, StyleSheet, Dimensions, Platform } from "react-native";
+import { appAlert } from "@/lib/alert";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "@/lib/supabase";
 import { apiFetch } from "@/lib/api";
@@ -29,7 +28,7 @@ const TABS: TabDef[] = [
   { name: "posts",    label: "게시글", icon: "newspaper-outline",           activeIcon: "newspaper"           },
   { name: "index",    label: "홈",     icon: "home-outline",                activeIcon: "home",   center: true },
   { name: "schedule", label: "달력",   icon: "calendar-outline",            activeIcon: "calendar"            },
-  { name: "feedback", label: "피드백", icon: "star-outline",                activeIcon: "star"                },
+  { name: "notes",    label: "레슨노트", icon: "document-text-outline",     activeIcon: "document-text"       },
 ];
 
 // ─── Custom Tab Bar ──────────────────────────────────────────────────────────
@@ -119,7 +118,7 @@ export default function TabsLayout() {
       if (!window.confirm("로그아웃 하시겠습니까?")) return;
       await doLogout();
     } else {
-      Alert.alert("로그아웃", "로그아웃 하시겠습니까?", [
+      appAlert("로그아웃", "로그아웃 하시겠습니까?", [
         { text: "취소", style: "cancel" },
         { text: "로그아웃", style: "destructive", onPress: doLogout },
       ]);
@@ -146,7 +145,7 @@ export default function TabsLayout() {
         <Tabs.Screen name="posts"    options={{ title: "게시글" }} />
         <Tabs.Screen name="store"    options={{ href: null, title: "스토어" }} />
         <Tabs.Screen name="schedule" options={{ title: "달력" }} />
-        <Tabs.Screen name="feedback" options={{ title: "피드백" }} />
+        <Tabs.Screen name="notes"    options={{ title: "레슨노트" }} />
         <Tabs.Screen name="match"    options={{ href: null, title: "강사 찾기" }} />
         <Tabs.Screen name="passes"   options={{ href: null, title: "수강권" }} />
         <Tabs.Screen name="profile"  options={{ href: null, title: "내 정보" }} />

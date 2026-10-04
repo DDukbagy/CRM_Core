@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import Column, DateTime, String, Integer, SmallInteger, Boolean, Text
+from sqlalchemy import Column, DateTime, ForeignKey, String, Integer, SmallInteger, Boolean, Text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlmodel import SQLModel, Field, func
 
@@ -82,15 +82,12 @@ class CustomerPass(SQLModel, table=True):
         foreign_key="lesson_pass_types.id",
         nullable=False,
     )
+    # RESTRICT: 발급 수강권은 계약 기록. 보존 기간(app/core/retention.py) 동안 회원 삭제로 지워지지 않는다
     customer_id: UUID = Field(
-        sa_type=PGUUID(as_uuid=True),
-        foreign_key="users.id",
-        nullable=False,
+        sa_column=Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False),
     )
     instructor_id: UUID = Field(
-        sa_type=PGUUID(as_uuid=True),
-        foreign_key="users.id",
-        nullable=False,
+        sa_column=Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False),
         description="비정규화: 빠른 강사별 조회를 위해 중복 저장",
     )
 

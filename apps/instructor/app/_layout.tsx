@@ -78,6 +78,7 @@ export default function RootLayout() {
         <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
         <Stack.Screen name="customer/[id]" options={{ title: "고객 상세" }} />
         <Stack.Screen name="passes" options={{ headerShown: false }} />
+        <Stack.Screen name="business" options={{ title: "운영 현황" }} />
       </Stack>
     </CustomerRegisterProvider>
   );

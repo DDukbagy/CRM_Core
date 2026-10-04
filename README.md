@@ -29,16 +29,19 @@ CRM_Core/
 
 | 도메인 | 기능 |
 |--------|------|
-| `auth` | Supabase 기반 인증 · JIT 유저 생성 |
-| `users` | 사용자 관리 · RBAC (CUSTOMER / INSTRUCTOR / CONTENT_MANAGER / ADMIN) |
-| `instructor` | 강사 승인 · 담당 고객 등록 · 강사 공개 프로필 검색 |
-| `calendar` | 캘린더 · 타임슬롯 · 예약 · 레슨노트 · 활성 예약 중복 방지 |
-| `membership` | 멤버십 관리 (횟수제 / 기간제) |
-| `payment` | 결제 내역 기록 · 상태 관리 |
-| `passes` | 레슨 패스(수강권) 발급 · 사용 관리 |
-| `posts` | 게시물 · 댓글 · 좋아요 · 미디어 · 동의 정책 · 매칭 요청(수락 시 예약 자동 생성) |
-| `chat` | 채팅 |
-| `content` | 강사 콘텐츠 관리 |
+| `auth` | Supabase 기반 인증 · JIT 유저 생성 · 아이디/비밀번호 로그인 |
+| `users` | 사용자 관리 · RBAC (CUSTOMER / INSTRUCTOR / CONTENT_MANAGER / ADMIN) · 담당 강사 지정 · 회원 탈퇴(기록 보존) |
+| `instructor` | 강사 승인 · 담당 고객 등록 · 공개 프로필 · 매출·운영 대시보드 |
+| `calendar` | 캘린더 · 타임슬롯 · 휴무(정기·임시·날짜별 열기/닫기) · 예약 가능 시간 |
+| `booking` | 레슨 예약 신청 · 확정·거절·취소·완료·노쇼 · 수강권 차감 |
+| `lesson_notes` | 레슨노트 (글 · 스캔 PDF, 고객별) |
+| `passes` | 수강권 상품 · 발급 · 사용 관리 |
+| `payment` | 결제 기록 · 상태 관리 (5년 보존) |
+| `promotions` | 강사 할인·이벤트 프로모션 (프로토타입) |
+| `posts` | 게시물(홍보·공지·커뮤니티) · 댓글 · 좋아요 · 미디어 |
+| `notifications` | 알림 (댓글·좋아요 등) |
+| `chat` | 고객–강사 1:1 채팅 (문의하기) |
+| `matching` | 강사 매칭 신청 API · 모임 찾기(예정) |
 
 각 도메인은 `models.py / schemas.py / router.py / repository.py` 구조를 따릅니다.
 
@@ -56,7 +59,7 @@ CRM_Core/
 
 ```bash
 # 백엔드
-cd backend && make server
+make api
 
 # 관리자·강사 웹
 cd frontend && npm run dev
@@ -100,15 +103,15 @@ cd apps/instructor && npx expo start
 ### 수동 배포 (긴급 복구)
 
 ```bash
-make copilot-deploy-staging
-make copilot-deploy-prod
+make stgdeploy
+make proddeploy
 ```
 
 ### 로그 확인
 
 ```bash
-make copilot-logs-staging
-make copilot-logs-prod
+make stglogs
+make prodlogs
 ```
 
 ---
@@ -148,7 +151,7 @@ poetry run pytest
 
 1. CI 상태 확인
 2. Staging 상태 확인
-3. 로그 확인 (`make copilot-logs-staging` / `make copilot-logs-prod`)
+3. 로그 확인 (`make stglogs` / `make prodlogs`)
 4. 환경변수·시크릿 확인
 5. DB 진단
 
@@ -167,4 +170,6 @@ bash scripts/verify.sh                             # 전체 검증
 | `frontend/README.md` | 관리자·강사 웹 개발 가이드 |
 | `apps/customer/README.md` | 고객 앱 개발 가이드 |
 | `apps/instructor/README.md` | 강사 앱 개발 가이드 |
-| `backend/Docs/` | AWS 운영 · 개발 Runbook · 트러블슈팅 |
+| `docs/operations/` | 개발 Runbook · env 설정 · 실제 환경 검증 · PG 연동 방법 · 트러블슈팅 · AWS 운영 |
+| `docs/requirements/` | 요구사항 정의서 (`CRM_Requirements_v1.0.html`) |
+| `docs/progress.md` | 진행 현황 · 테스트할 것 · 보류 · 해야 할 것 · 결정 기록 |

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time
-from typing import Literal, Optional
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
-from app.domains.calendar.models import BookingType
 
 
 class CalendarCreate(BaseModel):
@@ -91,7 +90,10 @@ class AvailabilitySlot(BaseModel):
 class AvailabilityDay(BaseModel):
     date: date
     slots: list[AvailabilitySlot]
+    # 임시 휴무일이면 true (예전 응답과 호환)
     is_holiday: bool = False
+    # 휴무 종류: RECURRING(정기 휴무일) / TEMPORARY(임시 휴무일) / null(영업일)
+    off_type: Literal["RECURRING", "TEMPORARY"] | None = None
 
     model_config = {"extra": "forbid"}
 
@@ -104,82 +106,6 @@ class AvailabilityResponse(BaseModel):
     start: date
     end: date
     days: list[AvailabilityDay]
-
-    model_config = {"extra": "forbid"}
-
-
-BookingStatus = Literal["REQUESTED", "CONFIRMED", "CANCEL_REQUESTED", "CANCELLED", "COMPLETED", "NO_SHOW"]
-
-
-class BookingCreate(BaseModel):
-    """
-    게스트가 예약 생성할 때 입력
-    """
-    time_slot_id: int
-    when: date
-    topic: str | None = None
-    description: str | None = None
-    membership_id: Optional[UUID] = None  # 차감할 멤버십 (선택)
-
-    # 예약 타입 (기본값 LESSON, 휴무 등록 시 HOLIDAY)
-    type: BookingType = BookingType.LESSON
-
-    model_config = {"extra": "forbid"}
-
-
-class BookingRead(BaseModel):
-    """
-    예약 조회 응답
-    """
-    id: int
-    when: date
-    topic: str | None = None
-    status: BookingStatus
-    type: BookingType  # 타입 정보 포함
-    description: str | None
-    cancel_reason: str | None = None
-    membership_id: Optional[UUID] = None
-    time_slot_id: int
-    guest_id: UUID
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class BookingUpdateRequest(BaseModel):
-    """
-    게스트가 REQUESTED 예약의 주제/메모를 수정할 때 입력
-    """
-    topic: str | None = Field(default=None, min_length=1, max_length=200)
-    description: str | None = None
-
-    model_config = {"extra": "forbid"}
-
-
-class BookingConfirmRequest(BaseModel):
-    topic: str | None = Field(default=None, max_length=200, description="수업 내용 (강사가 확정 시 지정)")
-
-    model_config = {"extra": "forbid"}
-
-
-class BookingCancelRequest(BaseModel):
-    """
-    취소/거절 시 입력(사유는 optional)
-    """
-    reason: str | None = Field(default=None, max_length=300, description="취소 사유(선택)")
-
-    model_config = {"extra": "forbid"}
-
-
-class BookingCancelResponse(BaseModel):
-    """
-    예약 취소/철회 응답(최소 응답 형태)
-    """
-    id: int
-    status: str  # 서버 실제 값 그대로 반환
-    cancel_reason: str | None = None
-    updated_at: datetime
 
     model_config = {"extra": "forbid"}
 
@@ -199,17 +125,14 @@ class TimeSlotWeekdaysPatch(BaseModel):
 
 
 class CalendarBlockCreate(BaseModel):
-    start_date: date
-    end_date: date
-    reason: str | None = Field(default=None, max_length=300)
-
-    @field_validator("end_date")
-    @classmethod
-    def validate_range(cls, v: date, info):
-        start = info.data.get("start_date")
-        if start and v < start:
-            raise ValueError("end_date must be >= start_date")
-        return v
+    """특정 날짜만의 예외
+    - kind=CLOSE: time_slot_ids 가 비면 임시 휴무일(하루 전체), 있으면 그 시간만 휴무
+    - kind=OPEN : 정기 휴무일 중 그날만 영업. time_slot_ids 가 비면 하루 전체, 있으면 그 시간만
+    """
+    date: date
+    time_slot_ids: list[int] = []
+    kind: Literal["CLOSE", "OPEN"] = "CLOSE"
+    reason: str | None = None
 
     model_config = {"extra": "forbid"}
 
@@ -219,8 +142,10 @@ class CalendarBlockRead(BaseModel):
     calendar_id: int
     start_date: date
     end_date: date
-    reason: str | None
+    time_slot_id: int | None = None
+    kind: str = "CLOSE"
+    reason: str | None = None
     created_at: datetime
-    updated_at: datetime
 
     model_config = {"from_attributes": True}
+

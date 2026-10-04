@@ -1,12 +1,10 @@
 // app/(tabs)/match.tsx
 import { useCallback, useRef, useState } from "react";
-import {
-  View, Text, ScrollView, Pressable, TextInput,
-  ActivityIndicator, Modal, Alert, StyleSheet,
-} from "react-native";
-import { useFocusEffect } from "expo-router";
+import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Modal, StyleSheet } from "react-native";
+import { appAlert } from "@/lib/alert";
+import { useFocusEffect, useRouter } from "expo-router";
 import { apiFetch } from "@/lib/api";
-import type { InstructorPublicRead, MatchRequestRead, MatchRequestType, UserRead } from "@/types/api";
+import type { InstructorPublicRead, UserRead } from "@/types/api";
 
 const NAMED_FEE = 5_000;
 
@@ -21,24 +19,13 @@ const PURPOSES = [
 
 const LOCATIONS = ["서울", "경기", "인천", "부산", "대구", "대전", "광주", "기타"];
 
-const STATUS_COLOR: Record<string, string> = {
-  PENDING: "#f59e0b", ACCEPTED: "#10b981", REJECTED: "#ef4444", CANCELLED: "#9ca3af",
-};
-const STATUS_LABEL: Record<string, string> = {
-  PENDING: "승인 대기 중", ACCEPTED: "연결 완료", REJECTED: "거절됨", CANCELLED: "취소됨",
-};
-const TYPE_LABEL: Record<MatchRequestType, string> = {
-  MATCH: "매칭",
-  CONSULTATION: "상담",
-};
-
 type TabType = "recommend" | "search";
 
 export default function MatchScreen() {
+  const router = useRouter();
   const [tab, setTab] = useState<TabType>("recommend");
 
   const [instructors, setInstructors] = useState<InstructorPublicRead[]>([]);
-  const [myRequests, setMyRequests]   = useState<MatchRequestRead[]>([]);
   const [me, setMe]                   = useState<UserRead | null>(null);
   const [loading, setLoading]         = useState(true);
   const initialLoaded                 = useRef(false);
@@ -51,22 +38,18 @@ export default function MatchScreen() {
   // 강사 찾기 검색어
   const [searchText, setSearchText] = useState("");
 
-  // 신청 모달
-  const [selectedInstructor, setSelectedInstructor] = useState<InstructorPublicRead | null>(null);
-  const [requestType, setRequestType] = useState<MatchRequestType>("MATCH");
-  const [note, setNote]         = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  // 강사 상세 프로필 모달 → 문의하기
+  const [profile, setProfile] = useState<InstructorPublicRead | null>(null);
+  const [opening, setOpening] = useState(false);
 
   async function load() {
     try {
-      const [meData, instrList, requests] = await Promise.all([
+      const [meData, instrList] = await Promise.all([
         apiFetch<UserRead>("/users/me"),
         apiFetch<InstructorPublicRead[]>("/instructors/public"),
-        apiFetch<MatchRequestRead[]>("/instructors/match/me"),
       ]);
       setMe(meData);
       setInstructors(instrList);
-      setMyRequests(requests);
     } catch (e) {
       console.error("강사 정보 로딩 실패:", e);
     } finally {
@@ -79,14 +62,6 @@ export default function MatchScreen() {
     if (!initialLoaded.current) setLoading(true);
     load();
   }, []));
-
-  // 활성 요청 (각 타입별로 PENDING/ACCEPTED 중 최신)
-  const activeMatchReq = myRequests.find(
-    r => r.request_type === "MATCH" && (r.status === "PENDING" || r.status === "ACCEPTED")
-  ) ?? null;
-  const activeConsultReq = myRequests.find(
-    r => r.request_type === "CONSULTATION" && (r.status === "PENDING" || r.status === "ACCEPTED")
-  ) ?? null;
 
   // 필터링
   const wizResults = instructors.filter(i => {
@@ -101,61 +76,18 @@ export default function MatchScreen() {
     i.username.toLowerCase().includes(searchText.toLowerCase())
   );
 
-  const isMatched = !!me?.manager_id;
-  const hasMatchPending = activeMatchReq?.status === "PENDING";
-  const hasConsultPending = activeConsultReq?.status === "PENDING";
-
-  // 매칭 or 상담 신청 공통 함수
-  function openModal(instructor: InstructorPublicRead, type: MatchRequestType) {
-    setSelectedInstructor(instructor);
-    setRequestType(type);
-    setNote("");
-  }
-
-  async function submitRequest() {
-    if (!selectedInstructor) return;
-    setSubmitting(true);
+  // 문의하기: 강사와의 채팅방을 열고(이미 있으면 그 방) 채팅 탭으로 이동
+  async function inquire(instructor: InstructorPublicRead) {
+    setOpening(true);
     try {
-      const res = await apiFetch<MatchRequestRead>("/instructors/match", {
-        method: "POST",
-        body: {
-          instructor_id: selectedInstructor.id,
-          note: note.trim() || undefined,
-          request_type: requestType,
-        },
-      });
-      setMyRequests(prev => [res, ...prev]);
-      setSelectedInstructor(null);
-      setNote("");
-      const label = requestType === "MATCH" ? "매칭 신청" : "상담 신청";
-      const desc = requestType === "MATCH"
-        ? "강사 수락 후 담당 강사로 연결됩니다."
-        : "강사가 확인 후 연락드립니다.";
-      Alert.alert("완료", `${label}이 완료되었습니다.\n${desc}`);
-    } catch (e: any) {
-      const msg = e?.body?.detail ?? e?.message ?? "신청 실패";
-      Alert.alert("오류", typeof msg === "string" ? msg : JSON.stringify(msg));
+      const room = await apiFetch<{ id: string }>("/chat/rooms", { method: "POST", body: { instructor_id: instructor.id } });
+      setProfile(null);
+      router.push({ pathname: "/(tabs)/chat", params: { room: room.id } } as any);
+    } catch (e) {
+      appAlert("오류", e instanceof Error ? e.message : "채팅방을 열지 못했습니다.");
     } finally {
-      setSubmitting(false);
+      setOpening(false);
     }
-  }
-
-  async function cancelRequest(req: MatchRequestRead) {
-    const label = TYPE_LABEL[req.request_type];
-    Alert.alert(`${label} 취소`, `${label} 신청을 취소하시겠습니까?`, [
-      { text: "아니요", style: "cancel" },
-      {
-        text: "취소하기", style: "destructive",
-        onPress: async () => {
-          try {
-            await apiFetch(`/instructors/match/${req.id}`, { method: "DELETE" });
-            setMyRequests(prev => prev.filter(r => r.id !== req.id));
-          } catch (e: any) {
-            Alert.alert("오류", e?.message ?? "취소 실패");
-          }
-        },
-      },
-    ]);
   }
 
   function resetWizard() {
@@ -168,20 +100,6 @@ export default function MatchScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: "#f9fafb" }}>
-
-      {/* 현재 매칭 상태 배너 */}
-      {activeMatchReq && (
-        <RequestBanner
-          req={activeMatchReq}
-          onCancel={() => cancelRequest(activeMatchReq)}
-        />
-      )}
-      {activeConsultReq && (
-        <RequestBanner
-          req={activeConsultReq}
-          onCancel={() => cancelRequest(activeConsultReq)}
-        />
-      )}
 
       {/* 탭 전환 */}
       <View style={s.tabBar}>
@@ -206,90 +124,51 @@ export default function MatchScreen() {
           location={wizLocation}
           results={wizResults}
           totalCount={instructors.length}
-          isMatched={isMatched}
-          hasMatchPending={hasMatchPending}
-          hasConsultPending={hasConsultPending}
           me={me}
           onSelectPurpose={(p) => { setWizPurpose(p); setWizStep(1); }}
           onSelectLocation={(l) => { setWizLocation(l); setWizStep(2); }}
           onBack={() => setWizStep(s => Math.max(0, s - 1))}
           onReset={resetWizard}
-          onSelectMatch={(i) => openModal(i, "MATCH")}
-          onSelectConsult={(i) => openModal(i, "CONSULTATION")}
+          onSelect={setProfile}
         />
       ) : (
         <SearchTab
           instructors={searchList}
           searchText={searchText}
           onSearchChange={setSearchText}
-          isMatched={isMatched}
-          hasMatchPending={hasMatchPending}
-          hasConsultPending={hasConsultPending}
           me={me}
-          onSelectMatch={(i) => openModal(i, "MATCH")}
-          onSelectConsult={(i) => openModal(i, "CONSULTATION")}
+          onSelect={setProfile}
         />
       )}
 
-      {/* 신청 모달 */}
-      <RequestModal
-        instructor={selectedInstructor}
-        requestType={requestType}
-        note={note}
-        submitting={submitting}
-        onNoteChange={setNote}
-        onClose={() => setSelectedInstructor(null)}
-        onSubmit={submitRequest}
+      {/* 강사 상세 프로필 */}
+      <ProfileModal
+        instructor={profile}
+        isCurrentInstructor={!!profile && me?.manager_id === profile.id}
+        opening={opening}
+        onClose={() => setProfile(null)}
+        onInquire={() => profile && inquire(profile)}
       />
-    </View>
-  );
-}
-
-// ── 요청 상태 배너 ─────────────────────────────────────────────
-function RequestBanner({ req, onCancel }: { req: MatchRequestRead; onCancel: () => void }) {
-  const typeLabel = TYPE_LABEL[req.request_type];
-  const statusLabel = `[${typeLabel}] ${STATUS_LABEL[req.status]}`;
-  return (
-    <View style={[s.statusBanner, { borderLeftColor: STATUS_COLOR[req.status] }]}>
-      <View style={{ flex: 1 }}>
-        <Text style={s.statusLabel}>{statusLabel}</Text>
-        <Text style={s.statusSub}>
-          {req.instructor_name ?? "강사"}
-          {req.fee > 0 ? `  ·  수수료 ${req.fee.toLocaleString()}원` : ""}
-        </Text>
-        {req.note ? <Text style={s.statusNote}>"{req.note}"</Text> : null}
-      </View>
-      {req.status === "PENDING" && (
-        <Pressable style={s.cancelBtn} onPress={onCancel}>
-          <Text style={s.cancelBtnTxt}>취소</Text>
-        </Pressable>
-      )}
     </View>
   );
 }
 
 // ── 숨고식 단계별 매칭 ────────────────────────────────────────
 function WizardFlow({
-  step, purpose, location, results, totalCount,
-  isMatched, hasMatchPending, hasConsultPending, me,
-  onSelectPurpose, onSelectLocation, onBack, onReset,
-  onSelectMatch, onSelectConsult,
+  step, purpose, location, results, totalCount, me,
+  onSelectPurpose, onSelectLocation, onBack, onReset, onSelect,
 }: {
   step: number;
   purpose: typeof PURPOSES[0] | null;
   location: string | null;
   results: InstructorPublicRead[];
   totalCount: number;
-  isMatched: boolean;
-  hasMatchPending: boolean;
-  hasConsultPending: boolean;
   me: UserRead | null;
   onSelectPurpose: (p: typeof PURPOSES[0]) => void;
   onSelectLocation: (l: string) => void;
   onBack: () => void;
   onReset: () => void;
-  onSelectMatch: (i: InstructorPublicRead) => void;
-  onSelectConsult: (i: InstructorPublicRead) => void;
+  onSelect: (i: InstructorPublicRead) => void;
 }) {
   if (step === 0) {
     return (
@@ -377,12 +256,8 @@ function WizardFlow({
           <InstructorCard
             key={i.id}
             instructor={i}
-            isMatched={isMatched}
-            hasMatchPending={hasMatchPending}
-            hasConsultPending={hasConsultPending}
             isCurrentInstructor={me?.manager_id === i.id}
-            onMatchPress={() => onSelectMatch(i)}
-            onConsultPress={() => onSelectConsult(i)}
+            onPress={() => onSelect(i)}
           />
         ))
       )}
@@ -393,19 +268,13 @@ function WizardFlow({
 
 // ── 강사 찾기 탭 ─────────────────────────────────────────────
 function SearchTab({
-  instructors, searchText, onSearchChange,
-  isMatched, hasMatchPending, hasConsultPending, me,
-  onSelectMatch, onSelectConsult,
+  instructors, searchText, onSearchChange, me, onSelect,
 }: {
   instructors: InstructorPublicRead[];
   searchText: string;
   onSearchChange: (v: string) => void;
-  isMatched: boolean;
-  hasMatchPending: boolean;
-  hasConsultPending: boolean;
   me: UserRead | null;
-  onSelectMatch: (i: InstructorPublicRead) => void;
-  onSelectConsult: (i: InstructorPublicRead) => void;
+  onSelect: (i: InstructorPublicRead) => void;
 }) {
   return (
     <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -439,12 +308,8 @@ function SearchTab({
           <InstructorCard
             key={i.id}
             instructor={i}
-            isMatched={isMatched}
-            hasMatchPending={hasMatchPending}
-            hasConsultPending={hasConsultPending}
             isCurrentInstructor={me?.manager_id === i.id}
-            onMatchPress={() => onSelectMatch(i)}
-            onConsultPress={() => onSelectConsult(i)}
+            onPress={() => onSelect(i)}
           />
         ))
       )}
@@ -455,23 +320,17 @@ function SearchTab({
 
 // ── 강사 카드 ────────────────────────────────────────────────
 function InstructorCard({
-  instructor, isMatched, hasMatchPending, hasConsultPending,
-  isCurrentInstructor, onMatchPress, onConsultPress,
+  instructor, isCurrentInstructor, onPress,
 }: {
   instructor: InstructorPublicRead;
-  isMatched: boolean;
-  hasMatchPending: boolean;
-  hasConsultPending: boolean;
   isCurrentInstructor: boolean;
-  onMatchPress: () => void;
-  onConsultPress: () => void;
+  onPress: () => void;
 }) {
   const isNamed = instructor.instructor_tier === "NAMED";
-  const matchDisabled = isMatched || hasMatchPending;
-  const consultDisabled = hasConsultPending;
 
+  // 카드를 누르면 상세 프로필(문의하기)
   return (
-    <View style={[c.card, isCurrentInstructor && c.currentCard]}>
+    <Pressable style={[c.card, isCurrentInstructor && c.currentCard]} onPress={onPress}>
       <View style={c.top}>
         <View style={[c.avatar, isNamed && c.namedAvatar]}>
           <Text style={[c.avatarTxt, isNamed && c.namedAvatarTxt]}>
@@ -521,65 +380,37 @@ function InstructorCard({
             <Text style={c.currentBadgeTxt}>담당 강사</Text>
           </View>
         ) : (
-          <View style={c.btnRow}>
-            {/* 상담 신청 — 항상 무료, 매칭과 독립 */}
-            <Pressable
-              style={[c.consultBtn, consultDisabled && c.btnDisabled]}
-              onPress={onConsultPress}
-              disabled={consultDisabled}
-            >
-              <Text style={[c.consultBtnTxt, consultDisabled && c.btnTxtDisabled]}>
-                {consultDisabled ? "상담 중" : "상담 신청"}
-              </Text>
-            </Pressable>
-            {/* 매칭 신청 */}
-            <Pressable
-              style={[c.matchBtn, matchDisabled && c.btnDisabled]}
-              onPress={onMatchPress}
-              disabled={matchDisabled}
-            >
-              <Text style={[c.matchBtnTxt, matchDisabled && c.btnTxtDisabled]}>
-                {isMatched ? "매칭 완료" : hasMatchPending ? "대기 중" : "매칭 신청"}
-              </Text>
-            </Pressable>
-          </View>
+          <Text style={c.detailHint}>자세히 보기 ›</Text>
         )}
       </View>
-    </View>
+    </Pressable>
   );
 }
 
-// ── 신청 모달 (매칭 / 상담 공용) ─────────────────────────────
-function RequestModal({
-  instructor, requestType, note, submitting,
-  onNoteChange, onClose, onSubmit,
+// ── 강사 상세 프로필 모달 (하단 "문의하기" → 채팅방) ─────────────
+function ProfileModal({
+  instructor, isCurrentInstructor, opening, onClose, onInquire,
 }: {
   instructor: InstructorPublicRead | null;
-  requestType: MatchRequestType;
-  note: string;
-  submitting: boolean;
-  onNoteChange: (v: string) => void;
+  isCurrentInstructor: boolean;
+  opening: boolean;
   onClose: () => void;
-  onSubmit: () => void;
+  onInquire: () => void;
 }) {
   if (!instructor) return null;
   const isNamed = instructor.instructor_tier === "NAMED";
-  const isConsultation = requestType === "CONSULTATION";
-  const title = isConsultation ? "상담 신청" : "매칭 신청";
-  // 상담은 항상 무료
-  const showFee = !isConsultation && isNamed;
 
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={m.container}>
         <View style={m.header}>
-          <Text style={m.title}>{title}</Text>
+          <Text style={m.title}>강사 프로필</Text>
           <Pressable onPress={onClose} style={m.closeBtn}>
             <Text style={m.closeTxt}>✕</Text>
           </Pressable>
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
           <View style={m.instrCard}>
             <View style={[m.avatar, isNamed && m.namedAvatar]}>
               <Text style={[m.avatarTxt, isNamed && m.namedAvatarTxt]}>
@@ -592,62 +423,66 @@ function RequestModal({
               </Text>
             </View>
             <Text style={m.instrName}>{instructor.display_name}</Text>
+            <Text style={m.instrSub}>@{instructor.username}</Text>
             {instructor.location && <Text style={m.instrSub}>📍 {instructor.location}</Text>}
+            {isCurrentInstructor && (
+              <View style={[c.currentBadge, { marginTop: 8 }]}><Text style={c.currentBadgeTxt}>담당 강사</Text></View>
+            )}
           </View>
 
-          {isConsultation ? (
-            <View style={[m.feeBox, m.consultBox]}>
-              <Text style={m.consultTitle}>💬 무료 상담</Text>
-              <Text style={m.feeNote}>
-                궁금한 점을 메모에 남겨주세요.{"\n"}강사가 확인 후 연락드립니다.{"\n"}담당 강사 연결과 무관합니다.
-              </Text>
-            </View>
-          ) : showFee ? (
-            <View style={m.feeBox}>
-              <Text style={m.feeLabel}>매칭 수수료</Text>
-              <Text style={m.feeAmount}>{NAMED_FEE.toLocaleString()}원</Text>
-              <Text style={m.feeNote}>네임드 강사 매칭 시 고객이 수수료를 부담합니다.{"\n"}수락 후 결제가 진행됩니다.</Text>
-            </View>
-          ) : (
-            <View style={[m.feeBox, m.freeBox]}>
-              <Text style={m.freeTxt}>무료 매칭</Text>
-              <Text style={m.feeNote}>이 강사는 수수료 없이 매칭할 수 있습니다.</Text>
+          <View style={pf.section}>
+            <ProfileRow label="경력" value={instructor.career_years ? `${instructor.career_years}년` : "-"} />
+            <ProfileRow label="자격증" value={instructor.certifications || "-"} />
+          </View>
+
+          {instructor.specialties.length > 0 && (
+            <View style={pf.section}>
+              <Text style={pf.sectionTitle}>전문 분야</Text>
+              <View style={c.tagsRow}>
+                {instructor.specialties.map(sp => (
+                  <View key={sp} style={c.tag}><Text style={c.tagTxt}>{sp}</Text></View>
+                ))}
+              </View>
             </View>
           )}
 
-          <Text style={m.label}>
-            {isConsultation ? "상담 내용 (선택)" : "강사에게 남길 메모 (선택)"}
-          </Text>
-          <TextInput
-            value={note}
-            onChangeText={onNoteChange}
-            placeholder={
-              isConsultation
-                ? "예: 주 2회 레슨 가능한지, 비용이 궁금합니다."
-                : "예: 초보자입니다. 드라이버 교정이 필요합니다."
-            }
-            multiline
-            numberOfLines={3}
-            style={m.input}
-          />
-
-          <View style={m.btns}>
-            <Pressable style={m.cancelBtn} onPress={onClose}>
-              <Text style={m.cancelTxt}>취소</Text>
-            </Pressable>
-            <Pressable
-              style={[m.submitBtn, submitting && { opacity: 0.6 }, isConsultation && m.consultSubmitBtn]}
-              onPress={onSubmit}
-              disabled={submitting}
-            >
-              <Text style={m.submitTxt}>{submitting ? "신청 중..." : title}</Text>
-            </Pressable>
+          <View style={pf.section}>
+            <Text style={pf.sectionTitle}>소개</Text>
+            <Text style={pf.bio}>{instructor.bio || "등록된 소개가 없습니다."}</Text>
           </View>
         </ScrollView>
+
+        {/* 하단 고정: 문의하기 */}
+        <View style={pf.footer}>
+          <Pressable style={[pf.inquireBtn, opening && { opacity: 0.6 }]} onPress={onInquire} disabled={opening}>
+            <Text style={pf.inquireTxt}>{opening ? "채팅방 여는 중..." : "문의하기"}</Text>
+          </Pressable>
+        </View>
       </View>
     </Modal>
   );
 }
+
+function ProfileRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={pf.row}>
+      <Text style={pf.rowLabel}>{label}</Text>
+      <Text style={pf.rowValue}>{value}</Text>
+    </View>
+  );
+}
+
+const pf = StyleSheet.create({
+  section:      { marginHorizontal: 20, marginTop: 16, backgroundColor: "#fff", borderRadius: 14, padding: 16, borderWidth: 1, borderColor: "#f3f4f6" },
+  sectionTitle: { fontSize: 13, fontWeight: "700", color: "#6b7280", marginBottom: 10 },
+  row:          { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6 },
+  rowLabel:     { fontSize: 14, color: "#6b7280" },
+  rowValue:     { fontSize: 14, color: "#111", fontWeight: "600", flexShrink: 1, textAlign: "right", marginLeft: 12 },
+  bio:          { fontSize: 14, color: "#374151", lineHeight: 21 },
+  footer:       { padding: 16, paddingBottom: 28, borderTopWidth: 1, borderTopColor: "#f3f4f6", backgroundColor: "#fff" },
+  inquireBtn:   { backgroundColor: "#16a34a", borderRadius: 14, paddingVertical: 16, alignItems: "center" },
+  inquireTxt:   { color: "#fff", fontSize: 16, fontWeight: "700" },
+});
 
 // ── 스타일 ────────────────────────────────────────────────────
 const s = StyleSheet.create({
@@ -729,6 +564,7 @@ const se = StyleSheet.create({
 });
 
 const c = StyleSheet.create({
+  detailHint:   { fontSize: 13, color: "#16a34a", fontWeight: "600" },
   card:         { marginHorizontal: 16, marginVertical: 6, backgroundColor: "#fff", borderRadius: 16, padding: 16, shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
   currentCard:  { borderWidth: 2, borderColor: "#10b981" },
   top:          { flexDirection: "row", alignItems: "flex-start", marginBottom: 10 },

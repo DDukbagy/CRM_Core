@@ -8,13 +8,12 @@ FastAPI(async) + SQLModel + PostgreSQL(AsyncPG) + Alembic 기반.
 ## Quick Start
 
 ```bash
-# 최초 1회
-chmod +x scripts/verify.sh
-make verify
+# 저장소 루트에서 (Docker 필요, 외부 서비스·backend/.env 불필요)
+make apitest     # 로컬 DB로 테스트
+make apiverify   # 로컬 DB → 서버 → 토큰 → 플로우까지 원클릭
 ```
 
-- 서버가 꺼져 있으면 자동 실행
-- 토큰 발급 → 플로우 실행까지 원클릭
+- 로컬 Postgres 컨테이너(`crm-local-db`)를 자동으로 띄우고 더미 설정(`scripts/local_env.sh`)으로 실행
 
 ---
 
@@ -22,18 +21,18 @@ make verify
 
 | 명령 | 설명 |
 |------|------|
-| `make server` | 개발 서버 실행 |
-| `make test` | 테스트 실행 |
-| `make verify` | 원클릭 검증 (서버 + 토큰 + 플로우) |
-| `make tokens` | 테스트 토큰 발급 |
-| `make flow` | 플로우 실행 |
-| `make release` | 운영 배포 (main 태그 기반 · 대화형) |
-| `make rollback-safe` / `make rollback-dry` | 롤백 실행 / 롤백 시뮬레이션 |
-| `make branch-reset` | 브랜치 리셋 |
-| `make check-db` / `make check-schema` | DB 연결 / 스키마 검증 |
-| `make copilot-logs-staging` / `make copilot-logs-prod` | 스테이징 / 운영 로그 |
+| `make api` | 개발 서버 실행 |
+| `make apitest` | 테스트 실행 (로컬 DB 새로 만들기 + alembic check + pytest) |
+| `make apiverify` | 원클릭 로컬 검증 (로컬 DB + 서버 + 토큰 + 플로우) |
+| `make apitoken` | 실제 Supabase 토큰 발급 |
+| `make apiflow` | 실행 중인 서버에 플로우 실행 |
+| `make gitrelease` | main 버전 태그 생성 (롤백 기준점 · 대화형) |
+| `make gitrollback` / `make gitrollbackdry` | 롤백 실행 / 롤백 시뮬레이션 |
+| `make gitbranch` | 브랜치 리셋 |
+| `make dbcheck` / `make dbschema` | DB 연결 / 스키마 검증 |
+| `make stglogs` / `make prodlogs` | 스테이징 / 운영 로그 |
 
-전체 명령어 목록은 `Docs/dev-runbook.md` 참고.
+전체 명령어 목록은 `../docs/operations/dev-runbook.md` 참고.
 
 ---
 
@@ -63,16 +62,19 @@ poetry run uvicorn app.main:app --reload
 
 | 도메인 | 기능 |
 |--------|------|
-| `auth` | 인증 · JIT 유저 생성 |
-| `users` | 사용자 관리 · RBAC (CUSTOMER / INSTRUCTOR / CONTENT_MANAGER / ADMIN) |
-| `instructor` | 강사 승인 · 담당 고객 등록 · 공개 프로필 검색 |
-| `calendar` | 캘린더 · 타임슬롯 · 예약 · 레슨노트 |
-| `membership` | 멤버십 (횟수제 / 기간제) |
-| `payment` | 결제 내역 기록 · 상태 관리 |
-| `passes` | 레슨 패스(수강권) 발급 · 사용 관리 |
-| `posts` | 게시물 · 댓글 · 좋아요 · 미디어 · 동의 정책 · 매칭 요청 |
-| `chat` | 채팅 |
-| `content` | 강사 콘텐츠 관리 |
+| `auth` | Supabase 기반 인증 · JIT 유저 생성 · 아이디/비밀번호 로그인 |
+| `users` | 사용자 관리 · RBAC (CUSTOMER / INSTRUCTOR / CONTENT_MANAGER / ADMIN) · 담당 강사 지정 · 회원 탈퇴(기록 보존) |
+| `instructor` | 강사 승인 · 담당 고객 등록 · 공개 프로필 · 매출·운영 대시보드 |
+| `calendar` | 캘린더 · 타임슬롯 · 휴무(정기·임시·날짜별 열기/닫기) · 예약 가능 시간 |
+| `booking` | 레슨 예약 신청 · 확정·거절·취소·완료·노쇼 · 수강권 차감 |
+| `lesson_notes` | 레슨노트 (글 · 스캔 PDF, 고객별) |
+| `passes` | 수강권 상품 · 발급 · 사용 관리 |
+| `payment` | 결제 기록 · 상태 관리 (5년 보존) |
+| `promotions` | 강사 할인·이벤트 프로모션 (프로토타입) |
+| `posts` | 게시물(홍보·공지·커뮤니티) · 댓글 · 좋아요 · 미디어 |
+| `notifications` | 알림 (댓글·좋아요 등) |
+| `chat` | 고객–강사 1:1 채팅 (문의하기) |
+| `matching` | 강사 매칭 신청 API · 모임 찾기(예정) |
 
 ```
 backend/app/domains/{feature}/
@@ -128,7 +130,9 @@ poetry run pytest tests/test_bookings.py -v
 
 | 문서 | 내용 |
 |------|------|
-| `Docs/dev-runbook.md` | 개발 명령어 모음 |
-| `Docs/troubleshooting.md` | 문제 해결 |
-| `Docs/aws.md` | AWS / Copilot 운영 가이드 |
+| `../docs/operations/dev-runbook.md` | 개발 명령어 모음 |
+| `../docs/operations/troubleshooting.md` | 문제 해결 |
+| `../docs/operations/aws.md` | AWS / Copilot 운영 가이드 |
+| `../docs/operations/env-setup.md` | env 파일·변수 이름 |
+| `../docs/operations/pg-integration.md` | PG(온라인 결제) 연동 방법 |
 | 루트 `README.md` | 배포 파이프라인 |

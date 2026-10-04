@@ -1,8 +1,8 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import Column, DateTime, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Column, DateTime, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy import text, ForeignKey
 from sqlmodel import SQLModel, Field, func
@@ -11,64 +11,18 @@ from sqlmodel import SQLModel, Field, func
 class InstructorStaff(SQLModel, table=True):
     __tablename__ = "instructor_staff"
     __table_args__ = (
-        UniqueConstraint("instructor_id", "staff_user_id", name="uq_instructor_staff"),
+        UniqueConstraint("instructor_id", "staff_user_id", name="instructor_staff_instructor_id_staff_user_id_key"),
         {"extend_existing": True},
     )
 
-    id: Optional[int] = Field(default=None, primary_key=True)
-    instructor_id: UUID = Field(
-        sa_type=PGUUID(as_uuid=True),
-        nullable=False,
-        foreign_key="users.id",
+    # 원격 DB 와 같은 UUID (DB 가 생성)
+    id: Optional[UUID] = Field(
+        default=None,
+        sa_column=Column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")),
     )
-    staff_user_id: UUID = Field(
-        sa_type=PGUUID(as_uuid=True),
-        nullable=False,
-        foreign_key="users.id",
-    )
+    instructor_id: UUID = Field(sa_column=Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False))
+    staff_user_id: UUID = Field(sa_column=Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False))
     created_at: Optional[datetime] = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False),
-    )
-
-
-class MatchRequest(SQLModel, table=True):
-    __tablename__ = "instructor_match_requests"
-    __table_args__ = {"extend_existing": True}
-
-    id: UUID = Field(
-        primary_key=True,
-        sa_type=PGUUID(as_uuid=True),
-        sa_column_kwargs={"server_default": text("gen_random_uuid()")},
-    )
-    customer_id: UUID = Field(
-        sa_type=PGUUID(as_uuid=True),
-        nullable=False,
-        foreign_key="users.id",
-    )
-    instructor_id: UUID = Field(
-        sa_type=PGUUID(as_uuid=True),
-        nullable=False,
-        foreign_key="users.id",
-    )
-    # MATCH | CONSULTATION
-    request_type: str = Field(default="MATCH", max_length=20)
-    # PENDING | ACCEPTED | REJECTED | CANCELLED
-    status: str = Field(default="PENDING", max_length=20)
-    # 0 = 무료(NORMAL), 5000 = 유료(NAMED)
-    fee: int = Field(default=0)
-    note: Optional[str] = Field(default=None, sa_type=Text)
-
-    created_at: Optional[datetime] = Field(
-        default=None,
-        sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False),
-    )
-    updated_at: Optional[datetime] = Field(
-        default=None,
-        sa_column=Column(
-            DateTime(timezone=True),
-            server_default=func.now(),
-            onupdate=lambda: datetime.now(timezone.utc),
-            nullable=False,
-        ),
     )

@@ -1,8 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
-import {
-  View, Text, ScrollView, Pressable, TextInput,
-  RefreshControl, StyleSheet, Modal, ActivityIndicator, Alert,
-} from "react-native";
+import { View, Text, ScrollView, Pressable, TextInput, RefreshControl, StyleSheet, Modal, ActivityIndicator } from "react-native";
+import { appAlert } from "@/lib/alert";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { apiFetch } from "@/lib/api";
@@ -57,7 +55,7 @@ export default function CustomersScreen() {
       });
       await load();
       handleClose();
-      Alert.alert("등록 완료", `${customer.display_name}님이 담당 고객으로 등록되었습니다.`);
+      appAlert("등록 완료", `${customer.display_name}님이 담당 고객으로 등록되었습니다.`);
     } catch (e: any) {
       if (e?.status === 404) {
         setErrorMsg("해당 고객을 찾을 수 없습니다.");

@@ -1,10 +1,7 @@
 // app/(tabs)/schedule.tsx
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  View, Text, ScrollView, Pressable, TextInput, Alert,
-  ActivityIndicator, Modal, Animated, Dimensions, StyleSheet,
-  KeyboardAvoidingView, Platform, AppState, PanResponder,
-} from "react-native";
+import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Modal, Animated, Dimensions, StyleSheet, KeyboardAvoidingView, Platform, AppState, PanResponder } from "react-native";
+import { appAlert } from "@/lib/alert";
 import { useFocusEffect, useRouter } from "expo-router";
 import { apiFetch } from "@/lib/api";
 import type { UserRead, BookingRead, AvailabilityResponse, AvailabilitySlot, BookingCreate, CustomerPassRead } from "@/types/api";
@@ -12,6 +9,7 @@ import {
   STATUS_COLOR, STATUS_LABEL, CHIP_BG,
   toDateStr, fmtTime, parseTime, timeToY as _timeToY, timeDiff as _timeDiff,
   jsWeekdayToPy, isEffectiveOffDay, makeBookingGroups,
+  toLocalDateStr,
 } from "@/lib/bookingUtils";
 
 const { height: SCREEN_H, width: SCREEN_W } = Dimensions.get("window");
@@ -54,7 +52,7 @@ function MonthGrid({
 }) {
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toLocalDateStr();
 
   const cells: (number | null)[] = [
     ...Array(firstDay).fill(null),
@@ -112,7 +110,7 @@ function MonthGrid({
                 {sessions.length > 2 && <Text style={mg.more}>+{sessions.length - 2}</Text>}
                 {bk.length === 0 && isEffectiveOff && (
                   <View style={mg.noLessonWrap}>
-                    <Text style={mg.noLessonTxt}>{isHoliday ? "휴무" : "레슨없는날"}</Text>
+                    <Text style={mg.noLessonTxt}>{isHoliday ? "임시휴무" : isRecurringOff ? "정기휴무" : "레슨없는날"}</Text>
                   </View>
                 )}
                 {availability[ds] && bk.length === 0 && (
@@ -165,7 +163,7 @@ function DayPanel({
   onSelectBooking: (b: BookingRead) => void;
 }) {
   const [selectedSlotIds, setSelectedSlotIds] = useState<Set<number>>(new Set());
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toLocalDateStr();
   const isToday = date === today;
   const isPast = date < today;
   const canBook = !isPast && !isToday && !!managerId;
@@ -454,7 +452,7 @@ function TimelineView({
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const monthDates = Array.from({ length: daysInMonth }, (_, i) => {
     const d = new Date(year, month, i + 1);
-    return d.toISOString().slice(0, 10);
+    return toLocalDateStr(d);
   });
 
   const stripScrollRef = useRef<ScrollView>(null);
@@ -464,7 +462,7 @@ function TimelineView({
   const selDay = new Date(selectedDate).getDate() - 1;
   const scrollToX = Math.max(0, selDay * DAY_CELL_W - SCREEN_W / 2 + DAY_CELL_W / 2);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toLocalDateStr();
   const dayBookings = bookings.filter(b => b.when === selectedDate && b.status !== "CANCELLED");
   const daySlots = availability[selectedDate] ?? [];
   const timelineH = (END_H - START_H) * HOUR_H;
@@ -662,8 +660,8 @@ export default function ScheduleScreen() {
 
   // 특정 월의 가용 슬롯 로드 (슬롯 시간 누적)
   async function loadAvailability(mgId: string, y: number, m: number) {
-    const start = new Date(y, m, 1).toISOString().slice(0, 10);
-    const end   = new Date(y, m + 1, 0).toISOString().slice(0, 10);
+    const start = toLocalDateStr(new Date(y, m, 1));
+    const end   = toLocalDateStr(new Date(y, m + 1, 0));
     try {
       const avail = await apiFetch<AvailabilityResponse>(
         `/calendars/${mgId}/availability?start=${start}&end=${end}`
@@ -772,7 +770,7 @@ export default function ScheduleScreen() {
   }, [selectedDate]);
 
   function openPanel(date: string) {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = toLocalDateStr();
     // 미래 날짜이고, 강사 있고, 수강권 없으면 → 수강권 없음 모달
     if (date > today && managerIdRef.current && !activePass) {
       setNoPassModalVisible(true);
@@ -810,9 +808,9 @@ export default function ScheduleScreen() {
   }
 
   function openBookingModal(slots: AvailabilitySlot[]) {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = toLocalDateStr();
     if (selectedDate <= today) {
-      Alert.alert("알림", "당일 및 지난 날짜는 예약 신청이 불가합니다.");
+      appAlert("알림", "당일 및 지난 날짜는 예약 신청이 불가합니다.");
       return;
     }
     if (slots.length === 0) return;
@@ -837,12 +835,12 @@ export default function ScheduleScreen() {
       const msg = selectedSlots.length > 1
         ? `${selectedSlots.length}개 시간 예약이 신청되었습니다.\n강사 수락 후 확정됩니다.`
         : "예약이 신청되었습니다.\n강사 수락 후 확정됩니다.";
-      Alert.alert("완료", msg);
+      appAlert("완료", msg);
       setModalVisible(false);
       load();
     } catch (e: any) {
       const detail = (e?.body as any)?.detail ?? e?.message ?? "예약 실패";
-      Alert.alert("오류", typeof detail === "string" ? detail : JSON.stringify(detail));
+      appAlert("오류", typeof detail === "string" ? detail : JSON.stringify(detail));
     } finally { setSubmitting(false); }
   }
 
@@ -897,7 +895,7 @@ export default function ScheduleScreen() {
   if (loading) return <View style={s.center}><ActivityIndicator size="large" /></View>;
 
   const daysInMon = new Date(year, month + 1, 0).getDate();
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = toLocalDateStr();
 
   return (
     <View style={{ flex: 1, backgroundColor: "#fff" }} {...calendarPan.panHandlers}>
@@ -1207,7 +1205,7 @@ function BookingDetailModal({ visible, booking, slotTimeMap, instructorName, onC
   }
 
   async function saveEdit() {
-    if (!editTopic.trim()) { Alert.alert("확인", "수업 주제를 입력해주세요."); return; }
+    if (!editTopic.trim()) { appAlert("확인", "수업 주제를 입력해주세요."); return; }
     setSaving(true);
     try {
       const updated = await apiFetch<BookingRead>(`/bookings/${booking!.id}`, {
@@ -1217,7 +1215,7 @@ function BookingDetailModal({ visible, booking, slotTimeMap, instructorName, onC
       onUpdated(updated);
       setEditing(false);
     } catch (e: any) {
-      Alert.alert("오류", e?.message ?? "수정에 실패했습니다.");
+      appAlert("오류", e?.message ?? "수정에 실패했습니다.");
     } finally {
       setSaving(false);
     }
@@ -1235,12 +1233,12 @@ function BookingDetailModal({ visible, booking, slotTimeMap, instructorName, onC
         onCancelled(res.id);
       } else {
         // 취소 신청(cancel) → CANCEL_REQUESTED 상태로 UI 갱신
-        Alert.alert("알림", "취소 신청이 완료되었습니다.\n강사 승인 후 취소됩니다.");
+        appAlert("알림", "취소 신청이 완료되었습니다.\n강사 승인 후 취소됩니다.");
         onUpdated({ ...booking!, status: res.status as BookingRead["status"], updated_at: res.updated_at });
       }
     } catch (e: any) {
       const msg = (e as any)?.body?.error?.message ?? (e as any)?.body?.detail ?? e?.message ?? "처리에 실패했습니다.";
-      Alert.alert("오류", typeof msg === "string" ? msg : JSON.stringify(msg));
+      appAlert("오류", typeof msg === "string" ? msg : JSON.stringify(msg));
     } finally {
       setSubmitting(false);
     }
@@ -1253,7 +1251,7 @@ function BookingDetailModal({ visible, booking, slotTimeMap, instructorName, onC
       onUpdated(res);
     } catch (e: any) {
       const msg = (e as any)?.body?.error?.message ?? (e as any)?.body?.detail ?? e?.message ?? "처리에 실패했습니다.";
-      Alert.alert("오류", typeof msg === "string" ? msg : JSON.stringify(msg));
+      appAlert("오류", typeof msg === "string" ? msg : JSON.stringify(msg));
     } finally {
       setSubmitting(false);
     }

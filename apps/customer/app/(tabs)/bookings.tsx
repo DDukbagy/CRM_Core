@@ -1,9 +1,7 @@
 // app/(tabs)/bookings.tsx — 예약 목록
 import { useState, useCallback, useRef } from "react";
-import {
-  View, Text, FlatList, Pressable, Alert, ActivityIndicator,
-  RefreshControl, StyleSheet,
-} from "react-native";
+import { View, Text, FlatList, Pressable, ActivityIndicator, RefreshControl, StyleSheet } from "react-native";
+import { appAlert } from "@/lib/alert";
 import { useFocusEffect, useRouter } from "expo-router";
 import { apiFetch } from "@/lib/api";
 import type { BookingRead, BookingStatus } from "@/types/api";
@@ -58,7 +56,7 @@ export default function BookingsScreen() {
     const confirmText = isWithdraw ? "철회" : "취소 신청";
     const endpoint = isWithdraw ? `/bookings/${id}/withdraw` : `/bookings/${id}/cancel`;
     const errorMsg = isWithdraw ? "철회에 실패했습니다." : "취소 신청에 실패했습니다.";
-    Alert.alert(title, isWithdraw ? "예약 신청을 철회하시겠습니까?" : "취소를 신청하시겠습니까?", [
+    appAlert(title, isWithdraw ? "예약 신청을 철회하시겠습니까?" : "취소를 신청하시겠습니까?", [
       { text: "아니오", style: "cancel" },
       {
         text: confirmText, style: "destructive",
@@ -67,7 +65,7 @@ export default function BookingsScreen() {
             await apiFetch(endpoint, { method: "PATCH" });
             load();
           } catch {
-            Alert.alert("오류", errorMsg);
+            appAlert("오류", errorMsg);
           }
         },
       },

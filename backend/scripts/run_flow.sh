@@ -5,7 +5,7 @@ set -o pipefail
 need() {
   local k="$1"
   if [ -z "${!k:-}" ]; then
-    echo "ERROR: env var '$k' is not set. 먼저: source scripts/load_tokens.sh" >&2
+    echo "ERROR: env var '$k' is not set. 로컬 검증은 make apiverify, 실제 서버는 make apitoken 으로 토큰을 받아 export 하세요." >&2
     exit 1
   fi
 }
@@ -188,18 +188,18 @@ echo "HOST_ID=$HOST_ID"
 echo "RANGE=$START_DATE .. $END_DATE"
 echo
 
-echo "1) /accounts/me (guest)"
-http_json GET "$BASE_URL/accounts/me" "$GUEST_TOKEN"
+echo "1) /users/me (guest)"
+http_json GET "$BASE_URL/users/me" "$GUEST_TOKEN"
 ok_or_die "게스트 토큰 검증"
 echo
 
-echo "2) /accounts/me (host)"
-http_json GET "$BASE_URL/accounts/me" "$HOST_TOKEN"
+echo "2) /users/me (host)"
+http_json GET "$BASE_URL/users/me" "$HOST_TOKEN"
 ok_or_die "호스트 토큰 검증"
 echo
 
-echo "3) /accounts?limit=10&offset=0 (host only)"
-http_json GET "$BASE_URL/accounts?limit=10&offset=0" "$HOST_TOKEN"
+echo "3) /users?limit=10&offset=0 (host)"
+http_json GET "$BASE_URL/users?limit=10&offset=0" "$HOST_TOKEN"
 ok_or_die "호스트 전용 API"
 echo
 
@@ -286,20 +286,21 @@ fi
 echo "✅ 예약 후 슬롯 제거 확인 OK"
 echo
 
-echo "12) PATCH /bookings/$BOOKING_ID/cancel (guest)"
-http_json PATCH "$BASE_URL/bookings/$BOOKING_ID/cancel" "$GUEST_TOKEN"
-ok_or_die "게스트 예약 취소"
+# 방금 만든 예약은 강사 확정 전(REQUESTED)이라 취소(cancel)가 아니라 요청 철회(withdraw) 대상이다
+echo "12) PATCH /bookings/$BOOKING_ID/withdraw (guest)"
+http_json PATCH "$BASE_URL/bookings/$BOOKING_ID/withdraw" "$GUEST_TOKEN"
+ok_or_die "게스트 예약 요청 철회"
 echo
 
-echo "13) availability 재조회(취소 후 슬롯 복구 확인)"
+echo "13) availability 재조회(철회 후 슬롯 복구 확인)"
 http_json GET "$AV_URL"
 ok_or_die "availability 재조회"
 present="$(py_has_slot_on_date "$BODY_FILE" "$BOOK_DATE" "$BOOK_SLOT_ID")"
 if [ "$present" != "YES" ]; then
-  echo "❌ 취소 후에도 슬롯이 복구되지 않음: $BOOK_DATE slot=$BOOK_SLOT_ID" >&2
+  echo "❌ 철회 후에도 슬롯이 복구되지 않음: $BOOK_DATE slot=$BOOK_SLOT_ID" >&2
   exit 1
 fi
-echo "✅ 취소 후 슬롯 복구 확인 OK"
+echo "✅ 철회 후 슬롯 복구 확인 OK"
 echo
 
 echo "14) GET /calendars/me/bookings (host)"

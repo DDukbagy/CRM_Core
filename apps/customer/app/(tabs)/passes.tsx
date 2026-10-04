@@ -1,11 +1,9 @@
 import { useCallback, useState } from "react";
-import {
-  View, Text, ScrollView, Pressable, Modal, Alert,
-  StyleSheet, ActivityIndicator,
-} from "react-native";
+import { View, Text, ScrollView, Pressable, Modal, StyleSheet, ActivityIndicator } from "react-native";
+import { appAlert } from "@/lib/alert";
 import { useFocusEffect } from "expo-router";
 import { apiFetch } from "@/lib/api";
-import type { CustomerPassRead, PassTypeRead, UserRead } from "@/types/api";
+import type { CustomerPassRead, PassTypeRead, PromotionRead, UserRead } from "@/types/api";
 
 const STATUS_COLOR: Record<string, string> = {
   ACTIVE: "#16a34a", COMPLETED: "#6b7280", EXPIRED: "#f97316", CANCELLED: "#ef4444",
@@ -14,11 +12,19 @@ const STATUS_LABEL: Record<string, string> = {
   ACTIVE: "진행중", COMPLETED: "완료", EXPIRED: "만료", CANCELLED: "취소",
 };
 
+function discountLabel(p: PromotionRead) {
+  if (p.discount_type === "PERCENT") return `${p.discount_value}% 할인`;
+  if (p.discount_type === "AMOUNT") return `${p.discount_value.toLocaleString()}원 할인`;
+  return "이벤트";
+}
+
 export default function PassesScreen() {
   const [passes, setPasses] = useState<CustomerPassRead[]>([]);
   const [managerId, setManagerId] = useState<string | null>(null);
   const [instructorInfo, setInstructorInfo] = useState<UserRead | null>(null);
   const [availableTypes, setAvailableTypes] = useState<PassTypeRead[]>([]);
+  // 담당 강사의 진행 중인 할인·이벤트 (결제 연동 전 안내용)
+  const [promotions, setPromotions] = useState<PromotionRead[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalPass, setModalPass] = useState<CustomerPassRead | null>(null);
 
@@ -38,15 +44,18 @@ export default function PassesScreen() {
       setManagerId(mid);
 
       if (mid) {
-        const [types, instructor] = await Promise.all([
+        const [types, instructor, promos] = await Promise.all([
           apiFetch<PassTypeRead[]>(`/passes/instructor/${mid}/types`),
           apiFetch<UserRead>(`/users/${mid}`),
+          apiFetch<PromotionRead[]>(`/promotions/instructor/${mid}`).catch(() => [] as PromotionRead[]),
         ]);
+        setPromotions(Array.isArray(promos) ? promos : []);
         setAvailableTypes(Array.isArray(types) ? types.filter(t => t.is_active) : []);
         setInstructorInfo(instructor ?? null);
       } else {
         setAvailableTypes([]);
         setInstructorInfo(null);
+        setPromotions([]);
       }
     } catch (e) {
       console.error("수강권 로드 실패:", e);
@@ -119,7 +128,7 @@ export default function PassesScreen() {
             <Pressable
               style={s.renewBtn}
               onPress={() =>
-                Alert.alert("갱신 준비 중", "결제 기능 연동 후 이용 가능합니다.", [{ text: "확인" }])
+                appAlert("갱신 준비 중", "결제 기능 연동 후 이용 가능합니다.", [{ text: "확인" }])
               }
             >
               <Text style={s.renewBtnTxt}>갱신하기</Text>
@@ -149,6 +158,16 @@ export default function PassesScreen() {
           </View>
         )}
 
+        {/* 진행 중인 할인·이벤트 */}
+        {promotions.map(pr => (
+          <View key={pr.id} style={s.promoCard}>
+            <Text style={s.promoBadge}>{discountLabel(pr)}</Text>
+            <Text style={s.promoTitle}>{pr.title}</Text>
+            {pr.description ? <Text style={s.promoDesc}>{pr.description}</Text> : null}
+            <Text style={s.promoPeriod}>~ {pr.end_date}까지{pr.pass_type_name ? ` · ${pr.pass_type_name}` : ""}</Text>
+          </View>
+        ))}
+
         {/* 수강권 상품 목록 */}
         {availableTypes.length === 0 ? (
           <View style={s.noTypesWrap}>
@@ -173,9 +192,17 @@ export default function PassesScreen() {
                   <Text style={s.typeRowDesc}>{pt.description}</Text>
                 ) : null}
               </View>
-              {pt.price !== null && (
-                <Text style={s.typeRowPrice}>{pt.price.toLocaleString()}원</Text>
-              )}
+              {pt.price !== null && (() => {
+                const promo = promotions.find(pr => pr.pass_type_id === pt.id && pr.discounted_price !== null);
+                return promo ? (
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text style={s.typeRowPriceOld}>{pt.price.toLocaleString()}원</Text>
+                    <Text style={s.typeRowPrice}>{promo.discounted_price!.toLocaleString()}원</Text>
+                  </View>
+                ) : (
+                  <Text style={s.typeRowPrice}>{pt.price.toLocaleString()}원</Text>
+                );
+              })()}
             </View>
           ))
         )}
@@ -185,7 +212,7 @@ export default function PassesScreen() {
           <Pressable
             style={s.buyBtn}
             onPress={() =>
-              Alert.alert(
+              appAlert(
                 "결제 준비 중",
                 "현재 결제 기능을 준비하고 있습니다.\n강사에게 직접 문의해주세요.",
                 [{ text: "확인" }]
@@ -241,6 +268,12 @@ export default function PassesScreen() {
 }
 
 const s = StyleSheet.create({
+  promoCard: { marginHorizontal: 16, marginBottom: 10, padding: 14, borderRadius: 14, backgroundColor: "#fff7ed", borderWidth: 1, borderColor: "#fed7aa" },
+  promoBadge: { alignSelf: "flex-start", fontSize: 11, fontWeight: "700", color: "#fff", backgroundColor: "#f97316", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, overflow: "hidden", marginBottom: 6 },
+  promoTitle: { fontSize: 15, fontWeight: "700", color: "#111" },
+  promoDesc: { fontSize: 13, color: "#6b7280", marginTop: 2 },
+  promoPeriod: { fontSize: 12, color: "#9a3412", marginTop: 6 },
+  typeRowPriceOld: { fontSize: 12, color: "#9ca3af", textDecorationLine: "line-through" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
   emptyIcon: { fontSize: 52 },
   emptyTitle: { fontSize: 18, fontWeight: "700", color: "#111" },

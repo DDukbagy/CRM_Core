@@ -3,14 +3,15 @@ from typing import TYPE_CHECKING, Optional, List
 from uuid import UUID
 
 from pydantic import EmailStr, AwareDatetime
-from sqlalchemy import UniqueConstraint, String, Text, SmallInteger, Date
+from sqlalchemy import Column, ForeignKey, UniqueConstraint, String, Text, SmallInteger, Date
 from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
 from sqlmodel import SQLModel, Field, Relationship, func
 from sqlalchemy_utc import UtcDateTime
 
 # 순환 참조 방지
 if TYPE_CHECKING:
-    from app.domains.calendar.models import Calendar, Booking
+    from app.domains.booking.models import Booking
+    from app.domains.calendar.models import Calendar
 
 
 class User(SQLModel, table=True):
@@ -47,14 +48,13 @@ class User(SQLModel, table=True):
         default="ACTIVE",
         sa_type=String(20),
         nullable=False,
-        description="계정 상태 (ACTIVE, PENDING, SUSPENDED)",
+        description="계정 상태 (ACTIVE, PENDING, SUSPENDED, WITHDRAWN=탈퇴)",
     )
 
     manager_id: Optional[UUID] = Field(
         default=None,
-        sa_type=PGUUID(as_uuid=True),
-        foreign_key="users.id",
-        description="담당 강사/관리자 ID"
+        sa_column=Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True),
+        description="담당 강사/관리자 ID",
     )
 
     instructor_tier: Optional[str] = Field(
@@ -132,6 +132,13 @@ class User(SQLModel, table=True):
         default=True,
         nullable=False,
         description="계정 활성화 여부"
+    )
+
+    withdrawn_at: Optional[AwareDatetime] = Field(
+        default=None,
+        nullable=True,
+        sa_type=UtcDateTime,
+        description="탈퇴 처리 시각 (보존 기록의 기준일 확인용)",
     )
 
     push_token: Optional[str] = Field(

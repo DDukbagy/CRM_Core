@@ -14,6 +14,7 @@ import {
 import { useFocusEffect, useNavigation } from "expo-router";
 import { apiFetch } from "@/lib/api";
 import type { UserRead, BookingRead } from "@/types/api";
+import { toLocalDateStr } from "@/lib/bookingUtils";
 
 const SCREEN_W = Dimensions.get("window").width;
 const PANEL_W = Math.min(SCREEN_W * 0.82, 340);
@@ -35,15 +36,15 @@ function getWeekRange() {
   const sun = new Date(mon);
   sun.setDate(mon.getDate() + 6);
   return {
-    start: mon.toISOString().slice(0, 10),
-    end: sun.toISOString().slice(0, 10),
+    start: toLocalDateStr(mon),
+    end: toLocalDateStr(sun),
   };
 }
 
 function getMonthRange() {
   const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+  const start = toLocalDateStr(new Date(now.getFullYear(), now.getMonth(), 1));
+  const end = toLocalDateStr(new Date(now.getFullYear(), now.getMonth() + 1, 0));
   return { start, end };
 }
 
@@ -208,7 +209,7 @@ export default function HomeScreen() {
 
       const list = rawList.filter((b) => b.status !== "CANCELLED");
 
-      const today = new Date().toISOString().slice(0, 10);
+      const today = toLocalDateStr();
       const { start: wStart, end: wEnd } = getWeekRange();
       const { start: mStart, end: mEnd } = getMonthRange();
 
@@ -232,7 +233,7 @@ export default function HomeScreen() {
     return <View style={s.center}><ActivityIndicator size="large" /></View>;
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toLocalDateStr();
   const { start: wStart, end: wEnd } = getWeekRange();
   const { start: mStart, end: mEnd } = getMonthRange();
 

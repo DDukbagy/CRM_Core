@@ -13,14 +13,15 @@ type TimeSlot = {
   updated_at?: string;
 };
 
+// 백엔드 weekdays 기준: 0=월 … 6=일 (Python weekday)
 const WEEKDAY_LABEL: Record<number, string> = {
-  0: "일",
-  1: "월",
-  2: "화",
-  3: "수",
-  4: "목",
-  5: "금",
-  6: "토",
+  0: "월",
+  1: "화",
+  2: "수",
+  3: "목",
+  4: "금",
+  5: "토",
+  6: "일",
 };
 
 function hhmm(t: string) {
@@ -34,8 +35,8 @@ export default function SchedulePage() {
   const [error, setError] = useState<string | null>(null);
 
   const today = new Date();
-  // JS getDay(): 0=Sun..6=Sat  (백엔드 weekdays도 동일하다고 가정)
-  const todayIdx = today.getDay();
+  // JS getDay()(0=일..6=토) → 백엔드 weekdays(0=월..6=일)
+  const todayIdx = (today.getDay() + 6) % 7;
 
   const fetchSlots = async () => {
     setLoading(true);

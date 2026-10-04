@@ -9,8 +9,10 @@ export interface UserRead {
   display_name: string;
   phone: string | null;
   role: UserRole;
-  status: string;
+  status: string; // ACTIVE | PENDING | SUSPENDED | WITHDRAWN(탈퇴)
   is_active: boolean;
+  withdrawn_at?: string | null; // 탈퇴 처리 시각
+  feedback_consent?: boolean;   // 피드백 공개 동의
   manager_id: string | null;
   // 강사 필드
   instructor_tier: string | null;
@@ -42,21 +44,7 @@ export interface UserUpdate {
   birth_date?: string | null;
   gender?: string | null;
   lesson_purpose?: string | null;
-}
-
-export interface MembershipRead {
-  id: string;
-  customer_id: string;
-  instructor_id: string;
-  type: "TIMES" | "PERIOD";
-  total_count: number | null;
-  remaining_count: number | null;
-  started_at: string | null;
-  expires_at: string | null;
-  is_active: boolean;
-  notes: string | null;
-  created_at: string;
-  updated_at: string;
+  feedback_consent?: boolean;
 }
 
 export type BookingStatus = "REQUESTED" | "CONFIRMED" | "CANCEL_REQUESTED" | "CANCELLED" | "COMPLETED" | "NO_SHOW";
@@ -73,7 +61,6 @@ export interface BookingRead {
   cancel_reason: string | null;
   time_slot_id: number;
   guest_id: string;
-  membership_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -95,7 +82,9 @@ export interface AvailabilitySlot {
 export interface AvailabilityDay {
   date: string; // YYYY-MM-DD
   slots: AvailabilitySlot[];
-  is_holiday?: boolean;
+  is_holiday?: boolean; // 임시 휴무일
+  // 휴무 종류: RECURRING(강사의 정기 휴무일) / TEMPORARY(임시 휴무일) / null(영업일)
+  off_type?: "RECURRING" | "TEMPORARY" | null;
 }
 
 export interface AvailabilityResponse {
@@ -119,6 +108,8 @@ export interface InstructorPublicRead {
   location: string | null;
   specialties: string[];
   bio: string | null;
+  career_years?: number | null;
+  certifications?: string | null;
 }
 
 export type MatchRequestType = "MATCH" | "CONSULTATION";
@@ -145,10 +136,13 @@ export interface MediaItemRead {
   sort_order: number;
 }
 
+export type PostType = "PROMOTION" | "NOTICE" | "FEEDBACK" | "COMMUNITY";
+
 export interface InstructorPostRead {
   id: string;
   instructor_id: string;
-  type: "PROMOTION" | "FEEDBACK";
+  created_by_user_id: string | null;
+  type: PostType;
   title: string | null;
   content: string | null;
   media_items: MediaItemRead[];
@@ -157,6 +151,9 @@ export interface InstructorPostRead {
   is_public: boolean;
   created_at: string;
   updated_at: string;
+  like_count: number;
+  comment_count: number;
+  is_liked: boolean;
 }
 
 // ── 수강권 ────────────────────────────────────────────────────
@@ -200,40 +197,64 @@ export interface CustomerPassRead {
   pass_type: PassTypeRead | null;
 }
 
-export type PostType = "NOTICE" | "COMMUNITY" | "FEEDBACK";
-export type PostStatus = "PUBLIC" | "MEMBERS" | "PRIVATE";
-
-export interface PostMediaResponse {
-  id: string;
-  url: string;
-  media_type: "IMAGE" | "VIDEO";
-  sort_order: number;
-}
-
 export interface CommentRead {
   id: number;
   post_id: string;
   user_id: string;
   user_name: string | null;
-  content: string;
+  parent_id: number | null;
+  content: string; // 삭제된 댓글이면 "삭제된 댓글입니다"
+  created_at: string;
+  updated_at: string | null;
+  is_deleted: boolean;
+}
+
+// 특정 날짜에만 적용되는 예외 (time_slot_id 가 null 이면 그 날 전체)
+export interface CalendarBlockRead {
+  id: number;
+  calendar_id: number;
+  start_date: string;
+  end_date: string;
+  time_slot_id: number | null;
+  // CLOSE: 닫기(시간 없으면 임시 휴무일) / OPEN: 정기 휴무일 중 그날 열기
+  kind: "CLOSE" | "OPEN";
+  reason: string | null;
   created_at: string;
 }
 
-export interface PostResponse {
+// 레슨 노트 (피드백 게시물을 통합, 2026-10-04). file_url 은 첨부 PDF 서명 주소
+export interface LessonNoteRead {
   id: string;
-  owner_user_id: string;
-  instructor_id: string | null;
+  customer_id: string;
+  booking_id: number | null;
+  instructor_id: string;
   title: string | null;
-  caption: string | null;
-  post_type: PostType;
-  status: PostStatus;
-  is_consent_given: boolean;
-  when: string | null;
+  content: string | null;
+  file_name: string | null;
+  file_url: string | null;
+  is_shared: boolean;
+  customer_name: string | null;
+  instructor_name: string | null;
   created_at: string;
   updated_at: string;
-  published_at: string | null;
-  media: PostMediaResponse[];
-  like_count: number;
-  comment_count: number;
-  is_liked: boolean;
+}
+
+// 할인·이벤트 프로모션 (프로토타입, 결제 연동 전 안내용)
+export interface PromotionRead {
+  id: number;
+  instructor_id: string;
+  pass_type_id: number | null;
+  pass_type_name: string | null;
+  pass_price: number | null;
+  discounted_price: number | null;
+  title: string;
+  description: string | null;
+  discount_type: "PERCENT" | "AMOUNT" | "NONE";
+  discount_value: number;
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+  status: "SCHEDULED" | "ONGOING" | "ENDED" | "PAUSED";
+  created_at: string;
+  updated_at: string;
 }
