@@ -62,16 +62,19 @@ poetry run uvicorn app.main:app --reload
 
 | 도메인 | 기능 |
 |--------|------|
-| `auth` | 인증 · JIT 유저 생성 |
-| `users` | 사용자 관리 · RBAC (CUSTOMER / INSTRUCTOR / CONTENT_MANAGER / ADMIN) |
-| `instructor` | 강사 승인 · 담당 고객 등록 · 공개 프로필 검색 |
-| `calendar` | 캘린더 · 타임슬롯 · 예약 · 레슨노트 |
-| `membership` | 멤버십 (횟수제 / 기간제) |
-| `payment` | 결제 내역 기록 · 상태 관리 |
-| `passes` | 레슨 패스(수강권) 발급 · 사용 관리 |
-| `posts` | 게시물 · 댓글 · 좋아요 · 미디어 · 동의 정책 · 매칭 요청 |
-| `chat` | 채팅 |
-| `content` | 강사 콘텐츠 관리 |
+| `auth` | Supabase 기반 인증 · JIT 유저 생성 · 아이디/비밀번호 로그인 |
+| `users` | 사용자 관리 · RBAC (CUSTOMER / INSTRUCTOR / CONTENT_MANAGER / ADMIN) · 담당 강사 지정 · 회원 탈퇴(기록 보존) |
+| `instructor` | 강사 승인 · 담당 고객 등록 · 공개 프로필 · 매출·운영 대시보드 |
+| `calendar` | 캘린더 · 타임슬롯 · 휴무(정기·임시·날짜별 열기/닫기) · 예약 가능 시간 |
+| `booking` | 레슨 예약 신청 · 확정·거절·취소·완료·노쇼 · 수강권 차감 |
+| `lesson_notes` | 레슨노트 (글 · 스캔 PDF, 고객별) |
+| `passes` | 수강권 상품 · 발급 · 사용 관리 |
+| `payment` | 결제 기록 · 상태 관리 (5년 보존) |
+| `promotions` | 강사 할인·이벤트 프로모션 (프로토타입) |
+| `posts` | 게시물(홍보·공지·커뮤니티) · 댓글 · 좋아요 · 미디어 |
+| `notifications` | 알림 (댓글·좋아요 등) |
+| `chat` | 고객–강사 1:1 채팅 (문의하기) |
+| `matching` | 강사 매칭 신청 API · 모임 찾기(예정) |
 
 ```
 backend/app/domains/{feature}/
@@ -130,4 +133,6 @@ poetry run pytest tests/test_bookings.py -v
 | `../docs/operations/dev-runbook.md` | 개발 명령어 모음 |
 | `../docs/operations/troubleshooting.md` | 문제 해결 |
 | `../docs/operations/aws.md` | AWS / Copilot 운영 가이드 |
+| `../docs/operations/env-setup.md` | env 파일·변수 이름 |
+| `../docs/operations/pg-integration.md` | PG(온라인 결제) 연동 방법 |
 | 루트 `README.md` | 배포 파이프라인 |

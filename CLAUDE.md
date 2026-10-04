@@ -204,7 +204,7 @@ secrets.*
 * async/await 필수 · 타입 명시
 * 암묵적 commit 금지 (트랜잭션 경계 명확화)
 * repository 패턴 유지
-* 거래성 도메인(payment, membership, passes, booking)은 **변경 시 테스트 동반**
+* 거래성 도메인(payment, passes, booking, promotions)은 **변경 시 테스트 동반**
   → CI를 통과해도 런타임 논리 결함은 테스트로만 잡을 수 있다.
 
 ## 프론트엔드

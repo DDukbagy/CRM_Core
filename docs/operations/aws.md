@@ -1,6 +1,5 @@
 # AWS & Copilot 운영 가이드
 
-> ⚠️ 이 문서는 **기존 문서를 변경하지 않고**, AWS/Copilot 운영 관련 내용을 **추가 문서로 분리**한 것입니다.
 
 ---
 
@@ -58,11 +57,12 @@
 
 ### 전체 흐름 요약
 
-1. PR 생성 → CI 자동 실행
-2. CI 통과 → main merge
-3. main merge → **staging 자동 배포**
-4. staging 확인 OK → **승인**
-5. prod 배포 → 운영 반영
+1. 작업 브랜치 → staging 으로 PR → CI 자동 실행
+2. CI 통과 → staging 에 merge(push) → **staging 자동 배포** (`deploy-staging.yml`)
+3. staging 확인 OK → staging → main Release PR (`make gitpr`)
+4. main 에 merge(push) → **prod 자동 배포** (`deploy-prod.yml`)
+
+> 2026-10 현재 AWS 는 오프라인(개발 중 배포 안 함). deploy job 실패는 정상. 배포 재개 전 [progress.md](../progress.md) §5 "배포 관련 정리" 확인
 
 ---
 
