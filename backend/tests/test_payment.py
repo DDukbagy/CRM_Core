@@ -22,24 +22,19 @@ def _reset_payment_rate_limit():
     payment_router.limiter.reset()
 
 
-async def _insert_membership(session: AsyncSession, customer_id: uuid.UUID, instructor_id: uuid.UUID) -> uuid.UUID:
-    membership_id = uuid.uuid4()
-    await session.execute(
-        text(
-            """
-            insert into public.memberships (id, customer_id, instructor_id, type, total_count, remaining_count, started_at, is_active)
-            values (:id, :customer_id, :instructor_id, 'TIMES', 10, 10, :started_at, true)
-            """
-        ),
-        {
-            "id": str(membership_id),
-            "customer_id": str(customer_id),
-            "instructor_id": str(instructor_id),
-            "started_at": date.today(),
-        },
-    )
+async def _insert_customer_pass(session: AsyncSession, customer_id: uuid.UUID, instructor_id: uuid.UUID) -> int:
+    type_id = (await session.execute(
+        text("insert into public.lesson_pass_types (instructor_id, name, duration_hours, session_count, is_active)"
+             " values (:i, '10회권', 1, 10, true) returning id"),
+        {"i": str(instructor_id)},
+    )).scalar_one()
+    cp_id = (await session.execute(
+        text("insert into public.customer_passes (pass_type_id, customer_id, instructor_id, pass_name, duration_hours, sessions_total)"
+             " values (:t, :c, :i, '10회권', 1, 10) returning id"),
+        {"t": type_id, "c": str(customer_id), "i": str(instructor_id)},
+    )).scalar_one()
     await session.commit()
-    return membership_id
+    return cp_id
 
 
 async def _insert_payment(session: AsyncSession, customer_id: uuid.UUID, amount: int = 10000) -> uuid.UUID:
@@ -71,23 +66,23 @@ async def test_instructor_records_payment_for_managed_customer(instructor_client
     assert body["amount"] == 50000
     assert body["method"] == "CASH"
     assert body["status"] == "COMPLETED"
-    assert body["membership_id"] is None
+    assert body["customer_pass_id"] is None
 
 
-async def test_payment_linked_to_own_membership(
+async def test_payment_linked_to_own_customer_pass(
     instructor_client, instructor_id, managed_customer_id, db_conn_and_sessionmaker: async_sessionmaker[AsyncSession]
 ):
     async with db_conn_and_sessionmaker() as session:
-        membership_id = await _insert_membership(session, managed_customer_id, instructor_id)
+        cp_id = await _insert_customer_pass(session, managed_customer_id, instructor_id)
 
     res = await instructor_client.post("/payments", json={
         "customer_id": str(managed_customer_id),
-        "membership_id": str(membership_id),
+        "customer_pass_id": cp_id,
         "amount": 300000,
         "method": "TRANSFER",
     })
     assert res.status_code == 201, res.text
-    assert res.json()["membership_id"] == str(membership_id)
+    assert res.json()["customer_pass_id"] == cp_id
 
 
 async def test_instructor_cannot_record_payment_for_unmanaged_customer(
@@ -105,32 +100,32 @@ async def test_instructor_cannot_record_payment_for_unmanaged_customer(
     assert res.status_code == 403, res.text
 
 
-async def test_membership_of_another_customer_is_rejected(
+async def test_pass_of_another_customer_is_rejected(
     instructor_client, instructor_id, managed_customer_id, db_conn_and_sessionmaker: async_sessionmaker[AsyncSession]
 ):
     async with db_conn_and_sessionmaker() as session:
         another_customer = await _ensure_customer_managed_by(session, instructor_id)
-        membership_id = await _insert_membership(session, another_customer, instructor_id)
+        cp_id = await _insert_customer_pass(session, another_customer, instructor_id)
 
     res = await instructor_client.post("/payments", json={
         "customer_id": str(managed_customer_id),
-        "membership_id": str(membership_id),
+        "customer_pass_id": cp_id,
         "amount": 50000,
         "method": "CASH",
     })
     assert res.status_code == 400, res.text
 
 
-async def test_membership_created_by_another_instructor_is_rejected(
+async def test_pass_issued_by_another_instructor_is_rejected(
     instructor_client, managed_customer_id, db_conn_and_sessionmaker: async_sessionmaker[AsyncSession]
 ):
     async with db_conn_and_sessionmaker() as session:
         other_instructor = await _ensure_instructor(session)
-        membership_id = await _insert_membership(session, managed_customer_id, other_instructor)
+        cp_id = await _insert_customer_pass(session, managed_customer_id, other_instructor)
 
     res = await instructor_client.post("/payments", json={
         "customer_id": str(managed_customer_id),
-        "membership_id": str(membership_id),
+        "customer_pass_id": cp_id,
         "amount": 50000,
         "method": "CASH",
     })
@@ -152,12 +147,12 @@ async def test_invalid_payment_is_rejected(instructor_client, managed_customer_i
     assert res.status_code == status, res.text
 
 
-async def test_unknown_customer_or_membership_is_404(instructor_client, managed_customer_id):
+async def test_unknown_customer_or_pass_is_404(instructor_client, managed_customer_id):
     res = await instructor_client.post("/payments", json={"customer_id": str(uuid.uuid4()), "amount": 1000, "method": "CASH"})
     assert res.status_code == 404, res.text
 
     res = await instructor_client.post("/payments", json={
-        "customer_id": str(managed_customer_id), "membership_id": str(uuid.uuid4()), "amount": 1000, "method": "CASH",
+        "customer_id": str(managed_customer_id), "customer_pass_id": 999999, "amount": 1000, "method": "CASH",
     })
     assert res.status_code == 404, res.text
 

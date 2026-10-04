@@ -150,22 +150,7 @@ async def test_db_blocks_cascading_payment_delete(db_conn_and_sessionmaker):
             await s.flush()
 
 
-# ── 계약 기록(멤버십·수강권) 보존 기간 (5년, 마지막 변경 기준) ──────────
-
-async def _membership(db, customer_id, instructor_id, years_ago: int, days: int = 0):
-    async with db() as s:
-        await s.execute(
-            text(
-                """
-                insert into public.memberships (customer_id, instructor_id, type, total_count, remaining_count, is_active, created_at, updated_at)
-                values (:c, :i, 'TIMES', 10, 3, true,
-                        now() - make_interval(years => :y, days => :d), now() - make_interval(years => :y, days => :d))
-                """
-            ),
-            {"c": str(customer_id), "i": str(instructor_id), "y": years_ago, "d": days},
-        )
-        await s.commit()
-
+# ── 계약 기록(수강권) 보존 기간 (5년, 마지막 변경 기준) ──────────
 
 async def _customer_pass(db, customer_id, instructor_id, years_ago: int, days: int = 0):
     async with db() as s:
@@ -197,16 +182,14 @@ async def _count(db, sql: str, uid) -> int:
         return (await s.execute(text(sql), {"u": str(uid)})).scalar_one()
 
 
-@pytest.mark.parametrize("record", ["membership", "pass"])
-async def test_recent_contract_record_blocks_delete_of_customer_and_instructor(actor, db_conn_and_sessionmaker, record):
+async def test_recent_contract_record_blocks_delete_of_customer_and_instructor(actor, db_conn_and_sessionmaker):
     act, people = actor
     await _people(db_conn_and_sessionmaker, people)
     mine, inst = people["mine"][0], people["inst"][0]
-    make = _membership if record == "membership" else _customer_pass
-    await make(db_conn_and_sessionmaker, mine, inst, years_ago=4, days=300)   # 5년 안 됨
+    await _customer_pass(db_conn_and_sessionmaker, mine, inst, years_ago=4, days=300)   # 5년 안 됨
 
     r = await act("admin").delete(f"/users/{mine}")
-    assert r.status_code == 409 and ("멤버십" if record == "membership" else "수강권") in r.text and "withdraw" in r.text
+    assert r.status_code == 409 and "수강권" in r.text and "withdraw" in r.text
     # 강사를 지워도 고객과의 계약 기록이 사라지면 안 된다
     assert (await act("admin").delete(f"/users/{inst}")).status_code == 409
 
@@ -216,26 +199,23 @@ async def test_expired_contract_records_are_deleted_with_member(actor, db_conn_a
     await _people(db_conn_and_sessionmaker, people)
     mine, inst = people["mine"][0], people["inst"][0]
     db = db_conn_and_sessionmaker
-    await _membership(db, mine, inst, years_ago=5, days=1)
     await _customer_pass(db, mine, inst, years_ago=5, days=1)
 
     assert (await act("admin").delete(f"/users/{mine}")).status_code == 204
-    assert await _count(db, "select count(*) from public.memberships where customer_id = :u", mine) == 0
     assert await _count(db, "select count(*) from public.customer_passes where customer_id = :u", mine) == 0
     # 발급 기록이 남지 않은 강사의 수강권 상품은 강사 삭제 때 함께 정리된다
     assert (await act("admin").delete(f"/users/{inst}")).status_code == 204
     assert await _count(db, "select count(*) from public.lesson_pass_types where instructor_id = :u", inst) == 0
 
 
-@pytest.mark.parametrize("table", ["memberships", "customer_passes"])
-async def test_db_blocks_cascading_contract_delete(db_conn_and_sessionmaker, table):
+async def test_db_blocks_cascading_contract_delete(db_conn_and_sessionmaker):
     """앱을 거치지 않고 지워도 DB 가 계약 기록을 지키는지 (ON DELETE RESTRICT)"""
     from sqlalchemy.exc import IntegrityError
 
     db = db_conn_and_sessionmaker
     async with db() as s:
         cust, inst = await insert_user(s, "CUSTOMER"), await insert_user(s, "INSTRUCTOR")
-    await (_membership if table == "memberships" else _customer_pass)(db, cust, inst, years_ago=0)
+    await _customer_pass(db, cust, inst, years_ago=0)
     for uid in (cust, inst):
         async with db() as s:
             with pytest.raises(IntegrityError):
@@ -288,11 +268,19 @@ async def test_withdraw_keeps_contract_records(actor, db_conn_and_sessionmaker):
     await _people(db_conn_and_sessionmaker, people)
     mine, inst = people["mine"][0], people["inst"][0]
     db = db_conn_and_sessionmaker
-    await _membership(db, mine, inst, years_ago=0)
     await _customer_pass(db, mine, inst, years_ago=0)
 
     assert (await act("mine").post("/users/me/withdraw")).status_code == 200
     assert (await act("inst").post("/users/me/withdraw")).status_code == 200
-    assert await _count(db, "select count(*) from public.memberships where customer_id = :u", mine) == 1
     assert await _count(db, "select count(*) from public.customer_passes where customer_id = :u", mine) == 1
 
+
+
+async def test_feedback_consent_can_be_changed_by_customer(actor, db_conn_and_sessionmaker):
+    """고객 프로필 수정의 '피드백 게시물 공개 동의' (2026-03 빠졌던 필드 복원)"""
+    act, people = actor
+    await _people(db_conn_and_sessionmaker, people)
+    r = await act("free").patch("/users/me", json={"feedback_consent": False})
+    assert r.status_code == 200 and r.json()["feedback_consent"] is False
+    r = await act("free").patch("/users/me", json={"feedback_consent": True})
+    assert r.status_code == 200 and r.json()["feedback_consent"] is True

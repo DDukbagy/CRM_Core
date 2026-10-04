@@ -76,24 +76,12 @@ async def test_instructor_creates_public_types(instructor_client, post_type: str
 
 
 @pytest.mark.asyncio
-async def test_feedback_is_private_and_needs_managed_customer(
-    instructor_client, managed_customer_id: uuid.UUID, db_conn_and_sessionmaker
-):
+async def test_feedback_posts_moved_to_lesson_notes(instructor_client, managed_customer_id: uuid.UUID):
+    """피드백은 레슨 노트로 통합 (2026-10-04) — 게시물로는 만들 수 없다"""
     r = await instructor_client.post(
         "/posts", json={"type": "FEEDBACK", "title": "fb", "customer_id": str(managed_customer_id)}
     )
-    assert r.status_code == 201, r.text
-    assert r.json()["is_public"] is False
-
-    # customer_id 없음
-    r = await instructor_client.post("/posts", json={"type": "FEEDBACK", "title": "fb"})
-    assert r.status_code == 400, r.text
-
-    # 담당이 아닌 고객
-    async with db_conn_and_sessionmaker() as session:
-        stranger = await _insert_user(session, "CUSTOMER")
-    r = await instructor_client.post("/posts", json={"type": "FEEDBACK", "customer_id": str(stranger)})
-    assert r.status_code == 403, r.text
+    assert r.status_code == 400 and "레슨노트" in r.text
 
 
 @pytest.mark.asyncio

@@ -313,44 +313,44 @@ async def test_default_calendar_on_instructor_approval(actor, db_conn_and_sessio
     assert len((await act("applicant").get("/calendars/me/time-slots")).json()) == 13
 
 
-# ── 멤버십 연결 ───────────────────────────────────────────────
+# ── 수강권 차감 (멤버십은 수강권으로 통합, 2026-10-04) ─────────────
 
-async def _membership(session: AsyncSession, customer, instructor, *, remaining=2, active=True, mtype="TIMES") -> str:
-    mid = uuid.uuid4()
-    await session.execute(
-        text(
-            """
-            insert into public.memberships (id, customer_id, instructor_id, type, total_count, remaining_count, started_at, expires_at, is_active)
-            values (:id, :c, :i, :t, 10, :r, :s, :e, :a)
-            """
-        ),
-        {"id": str(mid), "c": str(customer), "i": str(instructor), "t": mtype, "r": remaining,
-         "s": date.today(), "e": date.today() - timedelta(days=1) if mtype == "PERIOD" else None, "a": active},
-    )
+async def _customer_pass(session: AsyncSession, customer, instructor, *, total=3) -> int:
+    type_id = (await session.execute(
+        text("insert into public.lesson_pass_types (instructor_id, name, duration_hours, session_count, is_active)"
+             " values (:i, '3회권', 1, :n, true) returning id"),
+        {"i": str(instructor), "n": total},
+    )).scalar_one()
+    cp_id = (await session.execute(
+        text("insert into public.customer_passes (pass_type_id, customer_id, instructor_id, pass_name, duration_hours, sessions_total)"
+             " values (:t, :c, :i, '3회권', 1, :n) returning id"),
+        {"t": type_id, "c": str(customer), "i": str(instructor), "n": total},
+    )).scalar_one()
     await session.commit()
-    return str(mid)
+    return cp_id
 
 
-async def test_membership_rules_and_deduction(world, db_conn_and_sessionmaker):
+async def test_completed_and_no_show_lessons_use_pass_sessions(world, db_conn_and_sessionmaker):
     act, ids = world
     async with db_conn_and_sessionmaker() as session:
-        ok = await _membership(session, ids["guest"], ids["host"], remaining=1)
-        empty = await _membership(session, ids["guest"], ids["host"], remaining=0)
-        inactive = await _membership(session, ids["guest"], ids["host"], active=False)
-        expired = await _membership(session, ids["guest"], ids["host"], mtype="PERIOD")
-        others = await _membership(session, ids["stranger"], ids["host"])
+        cp_id = await _customer_pass(session, ids["guest"], ids["host"])
 
-    body = {"time_slot_id": ids["slot_b"], "when": DAY.isoformat(), "topic": "x"}
-    assert (await act("guest").post("/bookings", json={**body, "membership_id": others})).status_code == 403
-    for mid in (empty, inactive, expired):
-        assert (await act("guest").post("/bookings", json={**body, "membership_id": mid})).status_code == 400
-    assert (await act("guest").post("/bookings", json={**body, "membership_id": str(uuid.uuid4())})).status_code == 404
+    done = (await _book(act, ids, slot="slot_a"))["id"]
+    no_show = (await _book(act, ids, slot="slot_b"))["id"]
+    for bid in (done, no_show):
+        assert (await act("host").patch(f"/calendars/me/bookings/{bid}/confirm")).status_code == 200
+    assert (await act("host").patch(f"/calendars/me/bookings/{done}/complete")).status_code == 200
+    assert (await act("host").patch(f"/calendars/me/bookings/{no_show}/no-show")).status_code == 200
 
-    bid = (await _book(act, ids, membership_id=ok))["id"]
-    await act("host").patch(f"/calendars/me/bookings/{bid}/confirm")
-    await act("host").patch(f"/calendars/me/bookings/{bid}/complete")
-    r = await act("guest").get(f"/memberships/{ok}")
-    assert r.json()["remaining_count"] == 0 and r.json()["is_active"] is False
+    async with db_conn_and_sessionmaker() as session:
+        used = (await session.execute(text("select sessions_used from public.customer_passes where id = :i"), {"i": cp_id})).scalar_one()
+    assert used == 2
+
+
+async def test_booking_no_longer_takes_membership(world):
+    act, ids = world
+    body = {"time_slot_id": ids["slot_a"], "when": DAY.isoformat(), "topic": "x", "membership_id": str(uuid.uuid4())}
+    assert (await act("guest").post("/bookings", json=body)).status_code == 422
 
 
 # ── 캘린더·슬롯 관리 ──────────────────────────────────────────
