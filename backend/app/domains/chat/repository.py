@@ -126,3 +126,34 @@ class ChatRepository:
             self.session.add(
                 ChatRoom(customer_id=customer_id, instructor_id=instructor_id, match_request_id=match_request_id)
             )
+
+    # ── 강사 문의 (고객이 강사 프로필에서 "문의하기") ───────────────────────────
+
+    async def find_room(self, customer_id: UUID, instructor_id: UUID) -> Optional[ChatRoom]:
+        """고객·강사 사이의 채팅방 (매칭으로 생긴 방 포함, 가장 오래된 것)"""
+        return (
+            await self.session.execute(
+                select(ChatRoom)
+                .where(ChatRoom.customer_id == customer_id, ChatRoom.instructor_id == instructor_id)
+                .order_by(ChatRoom.created_at.asc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+    async def open_inquiry(self, customer_id: UUID, instructor_id: UUID) -> ChatRoom:
+        """승인된 강사와의 채팅방을 연다. 이미 있으면 그 방을 그대로 돌려준다 (commit 포함)"""
+        instructor = await self.session.get(User, instructor_id)
+        if (
+            not instructor
+            or (instructor.role or "").upper() != "INSTRUCTOR"
+            or (instructor.status or "").upper() != "ACTIVE"
+            or not instructor.is_active
+        ):
+            raise HTTPException(status_code=404, detail="강사를 찾을 수 없습니다.")
+        room = await self.find_room(customer_id, instructor_id)
+        if room is None:
+            room = ChatRoom(customer_id=customer_id, instructor_id=instructor_id)
+            self.session.add(room)
+            await self.session.commit()
+            await self.session.refresh(room)
+        return room

@@ -8,7 +8,7 @@ from sqlmodel import select
 
 from app.core.auth.deps import CurrentUser
 from app.core.retention import RECORD_RETENTION_YEARS, retention_cutoff
-from app.domains.membership.models import Membership
+from app.domains.passes.repository import PassRepository
 from app.domains.payment.models import Payment
 from app.domains.payment.schemas import PaymentCreate
 from app.domains.users.models import User
@@ -41,20 +41,14 @@ class PaymentRepository:
         if user.role == "INSTRUCTOR" and customer.manager_id != user_id:
             raise HTTPException(status_code=403, detail="본인이 담당하는 고객의 결제만 등록할 수 있습니다.")
 
-        if data.membership_id:
-            membership = (
-                await self.session.execute(select(Membership).where(Membership.id == data.membership_id))
-            ).scalar_one_or_none()
-            if not membership:
-                raise HTTPException(status_code=404, detail="Membership not found")
-            if membership.customer_id != data.customer_id:
-                raise HTTPException(status_code=400, detail="멤버십과 고객 정보가 일치하지 않습니다.")
-            if user.role == "INSTRUCTOR" and membership.instructor_id != user_id:
-                raise HTTPException(status_code=403, detail="본인이 생성한 멤버십만 결제에 연결할 수 있습니다.")
+        if data.customer_pass_id is not None:
+            await PassRepository(self.session).ensure_linkable_to_payment(
+                data.customer_pass_id, data.customer_id, user_id if user.role == "INSTRUCTOR" else None
+            )
 
         payment = Payment(
             customer_id=data.customer_id,
-            membership_id=data.membership_id,
+            customer_pass_id=data.customer_pass_id,
             amount=data.amount,
             method=data.method,
             status="COMPLETED",
@@ -80,6 +74,13 @@ class PaymentRepository:
 
         stmt = stmt.order_by(Payment.created_at.desc())
         return list((await self.session.execute(stmt)).scalars().all())
+
+    async def list_for_instructor(self, instructor_id: UUID) -> list[Payment]:
+        """담당 고객들의 결제 (강사 매출 대시보드용)"""
+        res = await self.session.execute(
+            select(Payment).where(Payment.customer_id.in_(select(User.id).where(User.manager_id == instructor_id)))
+        )
+        return list(res.scalars().all())
 
     # ── 보존 기간 (회원 삭제 시 users 도메인이 호출) ─────────────────────────
 

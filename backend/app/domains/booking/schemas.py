@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Literal, Optional
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -20,7 +20,6 @@ class BookingCreate(BaseModel):
     when: date
     topic: str | None = None
     description: str | None = None
-    membership_id: Optional[UUID] = None  # 차감할 멤버십 (선택)
 
     # 예약은 레슨만 (휴무·영업일 전환은 /calendars/me/blocks)
     type: BookingType = BookingType.LESSON
@@ -39,7 +38,6 @@ class BookingRead(BaseModel):
     type: BookingType  # 타입 정보 포함
     description: str | None
     cancel_reason: str | None = None
-    membership_id: Optional[UUID] = None
     time_slot_id: int
     guest_id: UUID
     created_at: datetime

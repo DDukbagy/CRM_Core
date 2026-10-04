@@ -15,6 +15,7 @@ from app.domains.users.schemas import (
     UserCreate,
     PushTokenUpdate,
     RegisterCustomerByEmail,
+    ManagerSelect,
 )
 
 router = APIRouter(prefix="/users", tags=["Users"])
@@ -60,6 +61,16 @@ async def register_customer_by_email(
 ):
     """강사가 이메일로 고객을 담당 고객으로 등록."""
     return await UserRepository(session).register_customer_by_email(safe_uuid(current_user.id), body.email)
+
+
+@router.put("/me/manager", response_model=UserRead)
+async def select_my_manager(
+    payload: ManagerSelect,
+    current_user: CurrentUser = Depends(require_role({"CUSTOMER"})),
+    session: AsyncSession = Depends(get_session),
+):
+    """고객: 문의한 강사를 담당 강사로 지정"""
+    return await UserRepository(session).select_manager(current_user, payload.instructor_id)
 
 
 @router.put("/me/push-token", status_code=204)

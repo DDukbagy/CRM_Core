@@ -40,6 +40,27 @@ try:
     if _cmd_name in ("check", "revision"):
         import app.domains.passes.models  # noqa: F401
         import app.domains.chat.models  # noqa: F401
+        import app.domains.promotions.models  # noqa: F401  (lesson_pass_types 참조, y0z1a2b3c4d5 가 만듦)
+        # payments.customer_pass_id → customer_passes FK 도 passes 가 올라왔을 때만 선언 (마이그레이션 w8x9y0z1a2b3 이 만듦)
+        from sqlalchemy import ForeignKeyConstraint
+        from app.domains.payment.models import Payment
+
+        Payment.__table__.append_constraint(
+            ForeignKeyConstraint(
+                ["customer_pass_id"], ["customer_passes.id"], name="payments_customer_pass_id_fkey", ondelete="SET NULL"
+            )
+        )
+
+    else:
+        # init 마이그레이션(create_all)은 "현재" 모델로 테이블을 만든다. 나중 마이그레이션이 지운 컬럼을
+        # 그 사이의 옛 마이그레이션이 참조하면 빈 DB 구축이 실패하므로, 그런 컬럼만 upgrade 때 잠시 붙인다.
+        # - payments.membership_id: c3d4e5f6a7b8 이 인덱스를 만들고, w8x9y0z1a2b3 이 지움
+        from sqlalchemy import Column
+        from sqlalchemy.dialects.postgresql import UUID as PGUUID
+        from app.domains.payment.models import Payment
+
+        if "membership_id" not in Payment.__table__.c:
+            Payment.__table__.append_column(Column("membership_id", PGUUID(as_uuid=True), nullable=True))
 
     # 메타데이터 통합
     if hasattr(Base, "metadata") and hasattr(SQLModel, "metadata"):

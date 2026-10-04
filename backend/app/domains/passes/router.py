@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -112,13 +113,16 @@ async def delete_pass_type(
 
 @router.get("/customer-passes", response_model=list[CustomerPassRead])
 async def list_my_customer_passes(
+    customer_id: Optional[UUID] = None,
     current_user: CurrentUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    """내 고객들의 수강권 목록 (강사 전용)"""
+    """내 고객들의 수강권 목록 (강사 전용). customer_id 를 주면 그 고객 것만 (고객 상세 화면)"""
     _require_instructor(current_user)
     repo = PassRepository(session)
     passes = await repo.list_by_instructor(UUID(str(current_user.id)))
+    if customer_id is not None:
+        passes = [cp for cp in passes if cp.customer_id == customer_id]
     return [await _to_read(repo, cp, include_customer_name=True) for cp in passes]
 
 

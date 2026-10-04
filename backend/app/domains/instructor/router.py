@@ -116,6 +116,8 @@ async def list_instructors_public(
                 location=u.instructor_location,
                 specialties=specialties,
                 bio=u.instructor_bio,
+                career_years=u.career_years,
+                certifications=u.certifications,
             )
         )
     return result
@@ -162,6 +164,16 @@ async def get_my_stats(
 ):
     """강사 대시보드용 통계: 담당 고객 수, 예약 현황, 출석률"""
     return await InstructorRepository(session).my_stats(UUID(str(user.id)))
+
+
+@router.get("/me/dashboard")
+async def get_my_dashboard(
+    months: int = 6,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(require_role({"INSTRUCTOR"})),
+):
+    """강사 매출·운영 대시보드: 월별 매출, 결제수단·수강권별 합계, 고객·수강권 현황"""
+    return await InstructorRepository(session).dashboard(UUID(str(user.id)), max(1, min(months, 24)))
 
 
 @router.get("/me/stats/customer/{customer_id}")

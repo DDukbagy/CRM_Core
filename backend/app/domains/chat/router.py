@@ -5,11 +5,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth.deps import get_current_user, CurrentUser
+from app.core.auth.deps import get_current_user, require_role, CurrentUser
 from app.db.session import get_session
 from app.domains.chat.models import ChatMessage
 from app.domains.chat.repository import ChatRepository
-from app.domains.chat.schemas import ChatRoomRead, ChatMessageCreate, ChatMessageRead
+from app.domains.chat.schemas import ChatRoomRead, ChatRoomOpen, ChatMessageCreate, ChatMessageRead
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -43,6 +43,26 @@ async def list_my_rooms(
         )
         for s in summaries
     ]
+
+
+@router.post("/rooms", response_model=ChatRoomRead)
+async def open_inquiry_room(
+    payload: ChatRoomOpen,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(require_role({"CUSTOMER"})),
+):
+    """고객 → 강사 문의하기: 채팅방을 열고(이미 있으면 그 방) 돌려준다"""
+    uid = UUID(str(user.id))
+    repo = ChatRepository(session)
+    room = await repo.open_inquiry(uid, payload.instructor_id)
+    s = next(s for s in await repo.list_rooms(uid) if s.room.id == room.id)
+    return ChatRoomRead(
+        id=room.id, customer_id=room.customer_id, instructor_id=room.instructor_id, match_request_id=room.match_request_id,
+        other_name=s.other_name, other_id=s.other_id,
+        last_message=s.last_message.content if s.last_message else None,
+        last_message_at=s.last_message.created_at if s.last_message else room.last_message_at,
+        unread_count=s.unread_count, created_at=room.created_at,
+    )
 
 
 @router.get("/rooms/{room_id}/messages", response_model=list[ChatMessageRead])

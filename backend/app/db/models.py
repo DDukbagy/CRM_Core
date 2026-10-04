@@ -7,7 +7,7 @@ alembic이 이 파일 하나만 import 해서 모델을 SQLModel.metadata 에 �
 주의: 이 목록을 바꾸면 빈 DB에 만들어지는 테이블이 달라진다.
 도메인을 추가·이동할 때는 빈 DB에 upgrade head 후 스키마가 의도대로인지 확인한다.
 
-passes, chat 은 의도적으로 등록하지 않는다.
+passes, chat, promotions 는 의도적으로 등록하지 않는다 (promotions 는 passes 의 lesson_pass_types 를 참조).
 - 두 도메인의 테이블은 각자의 마이그레이션(j4k5l6m7n8o9, k5l6m7n8o9p0)이 만든다.
 - 여기 등록하면 init 의 create_all 이 먼저 만들어 버려 chat 마이그레이션(op.create_table)이 실패한다.
 - 대신 alembic/env.py 가 비교 명령(check / revision)일 때만 두 도메인 모델을 추가로 올려
@@ -18,7 +18,6 @@ import app.domains.calendar.models  # noqa: F401
 import app.domains.booking.models  # noqa: F401
 import app.domains.instructor.models  # noqa: F401
 import app.domains.matching.models  # noqa: F401
-import app.domains.membership.models  # noqa: F401
 import app.domains.payment.models  # noqa: F401
 import app.domains.lesson_notes.models  # noqa: F401
 import app.domains.posts.models  # noqa: F401

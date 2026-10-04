@@ -1,4 +1,6 @@
+from datetime import date, datetime
 from typing import Optional
+from zoneinfo import ZoneInfo
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -7,7 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.domains.booking.models import Booking
+from app.domains.calendar.models import Calendar, TimeSlot
 from app.domains.calendar.repository import CalendarRepository
+from app.domains.passes.repository import PassRepository
+from app.domains.payment.repository import PaymentRepository
 from app.domains.instructor.models import InstructorStaff
 from app.domains.users.models import User
 
@@ -209,3 +214,75 @@ class InstructorRepository:
             raise HTTPException(status_code=404, detail="담당 고객을 찾을 수 없습니다.")
         counts = await self._status_counts(Booking.guest_id == customer_id)
         return {"customer_id": str(customer_id), "customer_name": customer.display_name, **_attendance(counts)}
+
+    # ── 매출·운영 대시보드 (강사 웹에서 보고, 앱에서 확인) ─────────────────────
+
+    async def dashboard(self, instructor_id: UUID, months: int = 6) -> dict:
+        """최근 N개월 월별 매출, 결제수단·수강권별 합계, 고객·수강권 현황. 월 구분은 한국 시간"""
+        kst = ZoneInfo("Asia/Seoul")
+        now = datetime.now(kst)
+        keys: list[str] = []
+        y, m = now.year, now.month
+        for _ in range(months):
+            keys.append(f"{y:04d}-{m:02d}")
+            y, m = (y, m - 1) if m > 1 else (y - 1, 12)
+        keys.reverse()
+        this_month, last_month = keys[-1], (keys[-2] if len(keys) > 1 else None)
+
+        passes = await PassRepository(self.session).list_by_instructor(instructor_id)
+        pass_name = {cp.id: cp.pass_name for cp in passes}
+
+        monthly = {k: {"month": k, "amount": 0, "count": 0} for k in keys}
+        by_method: dict[str, int] = {}
+        by_pass: dict[str, int] = {}
+        for pay in await PaymentRepository(self.session).list_for_instructor(instructor_id):
+            if pay.status != "COMPLETED" or pay.created_at is None:
+                continue
+            key = pay.created_at.astimezone(kst).strftime("%Y-%m")
+            if key not in monthly:
+                continue
+            monthly[key]["amount"] += pay.amount
+            monthly[key]["count"] += 1
+            by_method[pay.method] = by_method.get(pay.method, 0) + pay.amount
+            name = pass_name.get(pay.customer_pass_id, "수강권 미연결") if pay.customer_pass_id else "수강권 미연결"
+            by_pass[name] = by_pass.get(name, 0) + pay.amount
+
+        month_start = date(now.year, now.month, 1)
+        customers = list(
+            (await self.session.execute(
+                select(User).where(User.manager_id == instructor_id, User.is_active == True)  # noqa: E712
+            )).scalars().all()
+        )
+        completed_lessons = (
+            await self.session.execute(
+                select(func.count())
+                .select_from(Booking)
+                .join(TimeSlot, TimeSlot.id == Booking.time_slot_id)
+                .join(Calendar, Calendar.id == TimeSlot.calendar_id)
+                .where(Calendar.host_id == instructor_id, Booking.status == "COMPLETED", Booking.when >= month_start)
+            )
+        ).scalar_one()
+        active = [cp for cp in passes if cp.status == "ACTIVE"]
+
+        def ranked(d: dict[str, int], label: str) -> list[dict]:
+            return [{label: k, "amount": v} for k, v in sorted(d.items(), key=lambda kv: -kv[1])]
+
+        return {
+            "months": [monthly[k] for k in keys],
+            "this_month": monthly[this_month]["amount"],
+            "last_month": monthly[last_month]["amount"] if last_month else 0,
+            "period_total": sum(v["amount"] for v in monthly.values()),
+            "by_method": ranked(by_method, "method"),
+            "by_pass": ranked(by_pass, "pass_name"),
+            "customers": {
+                "total": len(customers),
+                "new_this_month": sum(1 for c in customers if c.created_at and c.created_at.astimezone(kst).date() >= month_start),
+            },
+            "passes": {
+                "active": len(active),
+                "remaining_sessions": sum(max(0, cp.sessions_total - cp.sessions_used) for cp in active),
+                "completed": sum(1 for cp in passes if cp.status == "COMPLETED"),
+            },
+            "lessons_completed_this_month": completed_lessons,
+        }
+

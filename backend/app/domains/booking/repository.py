@@ -14,7 +14,6 @@ from app.domains.booking.models import Booking, BookingType
 from app.domains.booking.schemas import BookingCreate
 from app.domains.calendar.models import Calendar, TimeSlot
 from app.domains.calendar.repository import CalendarBlockRepository
-from app.domains.membership.repository import MembershipRepository
 from app.domains.passes.repository import PassRepository
 from app.domains.users.models import User
 
@@ -127,16 +126,10 @@ class BookingRepository:
         if await self._active_exists(data.time_slot_id, data.when, data.type):
             raise _conflict("SLOT_ALREADY_BOOKED", data.time_slot_id, data.when)
 
-        membership_id = None
-        if data.membership_id and data.type == BookingType.LESSON:
-            await MembershipRepository(self.session).validate_for_booking(data.membership_id, guest_id)
-            membership_id = data.membership_id
-
         booking = Booking(
             when=data.when,
             topic=data.topic,
             description=data.description,
-            membership_id=membership_id,
             time_slot_id=data.time_slot_id,
             guest_id=guest_id,
             status=initial_status,
@@ -273,7 +266,7 @@ class BookingRepository:
         return booking
 
     async def complete(self, booking: Booking, host: CurrentUser) -> Booking:
-        """출석 완료: CONFIRMED → COMPLETED. 수강권 1회 차감 + 연결된 TIMES 멤버십 1회 차감"""
+        """출석 완료: CONFIRMED → COMPLETED. 수강권 1회 차감"""
         await self.ensure_host_can_manage(booking, host)
         if booking.status == "COMPLETED":
             return booking
@@ -282,14 +275,12 @@ class BookingRepository:
         booking.status = "COMPLETED"
         self.session.add(booking)
         await self._deduct_pass(booking)
-        if booking.membership_id:
-            await MembershipRepository(self.session).deduct_for_lesson(booking.membership_id)
         booking = await self._save(booking)
         await self._push_guest(booking, "레슨 완료", f"{booking.topic} ({booking.when}) 레슨이 완료 처리되었습니다.")
         return booking
 
     async def mark_no_show(self, booking: Booking, host: CurrentUser) -> Booking:
-        """노쇼: CONFIRMED → NO_SHOW. 수강권은 차감, 멤버십은 자동 차감하지 않음"""
+        """노쇼: CONFIRMED → NO_SHOW. 수강권은 차감"""
         await self.ensure_host_can_manage(booking, host)
         if booking.status == "NO_SHOW":
             return booking

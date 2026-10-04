@@ -47,3 +47,8 @@ class ChatMessageRead(BaseModel):
     created_at: UtcDatetime
 
     model_config = {"from_attributes": True}
+
+
+class ChatRoomOpen(BaseModel):
+    """강사에게 문의하기 → 그 강사와의 채팅방"""
+    instructor_id: UUID

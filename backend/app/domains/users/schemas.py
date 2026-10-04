@@ -37,6 +37,7 @@ class UserRead(BaseModel):
     birth_date: date | None = None
     gender: str | None = None
     lesson_purpose: str | None = None
+    feedback_consent: bool = False  # 피드백 공개 동의 (2026-03 빠졌던 필드 복원)
 
     recurring_off_days: list[int] = []
 
@@ -86,6 +87,7 @@ class UserUpdate(BaseModel):
     birth_date: date | None = None
     gender: str | None = None
     lesson_purpose: str | None = None
+    feedback_consent: bool | None = None
     recurring_off_days: list[int] | None = None
 
     @field_validator("recurring_off_days")
@@ -145,3 +147,8 @@ class UserCreate(BaseModel):
 class RegisterCustomerByEmail(BaseModel):
     """강사가 이메일로 담당 고객을 등록하는 요청"""
     email: str
+
+
+class ManagerSelect(BaseModel):
+    """고객이 문의한 강사를 담당 강사로 지정"""
+    instructor_id: UUID

@@ -27,3 +27,5 @@ class InstructorPublicRead(BaseModel):
     location: Optional[str] = None
     specialties: list[str] = []     # 파싱된 스타일 태그 목록
     bio: Optional[str] = None
+    career_years: Optional[int] = None   # 강사 상세 프로필(문의하기 모달)용
+    certifications: Optional[str] = None

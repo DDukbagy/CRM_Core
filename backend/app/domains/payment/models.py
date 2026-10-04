@@ -17,6 +17,9 @@ class Payment(SQLModel, table=True):
     status: PENDING | COMPLETED | FAILED | REFUNDED
     """
     __tablename__ = "payments"
+    # customer_pass_id 의 FK(→ customer_passes)는 마이그레이션 w8x9y0z1a2b3 이 만든다.
+    # init 마이그레이션(create_all)에는 customer_passes 가 없어 여기서 선언하면 실패하므로,
+    # 비교 명령(alembic check)일 때만 alembic/env.py 가 이 FK 를 붙인다 (passes 모델을 올리는 것과 같은 이유)
 
     id: Optional[UUID] = Field(
         default=None,
@@ -31,10 +34,11 @@ class Payment(SQLModel, table=True):
         description="결제한 고객 ID",
     )
 
-    membership_id: Optional[UUID] = Field(
+    # 이 결제로 산 수강권 (멤버십은 수강권으로 통합, 2026-10-04)
+    customer_pass_id: Optional[int] = Field(
         default=None,
-        sa_column=Column(PGUUID(as_uuid=True), ForeignKey("memberships.id", ondelete="SET NULL"), nullable=True),
-        description="연결된 멤버십 ID",
+        sa_column=Column(Integer, nullable=True),
+        description="연결된 발급 수강권 ID",
     )
 
     amount: int = Field(

@@ -64,12 +64,6 @@ class Booking(SQLModel, table=True):
     # 취소 사유
     cancel_reason: Optional[str] = Field(default=None, sa_type=Text, description="취소/거절 사유")
 
-    membership_id: Optional[UUID] = Field(
-        default=None,
-        sa_column=Column(PGUUID(as_uuid=True), ForeignKey("memberships.id", ondelete="SET NULL"), nullable=True),
-        description="차감할 멤버십 ID",
-    )
-
     time_slot_id: int = Field(sa_column=Column(Integer, ForeignKey("time_slots.id", ondelete="CASCADE"), nullable=False))
     time_slot: TimeSlot = Relationship(back_populates="bookings")
 

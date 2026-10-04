@@ -207,3 +207,14 @@ class PassRepository:
         await self.session.execute(
             delete(LessonPassType).where(LessonPassType.instructor_id == user_id, LessonPassType.id.not_in(still_issued))
         )
+
+    async def ensure_linkable_to_payment(self, customer_pass_id: int, customer_id: UUID, instructor_id: Optional[UUID]) -> None:
+        """결제에 연결할 수강권 확인: 그 고객의 수강권이어야 하고, 강사는 자기가 발급한 것만"""
+        cp = await self.session.get(CustomerPass, customer_pass_id)
+        if not cp:
+            raise HTTPException(status_code=404, detail="수강권을 찾을 수 없습니다.")
+        if cp.customer_id != customer_id:
+            raise HTTPException(status_code=400, detail="수강권과 고객 정보가 일치하지 않습니다.")
+        if instructor_id is not None and cp.instructor_id != instructor_id:
+            raise HTTPException(status_code=403, detail="본인이 발급한 수강권만 결제에 연결할 수 있습니다.")
+

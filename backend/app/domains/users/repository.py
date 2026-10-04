@@ -11,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth.deps import CurrentUser
 from app.core.auth.security import get_password_hash
 from app.domains.calendar.repository import CalendarRepository
+from app.domains.chat.repository import ChatRepository
 from app.core.retention import RECORD_RETENTION_YEARS
-from app.domains.membership.repository import MembershipRepository
 from app.domains.passes.repository import PassRepository
 from app.domains.payment.repository import PaymentRepository
 from app.domains.users.models import User
@@ -22,7 +22,7 @@ from app.domains.users.schemas import UserCreate, UserUpdate
 SELF_EDITABLE_FIELDS = (
     "email", "phone",
     "instructor_location", "instructor_specialties", "instructor_bio", "career_years", "certifications",
-    "birth_date", "gender", "lesson_purpose", "recurring_off_days",
+    "birth_date", "gender", "lesson_purpose", "recurring_off_days", "feedback_consent",
 )
 
 
@@ -259,7 +259,7 @@ class UserRepository:
     async def delete(self, user_id: UUID, current: CurrentUser) -> None:
         """관리자: 전체 / 강사: 담당 고객만 (본인 계정 삭제 불가)
 
-        결제·계약(멤버십·수강권) 기록의 보존 기간(5년)이 끝나지 않았으면 삭제하지 않는다 → 탈퇴 처리를 쓴다.
+        결제·계약(수강권) 기록의 보존 기간(5년)이 끝나지 않았으면 삭제하지 않는다 → 탈퇴 처리를 쓴다.
         보존 기간이 끝난 기록만 있으면 그 기록을 먼저 지우고 회원을 삭제한다 (한 트랜잭션).
         """
         user = await self.get_or_404(user_id)
@@ -270,13 +270,11 @@ class UserRepository:
             raise HTTPException(status_code=403, detail="Forbidden")
 
         payments = PaymentRepository(self.session)
-        memberships = MembershipRepository(self.session)
         passes = PassRepository(self.session)
         retained = [
             name
             for name, count in (
                 ("결제", await payments.count_retained_for_customer(user.id)),
-                ("멤버십", await memberships.count_retained_for_user(user.id)),
                 ("수강권", await passes.count_retained_for_user(user.id)),
             )
             if count
@@ -290,7 +288,25 @@ class UserRepository:
                 ),
             )
         await payments.delete_expired_for_customer(user.id)
-        await memberships.delete_expired_for_user(user.id)
         await passes.delete_expired_for_user(user.id)
         await self.session.delete(user)
         await self.session.commit()
+
+    async def select_manager(self, current: CurrentUser, instructor_id: UUID) -> User:
+        """고객이 담당 강사를 지정한다. 그 강사에게 문의(채팅방)한 적이 있어야 한다.
+        (강사가 앱 밖에서 구한 고객을 등록하는 것은 register_customer_by_email)"""
+        me = await self.get_or_404(safe_uuid(current.id))
+        if (me.role or "").upper() != "CUSTOMER":
+            raise HTTPException(status_code=403, detail="고객만 담당 강사를 지정할 수 있습니다.")
+        if me.manager_id == instructor_id:
+            return me
+        instructor = await self.session.get(User, instructor_id)
+        if not instructor or (instructor.role or "").upper() != "INSTRUCTOR" or (instructor.status or "").upper() != "ACTIVE":
+            raise HTTPException(status_code=404, detail="강사를 찾을 수 없습니다.")
+        if await ChatRepository(self.session).find_room(me.id, instructor_id) is None:
+            raise HTTPException(status_code=400, detail="먼저 문의하기로 강사와 대화를 시작하세요.")
+        me.manager_id = instructor_id
+        self.session.add(me)
+        await self.session.commit()
+        await self.session.refresh(me)
+        return me

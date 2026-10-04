@@ -155,6 +155,9 @@ class PostRepository:
         if role not in WRITER_ROLES:
             raise HTTPException(status_code=403, detail="Forbidden")
 
+        # 피드백은 레슨 노트로 통합 (2026-10-04). 기존 FEEDBACK 게시물은 마이그레이션 x9y0z1a2b3c4 가 옮김
+        if data.type == PostType.FEEDBACK.value:
+            raise HTTPException(status_code=400, detail="피드백은 레슨노트로 작성합니다 (POST /lesson-notes).")
         allowed_types = {t.value for t in PostType}
         if data.type not in allowed_types:
             raise HTTPException(

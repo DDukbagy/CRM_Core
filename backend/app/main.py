@@ -23,11 +23,11 @@ from app.domains.lesson_notes.router import router as lesson_note_router
 from app.domains.chat.router import router as chat_router
 from app.domains.instructor.router import router as instructor_router
 from app.domains.matching.router import router as matching_router
-from app.domains.membership.router import router as membership_router
 from app.domains.notifications.router import router as notifications_router
 from app.domains.payment.router import router as payment_router
 from app.domains.passes.router import router as passes_router
 from app.domains.posts.router import router as posts_router
+from app.domains.promotions.router import router as promotions_router
 from app.domains.users.router import router as users_router
 from app.core.health import router as health_router
 
@@ -82,10 +82,10 @@ app.include_router(matching_router)
 app.include_router(calendar_router)
 app.include_router(booking_router)
 app.include_router(lesson_note_router)
-app.include_router(membership_router)
 app.include_router(payment_router)
 app.include_router(passes_router)
 app.include_router(posts_router)
+app.include_router(promotions_router)
 app.include_router(notifications_router)
 app.include_router(chat_router)
 
