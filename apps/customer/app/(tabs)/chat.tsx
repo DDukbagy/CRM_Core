@@ -1,3 +1,4 @@
+// 채팅 탭: 강사와의 채팅방 목록·대화, 담당 강사 지정 (모임 채팅은 준비 중)
 import { useState, useCallback, useRef, useEffect } from "react";
 import {
   View, Text, StyleSheet, Pressable, FlatList, TextInput,
@@ -8,7 +9,7 @@ import { apiFetch } from "@/lib/api";
 import { appAlert } from "@/lib/alert";
 import type { UserRead } from "@/types/api";
 
-// ── 타입 ──────────────────────────────────────────────────────
+// 타입
 interface ChatRoom {
   id: string;
   customer_id: string;
@@ -32,7 +33,7 @@ interface ChatMessage {
   created_at: string;
 }
 
-// ── 시간 포맷 ─────────────────────────────────────────────────
+// 시간 포맷
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
@@ -51,7 +52,7 @@ function formatTime(iso: string): string {
   return `${ampm} ${h % 12 || 12}:${m}`;
 }
 
-// ── 강사 채팅 방 목록 ──────────────────────────────────────────
+// 강사 채팅 방 목록
 function RoomList({
   onSelect,
 }: {
@@ -73,8 +74,8 @@ function RoomList({
     }
   }
 
+  // 첫 방문만 전체 로딩 표시(초기값 true), 다시 들어오면 목록을 보여 둔 채 새로 불러온다
   useFocusEffect(useCallback(() => {
-    setLoading(true);
     load();
   }, []));
 
@@ -122,7 +123,7 @@ function RoomList({
   );
 }
 
-// ── 채팅 상세 ─────────────────────────────────────────────────
+// 채팅 상세
 function ChatDetail({
   room,
   onBack,
@@ -261,7 +262,7 @@ function ChatDetail({
   );
 }
 
-// ── 강사 채팅 탭 ──────────────────────────────────────────────
+// 강사 채팅 탭
 function InstructorChatTab() {
   const [selectedRoom, setSelectedRoom] = useState<ChatRoom | null>(null);
   // 강사 찾기 "문의하기" 에서 넘어오면 그 방을 바로 연다 (/chat?room=<id>)
@@ -284,7 +285,7 @@ function InstructorChatTab() {
   return <RoomList onSelect={setSelectedRoom} />;
 }
 
-// ── 모임 채팅 탭 (준비 중) ─────────────────────────────────────
+// 모임 채팅 탭 (준비 중)
 function GroupChatTab() {
   return (
     <View style={s.center}>
@@ -295,7 +296,7 @@ function GroupChatTab() {
   );
 }
 
-// ── 메인 화면 ─────────────────────────────────────────────────
+// 메인 화면
 type TopTab = "instructor" | "group";
 
 export default function ChatScreen() {

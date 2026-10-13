@@ -1,3 +1,4 @@
+# DB 엔진·세션 (asyncpg, 커넥션 풀)
 from __future__ import annotations
 
 import os
@@ -6,12 +7,12 @@ from typing import AsyncGenerator
 
 from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import NullPool
 from sqlalchemy.engine.url import make_url
 
 from app.core.config import settings
 
 
+# DATABASE_URL 을 asyncpg 주소로 바꾸기
 def get_async_db_url() -> str:
     # ASYNC_DATABASE_URL이 있으면 그대로 사용
     async_url = getattr(settings, "ASYNC_DATABASE_URL", None)
@@ -47,6 +48,7 @@ def build_ssl_context():
     return ctx
 
 
+# DB 엔진 생성 (SSL 검증, 커넥션 풀)
 def make_engine():
     db_url = get_async_db_url()
 
@@ -62,14 +64,17 @@ def make_engine():
         ssl_ctx.load_verify_locations(cafile=str(SUPABASE_CA))
         connect_args["ssl"] = ssl_ctx
 
-    # Supabase pooler(Supavisor) URL 사용 시 SQLAlchemy 자체 pool을 비활성화한다.
-    # Supavisor가 PG 커넥션 풀을 직접 관리하므로 SQLAlchemy pool과 이중 풀링하면
-    # idle 커넥션이 끊겼을 때 SSL TimeoutError가 발생한다.
-    # NullPool: 요청마다 새 커넥션 체크아웃 → 체크인 시 즉시 반환 (Supavisor가 재사용)
+    # 연결을 재사용한다. 요청마다 새로 연결하면(NullPool) 원격 DB 기준 요청당 약 1초가 더 든다
+    # pool_recycle: 오래된 연결은 pooler 가 끊을 수 있어 5분마다 새로 맺는다
+    # pool_pre_ping 은 끈다: 요청마다 확인 왕복이 늘고, 끊긴 연결은 그 요청만 실패한 뒤 다음부터 새로 연결된다
     return create_async_engine(
         db_url,
         echo=settings.DB_ECHO,
-        poolclass=NullPool,
+        pool_size=5,
+        max_overflow=5,
+        pool_pre_ping=False,
+        pool_recycle=300,
+        pool_timeout=10,
         connect_args=connect_args,
     )
 
@@ -82,6 +87,7 @@ AsyncSessionLocal = async_sessionmaker(
     expire_on_commit=False,
 )
 
+# 요청마다 DB 세션 하나 (FastAPI 의존성)
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         yield session

@@ -1,3 +1,4 @@
+// 수강권 탭: 내 수강권, 담당 강사의 수강권 상품과 진행 중인 프로모션
 import { useCallback, useState } from "react";
 import { View, Text, ScrollView, Pressable, Modal, StyleSheet, ActivityIndicator } from "react-native";
 import { appAlert } from "@/lib/alert";
@@ -30,8 +31,8 @@ export default function PassesScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, []));
 
+  // 첫 방문만 전체 로딩 표시(초기값 true), 다시 들어오면 기존 내용을 보여 둔 채 새로 불러온다
   async function load() {
-    setLoading(true);
     try {
       const [passData, meData] = await Promise.all([
         apiFetch<CustomerPassRead[]>("/passes/me"),
