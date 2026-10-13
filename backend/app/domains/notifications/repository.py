@@ -1,3 +1,4 @@
+# 알림 저장소: 생성·삭제·목록·읽음
 from typing import List
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession

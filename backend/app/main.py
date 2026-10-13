@@ -1,3 +1,4 @@
+# FastAPI 앱 진입점: 미들웨어·예외 처리·도메인 라우터 등록
 from __future__ import annotations
 
 import logging
@@ -40,7 +41,7 @@ logging.basicConfig(
 )
 logging.getLogger("app").setLevel(logging.INFO)
 
-# ── Sentry ───────────────────────────────────────────────────────────────────
+# Sentry
 if settings.SENTRY_DSN:
     sentry_sdk.init(
         dsn=settings.SENTRY_DSN,
@@ -60,7 +61,7 @@ app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# ── 미들웨어 (나중에 추가될수록 먼저 실행됨) ────────────────────────────────
+# 미들웨어 (나중에 추가될수록 먼저 실행됨)
 app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(
@@ -73,7 +74,7 @@ app.add_middleware(
 
 register_exception_handlers(app)
 
-# ── 라우터 (미들웨어 설정 이후 등록) ─────────────────────────────────────────
+# 라우터 (미들웨어 설정 이후 등록)
 app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(users_router)
@@ -92,6 +93,7 @@ app.include_router(chat_router)
 logger.info("CORS origins: %s", settings.cors_origins)
 logger.info("CORS regex: %s", settings.CORS_ORIGIN_REGEX)
 
+# 루트 경로 (서버 동작 확인용)
 @app.get("/")
 async def root():
     return {"status": "ok"}

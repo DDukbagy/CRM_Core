@@ -1,3 +1,4 @@
+# 수강권 모델: 강사의 수강권 상품, 고객에게 발급한 수강권
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -91,7 +92,7 @@ class CustomerPass(SQLModel, table=True):
         description="비정규화: 빠른 강사별 조회를 위해 중복 저장",
     )
 
-    # ── 발급 시점 스냅샷 ─────────────────────────────────────────────────────
+    # 발급 시점 스냅샷
     pass_name: str = Field(sa_type=String(100), nullable=False)
     duration_hours: int = Field(sa_column=Column(SmallInteger, nullable=False))
     sessions_total: int = Field(sa_column=Column(SmallInteger, nullable=False))

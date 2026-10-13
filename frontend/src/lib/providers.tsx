@@ -1,4 +1,4 @@
-// frontend/src/lib/providers.tsx
+// 앱 공통 Provider: TanStack Query, Supabase 세션 감지
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -6,7 +6,7 @@ import { useEffect, useState, createContext, useContext } from "react";
 import { createClient, type Session } from "@supabase/supabase-js";
 
 /**
- * Supabase Client (운영 인증 단일 기준)
+ * Supabase 클라이언트 (인증 기준)
  * - NEXT_PUBLIC_SUPABASE_URL
  * - NEXT_PUBLIC_SUPABASE_ANON_KEY
  */

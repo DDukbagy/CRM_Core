@@ -1,3 +1,4 @@
+# 알림 모델
 from enum import Enum
 from datetime import datetime
 from typing import Optional

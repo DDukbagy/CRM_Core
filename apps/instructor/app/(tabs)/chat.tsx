@@ -1,3 +1,4 @@
+// 채팅 탭: 고객과의 채팅방 목록·대화
 import { useState, useCallback, useRef, useEffect } from "react";
 import {
   View, Text, StyleSheet, Pressable, FlatList, TextInput,
@@ -6,7 +7,7 @@ import {
 import { useFocusEffect } from "expo-router";
 import { apiFetch } from "@/lib/api";
 
-// ── 타입 ──────────────────────────────────────────────────────
+// 타입
 interface ChatRoom {
   id: string;
   customer_id: string;
@@ -47,7 +48,7 @@ function formatTime(iso: string): string {
   return `${ampm} ${h % 12 || 12}:${m}`;
 }
 
-// ── 채팅방 목록 ───────────────────────────────────────────────
+// 채팅방 목록
 function RoomList({ onSelect }: { onSelect: (room: ChatRoom) => void }) {
   const [rooms, setRooms] = useState<ChatRoom[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,8 +66,8 @@ function RoomList({ onSelect }: { onSelect: (room: ChatRoom) => void }) {
     }
   }
 
+  // 첫 방문만 전체 로딩 표시(초기값 true), 다시 들어오면 목록을 보여 둔 채 새로 불러온다
   useFocusEffect(useCallback(() => {
-    setLoading(true);
     load();
   }, []));
 
@@ -114,7 +115,7 @@ function RoomList({ onSelect }: { onSelect: (room: ChatRoom) => void }) {
   );
 }
 
-// ── 채팅 상세 ─────────────────────────────────────────────────
+// 채팅 상세
 function ChatDetail({ room, onBack }: { room: ChatRoom; onBack: () => void }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
@@ -216,7 +217,7 @@ function ChatDetail({ room, onBack }: { room: ChatRoom; onBack: () => void }) {
   );
 }
 
-// ── 메인 ─────────────────────────────────────────────────────
+// 메인
 export default function ChatScreen() {
   const [selectedRoom, setSelectedRoom] = useState<ChatRoom | null>(null);
 

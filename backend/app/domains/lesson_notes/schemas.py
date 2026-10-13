@@ -1,3 +1,4 @@
+# 레슨노트 스키마
 from __future__ import annotations
 
 from datetime import datetime
@@ -14,7 +15,7 @@ class LessonNoteCreate(BaseModel):
     content: str | None = None
     file_key: str | None = None      # /lesson-notes/upload-url 로 올린 PDF 의 key
     file_name: str | None = Field(default=None, max_length=200)
-    is_shared: bool = True           # 고객이 바로 볼 수 있게 (피드백과 같은 동작)
+    is_shared: bool = True           # 기본은 고객에게 바로 공유
     model_config = ConfigDict(extra="forbid")
 
 

@@ -1,7 +1,6 @@
 "use client";
 
 // 강사 웹 레슨노트: 담당 고객에게 노트 작성 (글 또는 수기 노트 PDF). 강사 앱 레슨노트 탭과 같은 기능
-// 피드백 게시물을 레슨노트로 통합 (2026-10-04)
 import React, { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/axios";
 import DashboardLayout from "@/components/layout/DashboardLayout";

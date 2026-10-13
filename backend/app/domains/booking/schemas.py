@@ -1,3 +1,4 @@
+# 예약 요청·응답 스키마
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -35,7 +36,7 @@ class BookingRead(BaseModel):
     when: date
     topic: str | None = None
     status: BookingStatus
-    type: BookingType  # 타입 정보 포함
+    type: BookingType
     description: str | None
     cancel_reason: str | None = None
     time_slot_id: int

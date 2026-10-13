@@ -1,4 +1,4 @@
-// app/(tabs)/posts.tsx
+// 게시물 탭: 강사 게시물 피드, 미디어, 댓글, 좋아요
 import { useCallback, useRef, useState } from "react";
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator,
@@ -23,7 +23,7 @@ function timeAgo(iso: string): string {
   return `${Math.floor(hrs / 24)}일 전`;
 }
 
-// ─── 비디오 아이템 ────────────────────────────────────────
+// 비디오 아이템
 function VideoItem({ uri }: { uri: string }) {
   const player = useVideoPlayer(uri, (p) => { p.loop = false; });
   return (
@@ -36,7 +36,7 @@ function VideoItem({ uri }: { uri: string }) {
   );
 }
 
-// ─── 미디어 캐러셀 ────────────────────────────────────────
+// 미디어 캐러셀
 function MediaCarousel({ items }: { items: MediaItemRead[] }) {
   const [page, setPage] = useState(0);
   const listRef = useRef<FlatList>(null);
@@ -119,7 +119,7 @@ const mc = StyleSheet.create({
   dotActive: { backgroundColor: "#1a1a1a" },
 });
 
-// ─── 댓글 섹션 ────────────────────────────────────────────
+// 댓글 섹션
 function CommentsSection({ postId }: { postId: string }) {
   const [expanded, setExpanded] = useState(false);
   const [comments, setComments] = useState<CommentRead[]>([]);
@@ -236,7 +236,7 @@ const cs = StyleSheet.create({
   sendTxt: { color: "#fff", fontSize: 12, fontWeight: "700" },
 });
 
-// ─── 포스트 카드 ──────────────────────────────────────────
+// 포스트 카드
 // 배지 문구: 종류마다 다르게 (색은 피드백 / 그 외 두 가지 그대로)
 const POST_TYPE_LABEL: Record<string, string> = {
   PROMOTION: "홍보",
@@ -280,7 +280,7 @@ function PostCard({ post }: { post: InstructorPostRead }) {
   );
 }
 
-// ─── 좋아요 ──────────────────────────────────────────────
+// 좋아요
 function LikeButton({ post }: { post: InstructorPostRead }) {
   const [isLiked, setIsLiked] = useState(post.is_liked);
   const [likeCount, setLikeCount] = useState(post.like_count);
@@ -310,7 +310,7 @@ function LikeButton({ post }: { post: InstructorPostRead }) {
   );
 }
 
-// ─── 메인 화면 ────────────────────────────────────────────
+// 메인 화면
 export default function PostsScreen() {
   const [posts, setPosts] = useState<InstructorPostRead[]>([]);
   const [loading, setLoading] = useState(true);

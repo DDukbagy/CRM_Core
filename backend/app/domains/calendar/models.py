@@ -1,3 +1,4 @@
+# 캘린더 모델: 강사 캘린더, 반복 시간 슬롯, 날짜별 예외(휴무·영업)
 from datetime import datetime, time, timezone, date
 from typing import TYPE_CHECKING, Optional, List
 from uuid import UUID
@@ -58,7 +59,7 @@ class TimeSlot(SQLModel, table=True):
 
     weekdays: List[int] = Field(sa_type=JSONB, description="예약 가능한 요일들(월0~일6)")
 
-    # 전체 슬롯 ON/OFF
+    # 이 슬롯을 쓰는지 (모든 날짜에 적용)
     is_active: bool = Field(
         default=True,
         nullable=False,

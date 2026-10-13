@@ -1,4 +1,4 @@
-// lib/api.ts
+// API 클라이언트: Supabase 토큰을 붙여 백엔드 호출
 import { config } from "./config";
 import { supabase } from "./supabase";
 

@@ -1,4 +1,4 @@
-// app/(tabs)/index.tsx
+// 홈 탭: 담당 강사, 다가오는 예약, 알림
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,

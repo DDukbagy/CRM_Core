@@ -1,4 +1,4 @@
-// frontend/src/app/layout.tsx
+// 루트 레이아웃
 import type { Metadata } from "next";
 import "./globals.css";
 

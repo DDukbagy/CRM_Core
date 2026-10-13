@@ -1,4 +1,4 @@
-// app/(tabs)/bookings.tsx — 예약 목록
+// 예약 탭: 내 예약 목록과 상태별 보기
 import { useState, useCallback, useRef } from "react";
 import { View, Text, FlatList, Pressable, ActivityIndicator, RefreshControl, StyleSheet } from "react-native";
 import { appAlert } from "@/lib/alert";

@@ -1,3 +1,4 @@
+# 사용자 저장소: 내 정보, 역할별 목록, 계정 관리, 담당 강사 지정, 탈퇴·삭제
 from datetime import datetime, timezone
 import secrets
 from typing import Optional
@@ -50,7 +51,7 @@ class UserRepository:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
         return user
 
-    # ── 내 계정 ──────────────────────────────────────────────────────────────
+    # 내 계정
 
     async def get_or_create_me(self, current: CurrentUser) -> User:
         """users 행이 없으면 만들어 둔다(동기화). username 충돌 시 suffix 를 붙여 재시도"""
@@ -83,6 +84,7 @@ class UserRepository:
                     return existing
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="사용자 생성 실패")
 
+    # 내 정보 수정 (허용된 필드만)
     async def update_me(self, current: CurrentUser, payload: UserUpdate) -> User:
         user = await self.get_or_create_me(current)
         data = payload.model_dump(exclude_unset=True)
@@ -104,6 +106,7 @@ class UserRepository:
             await self.session.rollback()
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="이미 사용 중인 username 또는 email 입니다.")
 
+    # 푸시 알림 토큰 저장
     async def set_push_token(self, user_id, token: Optional[str]) -> None:
         user = (await self.session.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
         if user and (token is not None or user.push_token):
@@ -111,7 +114,7 @@ class UserRepository:
             self.session.add(user)
             await self.session.commit()
 
-    # ── 목록·상세 (역할별 범위) ──────────────────────────────────────────────
+    # 목록·상세 (역할별 범위)
 
     async def list_for_user(self, current: CurrentUser, limit: int, offset: int, role: Optional[str]) -> tuple[list[User], int, int, int]:
         """관리자: 전체 / 강사: 담당 고객 / 그 외: 본인. (items, total, limit, offset)"""
@@ -150,7 +153,7 @@ class UserRepository:
             return user
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    # ── 계정 관리 ────────────────────────────────────────────────────────────
+    # 계정 관리
 
     async def register_customer_by_email(self, instructor_id: UUID, email: str) -> User:
         """강사가 이메일로 담당 고객 등록 (담당 강사가 없거나 이미 나인 고객만)"""

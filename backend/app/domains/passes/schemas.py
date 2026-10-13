@@ -1,3 +1,4 @@
+# 수강권 상품·고객 수강권 스키마
 from __future__ import annotations
 
 from datetime import datetime
@@ -10,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 CustomerPassStatus = Literal["ACTIVE", "COMPLETED", "EXPIRED", "CANCELLED"]
 
 
-# ─── Pass Type ────────────────────────────────────────────────────────────────
+# 수강권 상품
 
 class PassTypeCreate(BaseModel):
     name: str
@@ -48,7 +49,7 @@ class PassTypeRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-# ─── Customer Pass ────────────────────────────────────────────────────────────
+# 고객 수강권
 
 class CustomerPassAssign(BaseModel):
     """강사가 고객에게 수강권 발급"""

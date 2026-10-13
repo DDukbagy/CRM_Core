@@ -1,3 +1,4 @@
+# 채팅 모델: 채팅방과 메시지
 from __future__ import annotations
 
 from datetime import datetime

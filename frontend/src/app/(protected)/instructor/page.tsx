@@ -1,4 +1,5 @@
 "use client";
+// 강사 웹 대시보드: 통계, 레슨 신청 확정·거절, 취소 신청 처리, 오늘 예약 완료·노쇼
 
 import React, { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/axios";

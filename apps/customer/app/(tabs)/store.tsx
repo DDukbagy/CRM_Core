@@ -1,3 +1,4 @@
+// 스토어 탭 (준비 중)
 import { View, Text, StyleSheet } from "react-native";
 
 export default function StoreScreen() {

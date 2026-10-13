@@ -1,3 +1,4 @@
+// 앱 루트: 로그인 상태에 따라 화면 이동, Sentry
 import * as Sentry from "@sentry/react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 

@@ -1,3 +1,4 @@
+# 테스트 공용 설정: 로컬 DB, 앱 클라이언트, 사용자·토큰 만들기
 from __future__ import annotations
 
 import sys
@@ -252,7 +253,7 @@ async def free_slot_and_date(db_conn_and_sessionmaker: async_sessionmaker[AsyncS
         return picked
 
 
-# ── Instructor / Customer helpers ─────────────────────────────
+# 강사·고객 만들기
 
 async def _ensure_instructor(session: AsyncSession, tier: str = "NORMAL") -> uuid.UUID:
     instructor_uuid = uuid.uuid4()
@@ -407,7 +408,7 @@ async def instructor_client(
     app.dependency_overrides.clear()
 
 
-# ── 로그인 사용자를 바꿔 가며 호출하는 클라이언트 ─────────────
+# 로그인 사용자를 바꿔 가며 호출하는 클라이언트
 #   act("이름") 으로 그 사용자가 되어 호출한다. people 에 {이름: (id, 역할)} 을 등록해 쓴다.
 
 async def insert_user(

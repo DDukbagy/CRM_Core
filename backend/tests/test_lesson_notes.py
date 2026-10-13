@@ -104,7 +104,7 @@ async def test_customer_sees_note_only_when_shared(client, db_conn_and_sessionma
     assert (await client.post("/lesson-notes", json={"booking_id": booking_id, "content": "x"})).status_code == 403
 
 
-# ── 고객별 노트 (예약 연결 없이), PDF, 목록 (2026-10-04) ────────────────────
+# 고객별 노트 (예약 연결 없이), PDF, 목록
 
 async def test_note_for_managed_customer_without_booking(instructor_client, instructor_id, managed_customer_id, db_conn_and_sessionmaker):
     r = await instructor_client.post("/lesson-notes", json={"customer_id": str(managed_customer_id), "title": "1회차", "content": "그립 교정"})

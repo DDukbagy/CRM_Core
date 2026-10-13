@@ -1,3 +1,4 @@
+# 게시물 모델: 게시물·미디어·댓글·좋아요
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional

@@ -1,3 +1,4 @@
+# 피드백 공개 동의: 동의하면 공개, 철회하면 비공개, 대상 고객만 가능
 from __future__ import annotations
 
 import uuid

@@ -1,3 +1,4 @@
+# 레슨노트 저장소: 작성·조회·수정·삭제와 공유 범위
 import uuid as _uuid
 from typing import Optional
 from uuid import UUID
@@ -21,7 +22,7 @@ class LessonNoteRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    # ── 조회 ──────────────────────────────────────────────────────────────────
+    # 조회
 
     async def get_or_404(self, note_id: UUID) -> LessonNote:
         note = await self.session.get(LessonNote, note_id)
@@ -63,6 +64,7 @@ class LessonNoteRepository:
         if not note.is_shared:
             raise HTTPException(status_code=403, detail="강사가 아직 공유하지 않은 노트입니다.")
 
+    # 응답 변환 (이름, PDF 서명 주소 포함)
     async def to_read(self, note: LessonNote) -> LessonNoteRead:
         names = {}
         for uid in {note.customer_id, note.instructor_id}:
@@ -74,7 +76,7 @@ class LessonNoteRepository:
         read.file_url = create_presigned_url(note.file_key) if note.file_key else None
         return read
 
-    # ── 작성·수정·삭제 ────────────────────────────────────────────────────────
+    # 작성·수정·삭제
 
     async def _host_of_booking(self, booking: Booking) -> Optional[UUID]:
         return (
@@ -134,6 +136,7 @@ class LessonNoteRepository:
         if user.role != "ADMIN" and note.instructor_id != UUID(str(user.id)):
             raise HTTPException(status_code=403, detail="Forbidden")
 
+    # 노트 수정 (작성 강사만)
     async def update(self, note: LessonNote, data: LessonNoteUpdate, instructor: CurrentUser) -> LessonNote:
         self._ensure_author(note, instructor)
         changes = data.model_dump(exclude_unset=True)
@@ -150,6 +153,7 @@ class LessonNoteRepository:
             delete_file_from_s3(old_key)
         return note
 
+    # 노트 삭제 (작성 강사만)
     async def delete(self, note: LessonNote, instructor: CurrentUser) -> None:
         self._ensure_author(note, instructor)
         key = note.file_key

@@ -1,4 +1,4 @@
-// frontend/src/app/(protected)/admin/analytics/page.tsx — 준비 중
+// 관리자 영업/통계 (준비 중)
 export const dynamic = "force-dynamic";
 
 import DashboardLayout from "@/components/layout/DashboardLayout";

@@ -1,4 +1,4 @@
-// frontend/src/lib/supabase/server.ts
+// 서버용 Supabase 클라이언트 (쿠키 세션)
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 

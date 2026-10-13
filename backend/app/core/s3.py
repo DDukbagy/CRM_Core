@@ -1,3 +1,4 @@
+# S3 파일 업로드·삭제와 서명 주소 발급
 import logging
 import os
 
@@ -110,6 +111,7 @@ def create_presigned_post(
         return None
 
 
+# S3 객체 삭제
 def delete_file_from_s3(s3_key: str) -> bool:
     s3 = _get_s3_client()
     if not s3:

@@ -1,3 +1,4 @@
+# 캘린더 저장소: 시간 슬롯, 휴무 규칙, 예약 가능 시간 계산
 from dataclasses import dataclass
 from datetime import date, time, timedelta
 from typing import Optional
@@ -7,6 +8,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.clock import today_kst
 from app.domains.booking.models import ACTIVE_LESSON_STATUSES, Booking, BookingType
 from app.domains.calendar.models import BlockKind, Calendar, CalendarBlock, TimeSlot
 from app.domains.calendar.schemas import (
@@ -20,7 +22,7 @@ from app.domains.calendar.schemas import (
 )
 from app.domains.users.models import User
 
-# 모든 강사 캘린더의 기본 슬롯: 매일 07:00~20:00, 1시간 단위 13개 (사용자 결정 2026-10-01)
+# 모든 강사 캘린더의 기본 슬롯: 매일 07:00~20:00, 1시간 단위 13개
 DEFAULT_SLOT_HOURS = range(7, 20)
 ALL_WEEKDAYS = [0, 1, 2, 3, 4, 5, 6]
 
@@ -73,7 +75,7 @@ class CalendarRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    # ── 캘린더 ────────────────────────────────────────────────────────────────
+    # 캘린더
 
     async def get_by_host(self, host_id: UUID) -> Calendar:
         calendar = (await self.session.execute(select(Calendar).where(Calendar.host_id == host_id))).scalar_one_or_none()
@@ -105,6 +107,7 @@ class CalendarRepository:
         await self.session.refresh(calendar)
         return calendar
 
+    # 캘린더 만들기 (강사당 하나)
     async def create(self, host_id: UUID, data: CalendarCreate) -> Calendar:
         exists = await self.session.execute(select(Calendar).where(Calendar.host_id == host_id))
         if exists.scalar_one_or_none():
@@ -115,6 +118,7 @@ class CalendarRepository:
         await self.session.refresh(calendar)
         return calendar
 
+    # 캘린더 정보(레슨 주제·소개) 수정
     async def update(self, host_id: UUID, data: CalendarUpdate) -> Calendar:
         calendar = await self.get_by_host(host_id)
         payload = data.model_dump(exclude_unset=True)
@@ -127,8 +131,9 @@ class CalendarRepository:
         await self.session.refresh(calendar)
         return calendar
 
-    # ── 반복 시간 슬롯 (전역 설정: 모든 날짜에 적용) ──────────────────────────
+    # 반복 시간 슬롯 (전역 설정: 모든 날짜에 적용)
 
+    # 내 시간 슬롯 목록
     async def list_slots(self, calendar_id: int, order_by_id: bool = True) -> list[TimeSlot]:
         stmt = select(TimeSlot).where(TimeSlot.calendar_id == calendar_id)
         if order_by_id:
@@ -143,6 +148,7 @@ class CalendarRepository:
             raise HTTPException(status_code=404, detail="TimeSlot not found")
         return ts
 
+    # 시간 슬롯 추가
     async def add_slot(self, calendar_id: int, data: TimeSlotCreate) -> TimeSlot:
         if data.end_time <= data.start_time:
             raise HTTPException(status_code=400, detail="end_time must be after start_time")
@@ -154,6 +160,7 @@ class CalendarRepository:
         await self.session.refresh(ts)
         return ts
 
+    # 시간 슬롯 수정 (시간·요일·사용 여부)
     async def update_slot(self, ts: TimeSlot, data: TimeSlotUpdate) -> TimeSlot:
         payload = data.model_dump(exclude_unset=True)
         if "start_time" in payload:
@@ -173,6 +180,7 @@ class CalendarRepository:
         await self.session.refresh(ts)
         return ts
 
+    # 시간 슬롯의 요일만 수정
     async def update_slot_weekdays(self, host_id: UUID, slot_id: int, weekdays: list[int]) -> TimeSlot:
         slot = await self.session.scalar(
             select(TimeSlot)
@@ -194,7 +202,7 @@ class CalendarRepository:
         await self.session.delete(ts)
         await self.session.commit()
 
-    # ── 가용 시간 ────────────────────────────────────────────────────────────
+    # 가용 시간
 
     async def availability(self, host_id: UUID, start: date, end: date) -> AvailabilityResponse:
         """기간 내 날짜별 예약 가능한 시간 (휴무 규칙은 day_status)
@@ -275,8 +283,9 @@ class CalendarBlockRepository:
     async def calendar_id_of_host(self, host_id: UUID) -> int:
         return (await self.calendar_of_host(host_id)).id
 
-    # ── 조회 ──────────────────────────────────────────────────────────────────
+    # 조회
 
+    # 기간과 겹치는 날짜별 예외 목록
     async def list_overlapping(self, calendar_id: int, start: date, end: date) -> list[CalendarBlock]:
         res = await self.session.execute(
             select(CalendarBlock)
@@ -293,10 +302,12 @@ class CalendarBlockRepository:
         host = await self.session.get(User, calendar.host_id)
         return set(host.recurring_off_days or []) if host else set()
 
+    # 한 날짜의 영업 상태 (휴무 규칙 적용)
     async def day_status_for(self, calendar: Calendar, day: date) -> DayStatus:
         slots = list((await self.session.execute(select(TimeSlot).where(TimeSlot.calendar_id == calendar.id))).scalars().all())
         return day_status(day, slots, await self._recurring_off_days(calendar), await self.list_overlapping(calendar.id, day, day))
 
+    # 그날(지정 시간)에 진행 중인 레슨이 있는지
     async def _has_active_lesson(self, calendar_id: int, day: date, slot_ids: Optional[list[int]]) -> bool:
         q = (
             select(Booking.id)
@@ -312,12 +323,13 @@ class CalendarBlockRepository:
             q = q.where(Booking.time_slot_id.in_(slot_ids))
         return (await self.session.execute(q.limit(1))).first() is not None
 
-    # ── 생성·삭제 ─────────────────────────────────────────────────────────────
+    # 생성·삭제
 
+    # 특정 날짜 닫기(CLOSE) 또는 열기(OPEN)
     async def create_for_date(
         self, calendar: Calendar, day: date, time_slot_ids: list[int], reason: Optional[str], kind: str = BlockKind.CLOSE.value
     ) -> list[CalendarBlock]:
-        if day < date.today():
+        if day < today_kst():
             raise HTTPException(status_code=400, detail="지난 날짜는 바꿀 수 없습니다.")
 
         slot_ids = sorted(set(time_slot_ids))

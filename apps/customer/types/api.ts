@@ -1,4 +1,4 @@
-// types/api.ts
+// API 응답 타입 (백엔드 schemas.py 와 맞춘다)
 
 export type UserRole = "CUSTOMER" | "INSTRUCTOR" | "CONTENT_MANAGER" | "ADMIN";
 
@@ -94,7 +94,7 @@ export interface AvailabilityResponse {
   days: AvailabilityDay[];
 }
 
-// ── 강사 매칭 ────────────────────────────────────────────────
+// 강사 매칭
 export type InstructorTier = "NORMAL" | "NAMED";
 export type MatchStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELLED";
 
@@ -128,7 +128,7 @@ export interface MatchRequestRead {
   updated_at: string;
 }
 
-// ── 강사 게시물 ──────────────────────────────────────────────
+// 강사 게시물
 export interface MediaItemRead {
   id: number;
   url: string;
@@ -156,7 +156,7 @@ export interface InstructorPostRead {
   is_liked: boolean;
 }
 
-// ── 수강권 ────────────────────────────────────────────────────
+// 수강권
 export interface PassTypeRead {
   id: number;
   instructor_id: string;
@@ -222,7 +222,7 @@ export interface CalendarBlockRead {
   created_at: string;
 }
 
-// 레슨 노트 (피드백 게시물을 통합, 2026-10-04). file_url 은 첨부 PDF 서명 주소
+// 레슨 노트. file_url 은 첨부 PDF 서명 주소
 export interface LessonNoteRead {
   id: string;
   customer_id: string;

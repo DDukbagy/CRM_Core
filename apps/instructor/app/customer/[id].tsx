@@ -1,3 +1,4 @@
+// 고객 상세: 정보, 예약 통계, 발급한 수강권
 import { useEffect, useState } from "react";
 import { View, Text, ScrollView, StyleSheet } from "react-native";
 import { useLocalSearchParams } from "expo-router";
@@ -7,7 +8,7 @@ import type { UserRead, CustomerPassRead } from "@/types/api";
 export default function CustomerDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [customer, setCustomer] = useState<UserRead | null>(null);
-  // 이 고객에게 발급한 수강권 (멤버십은 수강권으로 통합, 2026-10-04)
+  // 이 고객에게 발급한 수강권
   const [passes, setPasses] = useState<CustomerPassRead[]>([]);
 
   useEffect(() => {

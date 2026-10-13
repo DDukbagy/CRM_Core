@@ -1,4 +1,5 @@
 "use client";
+// 강사 웹 내 정보: 강사 프로필 편집, 정기 휴무 요일
 
 import React, { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/axios";

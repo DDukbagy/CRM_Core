@@ -1,4 +1,4 @@
-// 레슨노트 탭: 강사가 남긴 레슨 노트(글·스캔 PDF)를 본다. 피드백 게시물을 여기로 통합 (2026-10-04)
+// 레슨노트 탭: 강사가 남긴 레슨 노트(글·스캔 PDF)를 본다
 import { useState, useCallback, useRef } from "react";
 import {
   View, Text, StyleSheet, FlatList, Pressable, Modal,
@@ -21,7 +21,7 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString("ko-KR");
 }
 
-// ─── 노트 상세 ────────────────────────────────────────────────────────────────
+// 노트 상세
 function NoteDetail({ note, onClose }: { note: LessonNoteRead; onClose: () => void }) {
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet">
@@ -71,7 +71,7 @@ const dt = StyleSheet.create({
   pdfBtnText: { fontSize: 14, color: "#2563eb", fontWeight: "600" },
 });
 
-// ─── 노트 리스트 아이템 ───────────────────────────────────────────────────────
+// 노트 리스트 아이템
 function NoteRow({ note, onPress }: { note: LessonNoteRead; onPress: () => void }) {
   const text = note.title || note.content;
   const preview = text ? text.slice(0, 60) + (text.length > 60 ? "…" : "") : null;
@@ -93,7 +93,7 @@ function NoteRow({ note, onPress }: { note: LessonNoteRead; onPress: () => void 
   );
 }
 
-// ─── 메인 화면 ────────────────────────────────────────────────────────────────
+// 메인 화면
 export default function LessonNotesScreen() {
   const [notes, setNotes] = useState<LessonNoteRead[]>([]);
   const [loading, setLoading] = useState(true);

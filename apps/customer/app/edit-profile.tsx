@@ -1,4 +1,4 @@
-// app/edit-profile.tsx
+// 정보 수정 화면 (피드백 공개 동의 포함)
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { View, Text, TextInput, Pressable, ActivityIndicator, ScrollView, StyleSheet, Modal, FlatList, Animated, Dimensions, Switch } from "react-native";
 import { appAlert } from "@/lib/alert";

@@ -1,3 +1,4 @@
+# 프로모션 API: 강사 관리(웹), 고객용 진행 중 목록
 from __future__ import annotations
 
 from uuid import UUID
@@ -24,6 +25,7 @@ async def list_my_promotions(
     return [await repo.to_read(p) for p in await repo.list_mine(UUID(str(user.id)))]
 
 
+# 프로모션 만들기
 @router.post("", response_model=PromotionRead, status_code=status.HTTP_201_CREATED)
 async def create_promotion(
     data: PromotionCreate,
@@ -34,6 +36,7 @@ async def create_promotion(
     return await repo.to_read(await repo.create(UUID(str(user.id)), data))
 
 
+# 프로모션 수정
 @router.patch("/{promotion_id}", response_model=PromotionRead)
 async def update_promotion(
     promotion_id: int,
@@ -45,6 +48,7 @@ async def update_promotion(
     return await repo.to_read(await repo.update(promotion_id, UUID(str(user.id)), data))
 
 
+# 프로모션 삭제
 @router.delete("/{promotion_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_promotion(
     promotion_id: int,

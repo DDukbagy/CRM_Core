@@ -1,4 +1,4 @@
-// frontend/src/app/error.tsx
+// 전역 오류 화면
 "use client";
 
 import { useEffect } from "react";

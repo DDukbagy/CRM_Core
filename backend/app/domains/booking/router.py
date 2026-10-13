@@ -1,3 +1,4 @@
+# 예약 API: 고객 신청·취소, 강사 확정·거절·완료, .ics 다운로드
 from __future__ import annotations
 
 from datetime import date
@@ -20,7 +21,7 @@ from app.domains.booking.schemas import (
 )
 from app.domains.calendar.repository import CalendarRepository
 
-# 경로는 분리 전과 같다: 강사 쪽은 /calendars/me/bookings..., 고객 쪽은 /bookings...
+# 강사 쪽은 /calendars/me/bookings..., 고객 쪽은 /bookings...
 router = APIRouter()
 cal_router = APIRouter(prefix="/calendars", tags=["Booking"])
 bk_router = APIRouter(prefix="/bookings", tags=["Booking"])
@@ -37,7 +38,7 @@ def _reason(body: BookingCancelRequest | None) -> str | None:
     return body.reason if body is not None else None
 
 
-# --- Host: 예약 목록 ---
+# Host: 예약 목록
 @cal_router.get("/me/bookings", response_model=list[BookingRead])
 async def list_my_calendar_bookings(
     start: date = Query(..., description="조회 시작일 (YYYY-MM-DD)"),
@@ -51,17 +52,18 @@ async def list_my_calendar_bookings(
     return await BookingRepository(session).list_by_calendar(calendar_id, start, end)
 
 
-# --- Bookings: 생성·조회 ---
+# Bookings: 생성·조회
 @bk_router.post("", response_model=BookingRead, status_code=status.HTTP_201_CREATED)
 async def create_booking(
     data: BookingCreate,
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """LESSON: 고객 신청(REQUESTED) / HOLIDAY·WORK_OVERRIDE: 그 캘린더의 강사만(CONFIRMED)"""
+    """레슨 신청 (REQUESTED)"""
     return await BookingRepository(session).create(data, user)
 
 
+# 내 예약 목록 (고객)
 @bk_router.get("/me", response_model=list[BookingRead])
 async def list_my_bookings(
     session: AsyncSession = Depends(get_session),
@@ -70,7 +72,7 @@ async def list_my_bookings(
     return await BookingRepository(session).list_by_guest(UUID(str(user.id)))
 
 
-# --- Host: 예약 상태 전환 ---
+# Host: 예약 상태 전환
 @cal_router.patch("/me/bookings/{booking_id}/confirm", response_model=BookingRead)
 async def confirm_booking_as_host(
     booking_id: int,
@@ -102,7 +104,7 @@ async def cancel_booking_as_host(
     session: AsyncSession = Depends(get_session),
     host: CurrentUser = Depends(require_role(HOST_ROLES)),
 ):
-    """강사 취소: CONFIRMED -> CANCELLED (휴무·영업일 전환 해제 포함). 신청 중은 decline"""
+    """강사 취소: CONFIRMED -> CANCELLED. 신청 중은 decline"""
     repo = BookingRepository(session)
     return _cancel_response(await repo.cancel_by_host(await repo.get_or_404(booking_id), host, _reason(body)))
 
@@ -113,7 +115,7 @@ async def complete_booking_as_host(
     session: AsyncSession = Depends(get_session),
     host: CurrentUser = Depends(require_role(INSTRUCTOR_ROLES)),
 ):
-    """출석 완료: CONFIRMED -> COMPLETED (수강권·TIMES 멤버십 1회 차감)"""
+    """출석 완료: CONFIRMED -> COMPLETED (수강권 1회 차감)"""
     repo = BookingRepository(session)
     return await repo.complete(await repo.get_or_404(booking_id), host)
 
@@ -151,7 +153,7 @@ async def reject_cancel_as_host(
     return await repo.reject_cancel(await repo.get_or_404(booking_id), host)
 
 
-# --- Guest: 예약 상태 전환 ---
+# Guest: 예약 상태 전환
 @bk_router.patch("/{booking_id}", response_model=BookingRead)
 async def update_booking_as_guest(
     booking_id: int,

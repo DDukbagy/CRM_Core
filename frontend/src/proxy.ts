@@ -1,4 +1,4 @@
-// frontend/src/proxy.ts
+// 접근 제어: 로그인 확인, /admin·/instructor 는 역할 확인
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 

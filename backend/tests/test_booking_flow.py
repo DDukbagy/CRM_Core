@@ -108,7 +108,7 @@ async def _available(act, ids, day=DAY) -> dict:
     return r.json()["days"][0]
 
 
-# ── 레슨 예약 상태 전환 ───────────────────────────────────────
+# 레슨 예약 상태 전환
 
 async def test_full_lesson_lifecycle(world):
     act, ids = world
@@ -191,7 +191,7 @@ async def test_duplicate_request_is_409(world):
     assert r.status_code == 409 and "SLOT_ALREADY_BOOKED" in r.text
 
 
-# ── 권한 ──────────────────────────────────────────────────────
+# 권한
 
 async def test_only_owner_can_change_booking(world):
     act, ids = world
@@ -228,7 +228,7 @@ async def test_ics_download_only_for_participants(world):
     assert (await act("rival").get(f"/bookings/{bid}/download")).status_code == 403
 
 
-# ── 휴무 (사용자가 정한 5가지, 2026-10-01) ────────────────────
+# 휴무 5종
 #   기본: 매일 07~20시 1시간 슬롯 / 정기 휴무일 / 임시 휴무일(하루 전체 닫기)
 #   정기 휴무일 중 특정 날짜 열기 / 특정 날짜의 특정 시간대만 닫기(test_calendar.py)
 
@@ -313,7 +313,7 @@ async def test_default_calendar_on_instructor_approval(actor, db_conn_and_sessio
     assert len((await act("applicant").get("/calendars/me/time-slots")).json()) == 13
 
 
-# ── 수강권 차감 (멤버십은 수강권으로 통합, 2026-10-04) ─────────────
+# 수강권 차감
 
 async def _customer_pass(session: AsyncSession, customer, instructor, *, total=3) -> int:
     type_id = (await session.execute(
@@ -353,7 +353,7 @@ async def test_booking_no_longer_takes_membership(world):
     assert (await act("guest").post("/bookings", json=body)).status_code == 422
 
 
-# ── 캘린더·슬롯 관리 ──────────────────────────────────────────
+# 캘린더·슬롯 관리
 
 async def test_calendar_and_time_slot_management(world):
     act, ids = world

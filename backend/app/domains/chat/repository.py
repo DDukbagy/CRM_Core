@@ -1,3 +1,4 @@
+# 채팅 저장소: 방 목록·메시지·읽음 처리, 강사 문의 방 열기
 from dataclasses import dataclass
 from typing import Optional
 from uuid import UUID
@@ -97,6 +98,7 @@ class ChatRepository:
         await self.session.commit()
         return messages
 
+    # 메시지 보내고 방의 마지막 메시지 갱신
     async def send(self, room: ChatRoom, sender_id: UUID, content: str) -> ChatMessage:
         if not content.strip():
             raise HTTPException(status_code=400, detail="메시지 내용을 입력하세요.")
@@ -127,7 +129,7 @@ class ChatRepository:
                 ChatRoom(customer_id=customer_id, instructor_id=instructor_id, match_request_id=match_request_id)
             )
 
-    # ── 강사 문의 (고객이 강사 프로필에서 "문의하기") ───────────────────────────
+    # 강사 문의 (고객이 강사 프로필에서 "문의하기")
 
     async def find_room(self, customer_id: UUID, instructor_id: UUID) -> Optional[ChatRoom]:
         """고객·강사 사이의 채팅방 (매칭으로 생긴 방 포함, 가장 오래된 것)"""

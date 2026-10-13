@@ -1,3 +1,4 @@
+# 예약 생성·중복 방지·취소 신청 흐름
 from __future__ import annotations
 
 from datetime import date
@@ -108,7 +109,7 @@ async def test_cancel_requested_booking_should_fail(client, free_slot_and_date):
     assert res.status_code == 400, res.text
 
 
-# ── CANCEL_REQUESTED 상태 머신 테스트 ─────────────────────────────────────────
+# 취소 신청(CANCEL_REQUESTED) 흐름
 
 async def test_cancel_as_guest_sets_cancel_requested(client, free_slot_and_date, db_conn_and_sessionmaker):
     """CONFIRMED 예약에 대해 고객이 취소 신청 → CANCEL_REQUESTED."""

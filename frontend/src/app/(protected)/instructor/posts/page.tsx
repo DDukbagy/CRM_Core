@@ -1,4 +1,5 @@
 "use client";
+// 강사 웹 게시물: 작성·수정·삭제, 미디어 업로드, 댓글
 
 import React, { useEffect, useState, useCallback } from "react";
 import Image from "next/image";

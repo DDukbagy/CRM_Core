@@ -1,3 +1,4 @@
+# 결제 저장소: 수동 결제 등록, 역할별 목록, 보존 기간, 상태 변경
 from typing import Optional
 from uuid import UUID
 
@@ -24,7 +25,7 @@ class PaymentRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    # 결제 기록: 강사는 본인 담당 고객 + 본인이 만든 멤버십에만 연결 가능. 수동 입력은 즉시 COMPLETED
+    # 결제 기록: 강사는 본인 담당 고객과 본인이 발급한 수강권에만 연결 가능. 수동 입력은 즉시 COMPLETED
     async def create(self, data: PaymentCreate, user: CurrentUser) -> Payment:
         if data.method not in VALID_METHODS:
             raise HTTPException(status_code=400, detail=f"유효하지 않은 결제 수단입니다. 허용: {sorted(VALID_METHODS)}")
@@ -82,7 +83,7 @@ class PaymentRepository:
         )
         return list(res.scalars().all())
 
-    # ── 보존 기간 (회원 삭제 시 users 도메인이 호출) ─────────────────────────
+    # 보존 기간 (회원 삭제 시 users 도메인이 호출)
 
     async def count_retained_for_customer(self, customer_id: UUID) -> int:
         """보존 기간이 아직 끝나지 않은 결제 수"""

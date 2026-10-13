@@ -1,4 +1,4 @@
-// frontend/src/app/login/page.tsx
+// 로그인 화면: Supabase 로그인 후 역할별 화면으로 이동
 "use client";
 
 import React, { Suspense, useEffect, useState } from "react";

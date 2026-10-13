@@ -1,3 +1,4 @@
+# 매칭 저장소: 요청 보내기·수락·거절·취소
 from typing import Optional
 from uuid import UUID
 
@@ -120,6 +121,7 @@ class MatchRepository:
         await self.session.refresh(mr)
         return mr, customer
 
+    # 요청 거절 (강사)
     async def reject(self, request_id: UUID, instructor: CurrentUser) -> MatchRequest:
         mr = await self._get_pending_for_instructor(request_id, str(instructor.id), "거절")
         mr.status = "REJECTED"
@@ -128,6 +130,7 @@ class MatchRepository:
         await self.session.refresh(mr)
         return mr
 
+    # 요청 취소 (고객)
     async def cancel(self, request_id: UUID, customer: CurrentUser) -> None:
         mr = await self.session.get(MatchRequest, request_id)
         if not mr or str(mr.customer_id) != str(customer.id):

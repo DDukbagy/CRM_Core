@@ -1,3 +1,4 @@
+# 강사 API: 스태프, 신청·승인, 공개 목록, 고객 등록, 통계, 대시보드
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
@@ -16,7 +17,7 @@ from app.domains.matching.models import NAMED_FEE
 router = APIRouter(prefix="/instructors", tags=["Instructor"])
 
 
-# ── Staff 관리 ───────────────────────────────────────────────
+# 스태프 관리
 
 @router.post("/me/staff", status_code=status.HTTP_201_CREATED)
 async def add_staff(
@@ -56,7 +57,7 @@ async def list_staff(
     ]
 
 
-# ── 강사 신청/승인 ───────────────────────────────────────────
+# 강사 신청·승인
 
 @router.post("/apply")
 async def apply_instructor(
@@ -91,7 +92,7 @@ async def approve_instructor(
     return {"ok": True, "id": str(target.id), "role": target.role, "status": target.status}
 
 
-# ── 강사 공개 목록 ───────────────────────────────────────────
+# 강사 공개 목록
 
 @router.get("/public", response_model=list[InstructorPublicRead])
 async def list_instructors_public(
@@ -123,7 +124,7 @@ async def list_instructors_public(
     return result
 
 
-# ── 전화번호로 고객 조회 + 담당 직접 등록 ────────────────────
+# 전화번호로 고객 조회 + 담당 직접 등록
 
 @router.get("/customers/lookup")
 async def lookup_customer_by_phone(
@@ -155,7 +156,7 @@ async def assign_customer(
     return {"ok": True, "customer_id": str(customer_id), "manager_id": str(user.id), "message": "담당 고객으로 등록되었습니다."}
 
 
-# ── 출석 / 통계 ─────────────────────────────────────────────
+# 출석 / 통계
 
 @router.get("/me/stats")
 async def get_my_stats(

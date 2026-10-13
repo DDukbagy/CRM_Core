@@ -1,3 +1,4 @@
+// 홈 탭: 통계, 레슨 신청 처리, 오늘 예약
 import { useCallback, useEffect, useState } from "react";
 import {
   View, Text, ScrollView, Pressable, Modal, TextInput,

@@ -1,3 +1,4 @@
+# DB 연결 확인 (make dbcheck)
 import asyncio
 from sqlalchemy import text
 

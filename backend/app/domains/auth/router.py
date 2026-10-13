@@ -1,3 +1,4 @@
+# 인증 API: 내 정보 확인, 아이디/비밀번호 로그인
 # `from __future__ import annotations`를 쓰지 않는다. @limiter.limit 래퍼 때문에 FastAPI가
 # 문자열 타입을 풀지 못할 수 있다(payment/router.py 결제 등록 422와 같은 원인).
 from fastapi import APIRouter, Depends, Request
@@ -15,6 +16,7 @@ limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+# 토큰으로 확인한 내 정보
 @router.get("/me")
 async def me(user: CurrentUser = Depends(get_current_user)):
     return {
@@ -27,7 +29,7 @@ async def me(user: CurrentUser = Depends(get_current_user)):
     }
 
 
-# 아이디/비밀번호 로그인 → 백엔드가 직접 서명한 HS256 토큰 발급 (Supabase 로그인의 폴백, 웹 api/dev-login 이 사용)
+# 아이디/비밀번호 로그인 → 백엔드가 직접 서명한 HS256 토큰 발급 (Supabase 로그인의 폴백)
 @router.post("/login")
 @limiter.limit("5/minute")
 async def login(

@@ -1,4 +1,5 @@
 "use client";
+// 스케줄 화면 (기본 사이드바 메뉴)
 
 import { useEffect, useMemo, useState } from "react";
 

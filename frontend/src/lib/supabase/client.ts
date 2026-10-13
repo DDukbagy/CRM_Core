@@ -1,4 +1,4 @@
-// frontend/src/lib/supabase/client.ts
+// 브라우저용 Supabase 클라이언트
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -20,6 +20,6 @@ export function supabaseBrowser(): SupabaseClient {
 }
 
 /**
- * 기존 코드(Topbar/DashboardLayout)가 기대하는 export
+ * 공용 인스턴스 (DashboardLayout 등에서 사용)
  */
 export const supabase = supabaseBrowser();

@@ -1,3 +1,4 @@
+// 고객 등록 모달 열기 상태 공유
 import { createContext, useContext, useState, ReactNode } from "react";
 
 type Ctx = { openModal: () => void; isOpen: boolean; close: () => void };

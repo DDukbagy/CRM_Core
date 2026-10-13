@@ -1,3 +1,4 @@
+# 사용자 스키마
 from __future__ import annotations
 
 from datetime import datetime, date
@@ -37,7 +38,7 @@ class UserRead(BaseModel):
     birth_date: date | None = None
     gender: str | None = None
     lesson_purpose: str | None = None
-    feedback_consent: bool = False  # 피드백 공개 동의 (2026-03 빠졌던 필드 복원)
+    feedback_consent: bool = False  # 피드백 공개 동의
 
     recurring_off_days: list[int] = []
 

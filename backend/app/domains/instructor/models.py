@@ -1,3 +1,4 @@
+# 강사 스태프(대리 작성자) 모델
 from datetime import datetime
 from typing import Optional
 from uuid import UUID

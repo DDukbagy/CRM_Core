@@ -1,3 +1,4 @@
+# 인증 의존성: 토큰 꺼내기·검증, 현재 사용자 조회(최초 로그인 시 생성), 역할 검사
 from __future__ import annotations
 
 import base64
@@ -30,7 +31,7 @@ bearer_optional = HTTPBearer(auto_error=False)
 
 logger = logging.getLogger("auth")
 
-# local HS256 JWT (backend issued token) verification settings
+# 백엔드가 직접 발급한 HS256 토큰 검증 설정 (Supabase 폴백)
 LOCAL_SECRET_KEY = settings.SECRET_KEY.get_secret_value()
 LOCAL_ALGORITHM = settings.ALGORITHM
 
@@ -47,7 +48,7 @@ class CurrentUser:
     is_active: bool
 
 
-# Utilities: token 파싱
+# 토큰 파싱
 def _parse_sub_to_uuid(sub: str | None) -> UUID:
     if not sub:
         raise HTTPException(status_code=401, detail="Invalid token: missing sub")
@@ -57,6 +58,7 @@ def _parse_sub_to_uuid(sub: str | None) -> UUID:
         raise HTTPException(status_code=401, detail="Invalid token: malformed sub")
 
 
+# JIT 생성 시 겹치지 않는 username 만들기
 def _make_username(user_id: UUID, email: str | None) -> str:
     base = (email.split("@")[0] if email else f"user_{str(user_id)[:8]}")
     return base[:30]
@@ -102,7 +104,7 @@ def _extract_access_token_from_supabase_cookie_value(raw: str) -> Optional[str]:
         if isinstance(d, dict):
             if isinstance(d.get("access_token"), str):
                 return d["access_token"]
-            # nested 형태 대응
+            # 중첩된 형태의 쿠키 값
             for k in ("currentSession", "session", "data"):
                 v = d.get(k)
                 if isinstance(v, dict) and isinstance(v.get("access_token"), str):
@@ -129,7 +131,7 @@ def _get_supabase_cookie_access_token(request: Request) -> Optional[str]:
     return None
 
 
-# Token verification
+# 토큰 검증
 def _verify_local_hs256_token(token: str) -> dict:
     if not LOCAL_SECRET_KEY:
         logger.error("local jwt verify: missing LOCAL_SECRET_KEY")
@@ -168,7 +170,7 @@ async def verify_any_access_token(token: str) -> dict:
         return _verify_local_hs256_token(token)
 
 
-# Access token acquisition
+# access token 꺼내기
 async def get_access_token_optional(
     request: Request,
     cred: HTTPAuthorizationCredentials | None = Depends(bearer_optional),
@@ -185,6 +187,7 @@ async def get_access_token_optional(
     return None
 
 
+# 요청에서 access token 꺼내기 (없으면 401)
 async def get_access_token(
     request: Request,
     cred: HTTPAuthorizationCredentials | None = Depends(bearer),
@@ -201,6 +204,7 @@ async def get_access_token(
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
 
 
+# 토큰이 있으면 검증한 claims, 없으면 None (비로그인 허용 API)
 async def get_claims_optional(
     token: Optional[str] = Depends(get_access_token_optional),
 ) -> Optional[dict]:
@@ -209,11 +213,12 @@ async def get_claims_optional(
     return await verify_any_access_token(token)
 
 
+# 토큰 검증 후 claims (필수)
 async def get_claims(token: str = Depends(get_access_token)) -> dict:
     return await verify_any_access_token(token)
 
 
-# Super admin bootstrap
+# 최초 관리자 지정
 async def _maybe_bootstrap_super_admin(
     *,
     user: User,
@@ -255,7 +260,7 @@ async def _maybe_bootstrap_super_admin(
     return user
 
 
-# Current user provisioning (JIT)
+# 현재 사용자 조회 (최초 로그인 시 생성)
 async def _get_or_create_user_from_claims(
     claims: dict,
     session: AsyncSession,
@@ -266,7 +271,6 @@ async def _get_or_create_user_from_claims(
 
     user_uuid = _parse_sub_to_uuid(sub)
 
-    # 조회
     result = await session.execute(select(User).where(User.id == user_uuid))
     user = result.scalar_one_or_none()
 
@@ -274,7 +278,7 @@ async def _get_or_create_user_from_claims(
     if user is not None and (user.status or "").upper() == "WITHDRAWN":
         raise HTTPException(status_code=403, detail="탈퇴한 계정입니다.")
 
-    # JIT 생성
+    # 처음 로그인한 사용자는 여기서 만든다
     if user is None:
         username_base = _make_username(user_uuid, email)
         display_name = (claims.get("user_metadata", {}) or {}).get("full_name")
@@ -323,10 +327,9 @@ async def _get_or_create_user_from_claims(
         if user is None:
             raise HTTPException(status_code=500, detail="Failed to provision user")
 
-    # super admin bootstrap (user 확정 후)
+    # 지정된 최초 관리자면 ADMIN 으로 올림
     user = await _maybe_bootstrap_super_admin(user=user, claims=claims, session=session)
 
-    # CurrentUser 반환(정규화)
     role = ((user.role or "CUSTOMER").strip()).upper()
     acc_status = ((getattr(user, "status", "ACTIVE") or "ACTIVE").strip()).upper()
     active_flag = bool(getattr(user, "is_active", True))
@@ -343,6 +346,7 @@ async def _get_or_create_user_from_claims(
     )
 
 
+# 로그인했으면 현재 사용자, 아니면 None
 async def get_current_user_optional(
     claims: Optional[dict] = Depends(get_claims_optional),
     session: AsyncSession = Depends(get_session),
@@ -352,6 +356,7 @@ async def get_current_user_optional(
     return await _get_or_create_user_from_claims(claims, session)
 
 
+# 현재 사용자 (로그인 필수)
 async def get_current_user(
     claims: dict = Depends(get_claims),
     session: AsyncSession = Depends(get_session),
@@ -362,7 +367,7 @@ async def get_current_user(
 oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
 
-# Guards
+# 역할 검사
 def require_role(allowed_roles: set[str]):
     """
     - is_active=False → 전 역할 차단
@@ -392,6 +397,7 @@ def require_role(allowed_roles: set[str]):
     return _guard
 
 
+# 이 사용자가 해당 강사의 스태프인지
 async def _is_staff_of_instructor(
     session: AsyncSession,
     *,
@@ -413,6 +419,7 @@ async def _is_staff_of_instructor(
     return res.first() is not None
 
 
+# 강사 본인 또는 그 강사의 스태프만 허용
 def require_instructor_or_staff(instructor_id: str):
     async def _guard(
         user: CurrentUser = Depends(get_current_user),

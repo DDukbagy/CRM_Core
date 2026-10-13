@@ -1,3 +1,4 @@
+# 레슨노트 모델: 고객별 노트 (글 또는 스캔 PDF)
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID

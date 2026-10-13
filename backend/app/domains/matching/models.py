@@ -1,3 +1,4 @@
+# 매칭·상담 요청 모델
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID

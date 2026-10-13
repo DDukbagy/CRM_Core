@@ -1,3 +1,4 @@
+# 알림 응답 스키마
 from datetime import datetime
 from typing import Optional
 from uuid import UUID

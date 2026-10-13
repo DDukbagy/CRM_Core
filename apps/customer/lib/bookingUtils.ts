@@ -6,7 +6,7 @@
  */
 import type { BookingRead } from "@/types/api";
 
-// ─── Types ────────────────────────────────────────────────
+// 타입
 export type SlotMap = Record<number, { start_time: string; end_time: string }>;
 
 export type SessionGroup = {
@@ -15,7 +15,7 @@ export type SessionGroup = {
   endTime: string | null;
 };
 
-// ─── Booking status UI 상수 ───────────────────────────────
+// 예약 상태 표시
 // 전체 상태 정의 (양쪽 앱 동일하게 사용)
 export const STATUS_COLOR: Record<string, string> = {
   REQUESTED:       "#f59e0b",
@@ -45,7 +45,7 @@ export const CHIP_BG: Record<string, string> = {
   NO_SHOW:         "#fef2f2",
 };
 
-// ─── 날짜/시간 유틸 ───────────────────────────────────────
+// 날짜/시간 유틸
 export function toDateStr(y: number, m: number, d: number): string {
   return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
@@ -88,7 +88,7 @@ export function jsWeekdayToPy(jsDay: number): number {
   return (jsDay + 6) % 7;
 }
 
-// ─── 휴무일 판단 ─────────────────────────────────────────
+// 휴무일 판단
 /**
  * 해당 날짜가 "효과적으로 휴무"인지 판단.
  * - 정기 휴무 요일 + 슬롯 없음 + 예약 없음 → 휴무
@@ -112,7 +112,7 @@ export function isEffectiveOffDay({
   return (recurring && !hasAvailability && !hasBookings) || isHoliday;
 }
 
-// ─── 세션 그룹핑 ──────────────────────────────────────────
+// 세션 그룹핑
 /**
  * 연속된 시간 슬롯을 한 세션으로 묶는다.
  *

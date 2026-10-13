@@ -1,3 +1,4 @@
+# 게시물·미디어·댓글 스키마
 from __future__ import annotations
 from datetime import datetime
 from typing import Optional

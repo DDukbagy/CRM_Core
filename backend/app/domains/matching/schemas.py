@@ -1,10 +1,11 @@
+# 매칭·상담 요청 스키마
 from uuid import UUID
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel
 
 
-# ── 매칭/상담 요청 ──────────────────────────────────────────
+# 매칭/상담 요청
 class MatchRequestCreate(BaseModel):
     instructor_id: UUID
     note: Optional[str] = None

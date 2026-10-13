@@ -1,4 +1,4 @@
-// frontend/src/app/api/[...path]/route.ts
+// 백엔드 프록시: 브라우저 요청에 Supabase 토큰을 붙여 FastAPI 로 전달
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 

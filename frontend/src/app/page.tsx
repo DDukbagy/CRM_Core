@@ -1,4 +1,4 @@
-// frontend/src/app/page.tsx
+// 루트(/): 바로 /login 으로 보냄
 "use client";
 
 import { useEffect } from "react";

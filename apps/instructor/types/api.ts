@@ -1,3 +1,4 @@
+// API 응답 타입 (백엔드 schemas.py 와 맞춘다)
 export interface UserRead {
   id: string;
   username: string;
@@ -93,7 +94,7 @@ export interface MediaItemRead {
   sort_order: number;
 }
 
-// ── 수강권 ────────────────────────────────────────────────────
+// 수강권
 export interface PassTypeRead {
   id: number;
   instructor_id: string;
@@ -164,7 +165,7 @@ export interface UsersListResponse {
   offset: number;
 }
 
-// 레슨 노트 (피드백 게시물을 통합, 2026-10-04). file_url 은 첨부 PDF 서명 주소
+// 레슨 노트. file_url 은 첨부 PDF 서명 주소
 export interface LessonNoteRead {
   id: string;
   customer_id: string;

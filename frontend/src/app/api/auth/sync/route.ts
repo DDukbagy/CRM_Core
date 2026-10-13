@@ -1,4 +1,4 @@
-// frontend/src/app/api/auth/sync/route.ts
+// 로그인 직후 세션 쿠키 갱신
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 

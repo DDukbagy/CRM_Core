@@ -1,3 +1,4 @@
+# 비밀번호 해시와 아이디/비밀번호 로그인
 from __future__ import annotations
 
 import uuid
@@ -49,7 +50,7 @@ async def _insert_password_user(
     return user_id, username
 
 
-# ── 해시·검증 ─────────────────────────────────────────────────
+# 해시·검증
 
 def test_hash_and_verify():
     hashed = get_password_hash(PASSWORD)
@@ -75,7 +76,7 @@ def test_verify_too_long_password_is_false():
     assert verify_password("a" * 73, get_password_hash(PASSWORD)) is False
 
 
-# ── 계정 생성 ─────────────────────────────────────────────────
+# 계정 생성
 
 async def test_admin_creates_user_with_hashed_password(admin_client, db_conn_and_sessionmaker: async_sessionmaker[AsyncSession]):
     username = f"new-{uuid.uuid4().hex[:8]}"
@@ -108,7 +109,7 @@ async def test_create_user_rejects_password_over_72_bytes(admin_client):
     assert res.status_code == 422, res.text
 
 
-# ── 로그인 ────────────────────────────────────────────────────
+# 로그인
 
 async def test_login_issues_token(admin_client, db_conn_and_sessionmaker: async_sessionmaker[AsyncSession]):
     async with db_conn_and_sessionmaker() as session:

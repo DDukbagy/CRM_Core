@@ -1,3 +1,4 @@
+# 채팅 API: 방 목록, 문의하기(방 열기), 메시지 조회·전송
 from __future__ import annotations
 
 from uuid import UUID

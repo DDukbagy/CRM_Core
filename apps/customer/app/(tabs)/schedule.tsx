@@ -1,4 +1,4 @@
-// app/(tabs)/schedule.tsx
+// 예약하기 탭: 월간 달력, 날짜별 예약 가능 시간, 레슨 신청·상세
 import { useCallback, useEffect, useRef, useState } from "react";
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Modal, Animated, Dimensions, StyleSheet, KeyboardAvoidingView, Platform, AppState, PanResponder } from "react-native";
 import { appAlert } from "@/lib/alert";
@@ -37,7 +37,7 @@ function bookingLabel(b: BookingRead): string {
 const timeToY = (t: string) => _timeToY(t, START_H, HOUR_H);
 const timeDiff = (start: string, end: string) => _timeDiff(start, end, HOUR_H);
 
-// ─── 1. 월간 달력 그리드 ─────────────────────────────────
+// 1. 월간 달력 그리드
 function MonthGrid({
   year, month, bookings, availability, selectedDate, onSelect, recurringOffDays, slotTimeMap, holidayDates,
 }: {
@@ -148,7 +148,7 @@ const mg = StyleSheet.create({
   noLessonTxt: { fontSize: 9, fontWeight: "700", color: "#9ca3af", textAlign: "center" },
 });
 
-// ─── 2. 날짜별 패널 (타임라인 미리보기 + 수강권 기반 자동 슬롯 선택) ──────
+// 2. 날짜별 패널 (타임라인 미리보기 + 수강권 기반 자동 슬롯 선택)
 function DayPanel({
   date, bookings, slots, managerId, activePass, slotTimeMap, onAddSlots, onClose, onSelectBooking,
 }: {
@@ -433,7 +433,7 @@ const dp = StyleSheet.create({
   passProgressTxt: { fontSize: 12, fontWeight: "700", color: "#15803d" },
 });
 
-// ─── 3. 타임라인 뷰 ─────────────────────────────────────
+// 3. 타임라인 뷰
 function TimelineView({
   year, month, selectedDate,
   bookings, availability, slotTimeMap,
@@ -615,7 +615,7 @@ const tl = StyleSheet.create({
   eventLabel: { fontSize: 12, fontWeight: "500" },
 });
 
-// ─── 메인 화면 ───────────────────────────────────────────
+// 메인 화면
 export default function ScheduleScreen() {
   const router = useRouter();
   const now = new Date();
@@ -1073,7 +1073,7 @@ export default function ScheduleScreen() {
   );
 }
 
-// ─── 예약 신청 모달 (공통) ───────────────────────────────
+// 예약 신청 모달 (공통)
 function BookingModal({ visible, slots, date, desc, submitting, onDesc, onClose, onSubmit }: {
   visible: boolean; slots: AvailabilitySlot[]; date: string;
   desc: string; submitting: boolean;
@@ -1174,7 +1174,7 @@ const s = StyleSheet.create({
   weekStripDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: "#3b82f6" },
 });
 
-// ─── 예약 상세 모달 ──────────────────────────────────────
+// 예약 상세 모달
 function BookingDetailModal({ visible, booking, slotTimeMap, instructorName, onClose, onCancelled, onUpdated }: {
   visible: boolean;
   booking: BookingRead | null;
