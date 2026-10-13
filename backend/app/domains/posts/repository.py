@@ -1,3 +1,4 @@
+# 게시물 저장소: 목록·접근 규칙, 작성·수정·삭제, 댓글, 좋아요, 공개 동의
 from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import unquote, urlparse
@@ -40,7 +41,7 @@ class PostRepository:
         # 같은 세션을 공유해 알림 생성이 게시물 쪽 트랜잭션과 함께 커밋되게 한다
         self.notifications = NotificationRepository(session)
 
-    # ── 조회 ──────────────────────────────────────────────────────────────────
+    # 조회
 
     async def get_by_id(self, post_id: UUID) -> Optional[Post]:
         return await self.session.get(Post, post_id)
@@ -113,7 +114,7 @@ class PostRepository:
         stmt = stmt.order_by(desc(Post.created_at)).offset(skip).limit(limit)
         return list((await self.session.execute(stmt)).scalars().all())
 
-    # ── 접근 규칙 ─────────────────────────────────────────────────────────────
+    # 접근 규칙
 
     def can_view(self, post: Post, user: Optional[CurrentUser]) -> bool:
         if post.is_public:
@@ -147,15 +148,16 @@ class PostRepository:
         )
         return res.first() is not None
 
-    # ── 게시물 작성·수정·삭제 ─────────────────────────────────────────────────
+    # 게시물 작성·수정·삭제
 
+    # 게시물 작성 (콘텐츠 매니저는 강사 대신 작성)
     async def create(self, data: PostCreate, user: CurrentUser) -> Post:
         uid = UUID(str(user.id))
         role = (user.role or "").upper()
         if role not in WRITER_ROLES:
             raise HTTPException(status_code=403, detail="Forbidden")
 
-        # 피드백은 레슨 노트로 통합 (2026-10-04). 기존 FEEDBACK 게시물은 마이그레이션 x9y0z1a2b3c4 가 옮김
+        # 피드백은 레슨노트로 작성한다 (기존 FEEDBACK 게시물은 마이그레이션 x9y0z1a2b3c4 가 옮김)
         if data.type == PostType.FEEDBACK.value:
             raise HTTPException(status_code=400, detail="피드백은 레슨노트로 작성합니다 (POST /lesson-notes).")
         allowed_types = {t.value for t in PostType}
@@ -207,6 +209,7 @@ class PostRepository:
         await self.session.refresh(post)
         return post
 
+    # 게시물 수정 (미디어 교체 포함)
     async def update(self, post: Post, data: PostUpdate, user: CurrentUser) -> Post:
         self.ensure_can_manage(post, user)
 
@@ -251,8 +254,9 @@ class PostRepository:
                 )
             )
 
-    # ── 공개 동의 (피드백 대상 고객만) ────────────────────────────────────────
+    # 공개 동의 (피드백 대상 고객만)
 
+    # 피드백 공개 동의·철회 (대상 고객)
     async def set_feedback_consent(self, post: Post, user: CurrentUser, granted: bool) -> Post:
         if post.type != PostType.FEEDBACK.value:
             raise HTTPException(status_code=400, detail="공개 동의는 FEEDBACK 게시물에만 적용됩니다.")
@@ -266,7 +270,7 @@ class PostRepository:
         await self.session.refresh(post)
         return post
 
-    # ── 응답 조립용 부가 정보 (N+1 없이 한 번에) ──────────────────────────────
+    # 응답 조립용 부가 정보 (N+1 없이 한 번에)
 
     async def media_by_post(self, post_ids: list[UUID]) -> dict[UUID, list[PostMedia]]:
         result: dict[UUID, list[PostMedia]] = {pid: [] for pid in post_ids}
@@ -315,8 +319,9 @@ class PostRepository:
 
         return like_map, comment_map, liked_set
 
-    # ── 댓글 ──────────────────────────────────────────────────────────────────
+    # 댓글
 
+    # 게시물 댓글 목록
     async def list_comments(self, post_id: UUID, skip: int = 0, limit: int = 200) -> list[PostComment]:
         res = await self.session.execute(
             select(PostComment)
@@ -361,6 +366,7 @@ class PostRepository:
         await self.session.refresh(comment)
         return comment
 
+    # 댓글 수정 (작성자만)
     async def update_comment(self, comment: PostComment, user: CurrentUser, content: str) -> PostComment:
         if comment.user_id != UUID(str(user.id)):
             raise HTTPException(status_code=403, detail="Only owner can update comment")
@@ -387,7 +393,7 @@ class PostRepository:
         self.session.add(comment)
         await self.session.commit()
 
-    # ── 좋아요 ────────────────────────────────────────────────────────────────
+    # 좋아요
 
     # 좋아요 토글: 누르면 알림 생성, 취소하면 알림 없이 그 좋아요 알림도 지움 (다시 눌러도 알림이 쌓이지 않음)
     async def toggle_like(self, post: Post, user_id: UUID) -> bool:

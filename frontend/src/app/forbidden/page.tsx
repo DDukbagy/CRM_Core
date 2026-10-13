@@ -1,4 +1,4 @@
-// frontend/src/app/forbidden/page.tsx
+// 권한 없음 화면
 "use client";
 
 import React, { Suspense, useEffect, useMemo, useState } from "react";

@@ -1,4 +1,4 @@
-// frontend/src/components/layout/DashboardLayout.tsx
+// 대시보드 공통 레이아웃: 사이드바 메뉴, 헤더, 로그아웃
 "use client";
 
 import React, { useMemo, useState } from "react";
@@ -89,7 +89,7 @@ export default function DashboardLayout({
   const userName = userLabel?.name ?? "강사님";
   const userRole = userLabel?.role ?? "Instructor";
 
-  // 로그아웃 (최소/확실)
+  // 로그아웃
   const onLogout = async () => {
     try {
       const supabase = supabaseBrowser();
@@ -102,7 +102,7 @@ export default function DashboardLayout({
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      {/* 사이드바 (Sidebar) */}
+      {/* 사이드바 */}
       <aside
         className={`bg-white border-r border-gray-200 transition-all duration-300 ${
           isSidebarOpen ? "w-64" : "w-20"

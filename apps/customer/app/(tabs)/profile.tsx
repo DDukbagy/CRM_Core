@@ -1,4 +1,4 @@
-// app/(tabs)/profile.tsx
+// 내 정보 탭: 프로필, 정보 수정, 로그아웃, 회원 탈퇴
 import { useEffect, useRef, useState, useCallback } from "react";
 import { View, Text, Pressable, ActivityIndicator, StyleSheet, Platform, ScrollView } from "react-native";
 import { appAlert } from "@/lib/alert";

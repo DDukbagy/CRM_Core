@@ -1,3 +1,4 @@
+// 로그인 화면 (Supabase, 강사 계정만)
 import { useEffect, useState } from "react";
 import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
 import { router } from "expo-router";

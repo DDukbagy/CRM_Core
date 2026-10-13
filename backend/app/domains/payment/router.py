@@ -1,3 +1,4 @@
+# 결제 API: 결제 등록·목록·상태 변경
 # `from __future__ import annotations`를 쓰지 않는다. @limiter.limit 래퍼 때문에 FastAPI가
 # 문자열 타입(PaymentCreate)을 풀지 못해 요청 본문을 쿼리 파라미터로 해석한다(결제 등록 422).
 from uuid import UUID

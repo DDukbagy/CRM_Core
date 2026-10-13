@@ -1,4 +1,4 @@
-// lib/supabase.ts
+// Supabase 클라이언트 (세션 저장)
 import { createClient } from "@supabase/supabase-js";
 import { Platform } from "react-native";
 import { config } from "./config";

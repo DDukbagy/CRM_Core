@@ -1,3 +1,4 @@
+# 결제 기록: 등록 권한, 수강권 연결, 조회 범위, 상태 변경
 from __future__ import annotations
 
 import uuid
@@ -52,7 +53,7 @@ async def _insert_payment(session: AsyncSession, customer_id: uuid.UUID, amount:
     return payment_id
 
 
-# ── 등록 ──────────────────────────────────────────────────────
+# 등록
 
 async def test_instructor_records_payment_for_managed_customer(instructor_client, managed_customer_id):
     res = await instructor_client.post("/payments", json={
@@ -170,7 +171,7 @@ async def test_create_payment_rate_limit(instructor_client, managed_customer_id)
     assert (await instructor_client.post("/payments", json=body)).status_code == 429
 
 
-# ── 조회 ──────────────────────────────────────────────────────
+# 조회
 
 async def test_instructor_lists_only_managed_customers_payments(
     instructor_client, instructor_id, managed_customer_id, db_conn_and_sessionmaker: async_sessionmaker[AsyncSession]
@@ -207,7 +208,7 @@ async def test_customer_lists_only_own_payments(client, db_conn_and_sessionmaker
     assert str(others) not in ids
 
 
-# ── 상태 변경 (관리자) ────────────────────────────────────────
+# 상태 변경 (관리자)
 
 async def test_admin_updates_payment_status(admin_client, db_conn_and_sessionmaker: async_sessionmaker[AsyncSession]):
     async with db_conn_and_sessionmaker() as session:

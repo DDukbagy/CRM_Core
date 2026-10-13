@@ -1,3 +1,4 @@
+// 하단 탭 구성
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable } from "react-native";

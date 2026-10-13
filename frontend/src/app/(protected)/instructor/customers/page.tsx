@@ -1,4 +1,5 @@
 "use client";
+// 강사 웹 고객 관리: 담당 고객 목록·검색, 전화번호·이메일로 등록
 
 import React, { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";

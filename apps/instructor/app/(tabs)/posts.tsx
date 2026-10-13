@@ -1,3 +1,4 @@
+// 게시물 탭: 작성·수정·삭제, 미디어 업로드, 댓글
 import { useEffect, useState, useCallback, useRef } from "react";
 import { View, Text, FlatList, Pressable, Modal, TextInput, StyleSheet, Image, ActivityIndicator, Dimensions, ScrollView, Platform } from "react-native";
 import { appAlert } from "@/lib/alert";
@@ -15,13 +16,13 @@ const CARD_H = 240;
 interface LocalMedia { url: string; media_type: "IMAGE" | "VIDEO"; }
 interface FormState { content: string; media_items: LocalMedia[]; customer_id: string; sub_type: "게시글" | "프로모션"; }
 
-// ─── VideoItem ────────────────────────────────────────────────────────────────
+// VideoItem
 function VideoItem({ uri, w, h, autoPlay }: { uri: string; w: number; h: number; autoPlay?: boolean }) {
   const player = useVideoPlayer(uri, (p) => { p.loop = false; if (autoPlay) p.play(); });
   return <VideoView player={player} style={{ width: w, height: h }} contentFit="cover" nativeControls />;
 }
 
-// ─── 풀스크린 미디어 뷰어 ────────────────────────────────────────────────────
+// 풀스크린 미디어 뷰어
 function MediaViewer({ item, onClose }: { item: LocalMedia | null; onClose: () => void }) {
   if (!item) return null;
   return (
@@ -39,7 +40,7 @@ function MediaViewer({ item, onClose }: { item: LocalMedia | null; onClose: () =
   );
 }
 
-// ─── 고객 라벨 헬퍼 ──────────────────────────────────────────────────────────
+// 고객 라벨 헬퍼
 function customerLabel(c: UserRead): string {
   const genderMap: Record<string, string> = { MALE: "남", FEMALE: "여" };
   const gender = c.gender ? genderMap[c.gender] : null;
@@ -48,7 +49,7 @@ function customerLabel(c: UserRead): string {
   return info ? `${c.display_name} (${info})` : c.display_name;
 }
 
-// ─── 고객 드롭다운 ────────────────────────────────────────────────────────────
+// 고객 드롭다운
 function CustomerDropdown({ customers, selectedId, onSelect }: {
   customers: UserRead[];
   selectedId: string;
@@ -86,7 +87,7 @@ function CustomerDropdown({ customers, selectedId, onSelect }: {
   );
 }
 
-// ─── 삭제 확인 모달 ──────────────────────────────────────────────────────────
+// 삭제 확인 모달
 function DeleteConfirmModal({ visible, onConfirm, onCancel }: {
   visible: boolean; onConfirm: () => void; onCancel: () => void;
 }) {
@@ -106,7 +107,7 @@ function DeleteConfirmModal({ visible, onConfirm, onCancel }: {
   );
 }
 
-// ─── 댓글 섹션 ───────────────────────────────────────────────────────────────
+// 댓글 섹션
 function CommentsSection({ postId }: { postId: string }) {
   const [open, setOpen] = useState(false);
   const [comments, setComments] = useState<CommentRead[]>([]);
@@ -168,7 +169,7 @@ function CommentsSection({ postId }: { postId: string }) {
   );
 }
 
-// ─── 게시물 카드 ─────────────────────────────────────────────────────────────
+// 게시물 카드
 function PostCard({ post, onDelete, onEdit }: {
   post: PostRead; onDelete: (id: string) => void; onEdit: (post: PostRead) => void;
 }) {
@@ -245,7 +246,7 @@ function PostCard({ post, onDelete, onEdit }: {
   );
 }
 
-// ─── 게시물 폼 (top-level — 타이핑 버그 방지) ────────────────────────────────
+// 게시물 폼 (top-level — 타이핑 버그 방지)
 interface PostFormProps {
   form: FormState;
   onChangeContent: (v: string) => void;
@@ -418,7 +419,7 @@ function PostForm({
   );
 }
 
-// ─── 메인 화면 ────────────────────────────────────────────────────────────────
+// 메인 화면
 export default function PostsScreen() {
   const [posts, setPosts] = useState<PostRead[]>([]);
   const [customers, setCustomers] = useState<UserRead[]>([]);
@@ -444,7 +445,7 @@ export default function PostsScreen() {
       .then((r) => setCustomers(r.items ?? [])).catch(() => { });
   }, [load]);
 
-  // ─── 미디어 업로드 (다중 선택 지원) ─────────────────────────────────────
+  // 미디어 업로드 (다중 선택 지원)
   const uploadMedia = useCallback(async () => {
     if (Platform.OS !== "web") {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -490,7 +491,7 @@ export default function PostsScreen() {
       }
     }
 
-    // ── 선택 즉시 로컬 URI로 그리드에 표시 (optimistic UI) ──────────────
+    // 선택 즉시 로컬 URI로 그리드에 표시 (optimistic UI)
     // ImagePicker 닫힌 직후 Modal re-mount 타이밍 문제를 우회하기 위해
     // setForm 대신 ref를 직접 업데이트하고 강제 re-render
     const localItems: LocalMedia[] = toUpload.map((asset) => {
@@ -521,7 +522,7 @@ export default function PostsScreen() {
         const fileName = asset.fileName ?? `upload.${isVideo ? "mp4" : "jpg"}`;
         const contentType = asset.mimeType ?? (isVideo ? "video/mp4" : "image/jpeg");
 
-        // 1. 서버에서 presigned PUT URL 발급
+        // 업로드 주소를 받아 S3 에 바로 올린다 (FormData 없이 PUT, RN 에서 안정적)
         const { upload_url, public_url } = await apiFetch<{
           upload_url: string;
           key: string;
@@ -531,7 +532,6 @@ export default function PostsScreen() {
           body: { filename: fileName, content_type: contentType },
         });
 
-        // 2. S3에 직접 PUT (FormData 없음 — RN에서 안정적)
         const fileBlob = await (await fetch(asset.uri)).blob();
         const res = await fetch(upload_url, {
           method: "PUT",
@@ -544,7 +544,6 @@ export default function PostsScreen() {
         replacements.push({ localUri: asset.uri, s3Url: public_url });
       }
 
-      // 3. 로컬 URI → S3 URL 교체
       const urlMap = new Map(replacements.map((r) => [r.localUri, r.s3Url]));
       setForm((f) => {
         const next = {
@@ -562,7 +561,7 @@ export default function PostsScreen() {
     } finally { setUploading(false); }
   }, []);
 
-  // ─── 등록 ─────────────────────────────────────────────────────────────────
+  // 등록
   function openCreate(type: "PROMOTION" | "FEEDBACK") {
     const blank: FormState = { content: "", media_items: [], customer_id: "", sub_type: "게시글" };
     createTypeRef.current = type;   // 즉시 동기화
@@ -613,7 +612,7 @@ export default function PostsScreen() {
     } finally { setSubmitting(false); }
   }, [load]);
 
-  // ─── 수정 ─────────────────────────────────────────────────────────────────
+  // 수정
   function openEdit(post: PostRead) {
     const newForm: FormState = {
       content: post.content ?? "",
@@ -763,7 +762,7 @@ export default function PostsScreen() {
   );
 }
 
-// ─── 풀스크린 뷰어 스타일 ────────────────────────────────────────────────────
+// 풀스크린 뷰어 스타일
 const mv = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.95)", justifyContent: "center", alignItems: "center" },
   closeBtn: { position: "absolute", top: 52, right: 20, zIndex: 10, width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
@@ -771,7 +770,7 @@ const mv = StyleSheet.create({
   img: { width: SW, height: SH * 0.8 },
 });
 
-// ─── 드롭다운 스타일 (인라인, 중첩 Modal 없음) ───────────────────────────────
+// 드롭다운 스타일 (인라인, 중첩 Modal 없음)
 const dd = StyleSheet.create({
   trigger: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 12, backgroundColor: "#fff" },
   triggerText: { fontSize: 14, color: "#111827", flex: 1 },
@@ -788,7 +787,7 @@ const dd = StyleSheet.create({
   check: { fontSize: 14, color: "#16a34a", fontWeight: "700" },
 });
 
-// ─── 삭제 확인 스타일 ─────────────────────────────────────────────────────────
+// 삭제 확인 스타일
 const del = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center" },
   box: { backgroundColor: "#fff", borderRadius: 14, padding: 24, width: 280, gap: 8 },
@@ -801,7 +800,7 @@ const del = StyleSheet.create({
   deleteText: { fontSize: 14, color: "#fff", fontWeight: "700" },
 });
 
-// ─── 댓글 스타일 ─────────────────────────────────────────────────────────────
+// 댓글 스타일
 const cm = StyleSheet.create({
   btn: { paddingVertical: 4, marginTop: 4 },
   btnText: { fontSize: 12, color: "#6b7280" },
@@ -817,7 +816,7 @@ const cm = StyleSheet.create({
   sendText: { color: "#fff", fontSize: 12, fontWeight: "600" },
 });
 
-// ─── 폼 상수 & 스타일 ─────────────────────────────────────────────────────────
+// 폼 상수 & 스타일
 const GRID_COLS = 3;
 const GRID_GAP = 4;
 const GRID_PADDING = 16;
@@ -920,7 +919,7 @@ const fm = StyleSheet.create({
   cancelBtnText: { fontSize: 15, color: "#374151" },
 });
 
-// ─── 메인 스타일 ─────────────────────────────────────────────────────────────
+// 메인 스타일
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f3f4f6" },
   card: { marginHorizontal: 16, marginTop: 12, backgroundColor: "#fff", borderRadius: 14, overflow: "hidden", elevation: 2 },

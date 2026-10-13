@@ -1,3 +1,4 @@
+# 결제 기록 모델
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
@@ -34,7 +35,7 @@ class Payment(SQLModel, table=True):
         description="결제한 고객 ID",
     )
 
-    # 이 결제로 산 수강권 (멤버십은 수강권으로 통합, 2026-10-04)
+    # 이 결제로 산 수강권
     customer_pass_id: Optional[int] = Field(
         default=None,
         sa_column=Column(Integer, nullable=True),

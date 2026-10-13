@@ -1,3 +1,4 @@
+# 채팅 스키마 (시각은 UTC 로 내보냄)
 from __future__ import annotations
 
 from datetime import datetime, timezone

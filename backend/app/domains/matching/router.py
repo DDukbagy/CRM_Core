@@ -1,3 +1,4 @@
+# 매칭·상담 요청 API
 from typing import Optional
 from uuid import UUID
 
@@ -10,7 +11,7 @@ from app.domains.matching.models import MatchRequest
 from app.domains.matching.repository import MatchRepository
 from app.domains.matching.schemas import MatchRequestCreate, MatchRequestRead
 
-# 경로는 기존 API 계약(/instructors/match...)을 유지한다.
+# 경로는 /instructors/match...
 router = APIRouter(prefix="/instructors", tags=["Matching"])
 
 

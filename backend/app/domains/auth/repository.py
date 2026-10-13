@@ -1,3 +1,4 @@
+# 아이디/비밀번호 로그인 (Supabase 폴백)
 from datetime import timedelta
 
 from fastapi import HTTPException

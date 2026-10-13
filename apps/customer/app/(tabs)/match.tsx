@@ -1,4 +1,4 @@
-// app/(tabs)/match.tsx
+// 강사 찾기 탭: 단계별 매칭, 강사 목록, 상세 프로필에서 문의하기
 import { useCallback, useRef, useState } from "react";
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Modal, StyleSheet } from "react-native";
 import { appAlert } from "@/lib/alert";
@@ -30,7 +30,7 @@ export default function MatchScreen() {
   const [loading, setLoading]         = useState(true);
   const initialLoaded                 = useRef(false);
 
-  // 숨고식 단계별 매칭 wizard
+  // 단계별 매칭 wizard
   const [wizStep, setWizStep]           = useState(0);           // 0=purpose 1=location 2=results
   const [wizPurpose, setWizPurpose]     = useState<typeof PURPOSES[0] | null>(null);
   const [wizLocation, setWizLocation]   = useState<string | null>(null);
@@ -153,7 +153,7 @@ export default function MatchScreen() {
   );
 }
 
-// ── 숨고식 단계별 매칭 ────────────────────────────────────────
+// 숨고식 단계별 매칭
 function WizardFlow({
   step, purpose, location, results, totalCount, me,
   onSelectPurpose, onSelectLocation, onBack, onReset, onSelect,
@@ -266,7 +266,7 @@ function WizardFlow({
   );
 }
 
-// ── 강사 찾기 탭 ─────────────────────────────────────────────
+// 강사 찾기 탭
 function SearchTab({
   instructors, searchText, onSearchChange, me, onSelect,
 }: {
@@ -318,7 +318,7 @@ function SearchTab({
   );
 }
 
-// ── 강사 카드 ────────────────────────────────────────────────
+// 강사 카드
 function InstructorCard({
   instructor, isCurrentInstructor, onPress,
 }: {
@@ -387,7 +387,7 @@ function InstructorCard({
   );
 }
 
-// ── 강사 상세 프로필 모달 (하단 "문의하기" → 채팅방) ─────────────
+// 강사 상세 프로필 모달 (하단 "문의하기" → 채팅방)
 function ProfileModal({
   instructor, isCurrentInstructor, opening, onClose, onInquire,
 }: {
@@ -484,7 +484,7 @@ const pf = StyleSheet.create({
   inquireTxt:   { color: "#fff", fontSize: 16, fontWeight: "700" },
 });
 
-// ── 스타일 ────────────────────────────────────────────────────
+// 스타일
 const s = StyleSheet.create({
   center:       { flex: 1, alignItems: "center", justifyContent: "center" },
   statusBanner: {

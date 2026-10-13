@@ -1,3 +1,4 @@
+# 매칭·상담 요청: 수수료, 중복 방지, 수락·거절
 from __future__ import annotations
 
 from uuid import uuid4

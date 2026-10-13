@@ -1,3 +1,4 @@
+// 매출 탭: 결제 내역, 수동 결제 등록, 운영 현황 이동
 import { useEffect, useState, useCallback } from "react";
 import { View, Text, ScrollView, RefreshControl, Pressable, Modal, TextInput, StyleSheet } from "react-native";
 import { appAlert } from "@/lib/alert";

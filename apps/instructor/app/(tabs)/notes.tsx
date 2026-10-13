@@ -1,5 +1,5 @@
 // 레슨노트 탭: 담당 고객에게 노트 작성 (앱에서 글 작성 또는 수기 노트 스캔 → PDF)
-// 피드백 게시물을 여기로 통합 (2026-10-04). 고객은 고객 앱 레슨노트 탭에서 본다
+// 고객은 고객 앱 레슨노트 탭에서 본다
 import { useCallback, useEffect, useState } from "react";
 import {
   View, Text, FlatList, Pressable, Modal, TextInput, ScrollView, ActivityIndicator, RefreshControl, StyleSheet, Platform, Linking,
@@ -136,7 +136,7 @@ export default function LessonNotesScreen() {
   );
 }
 
-// ── 작성·수정 모달 ────────────────────────────────────────────
+// 작성·수정 모달
 function NoteForm({
   target, customers, defaultCustomer, onClose, onSaved,
 }: {

@@ -1,3 +1,4 @@
+# 게시물: 작성 권한, 목록·검색 노출 범위, 댓글, 좋아요, 미디어
 from __future__ import annotations
 
 import uuid
@@ -62,7 +63,7 @@ async def others_feedback(db_conn_and_sessionmaker: async_sessionmaker[AsyncSess
         return post
 
 
-# ── 작성 ──────────────────────────────────────────────────────
+# 작성
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("post_type", ["PROMOTION", "NOTICE", "COMMUNITY"])
@@ -96,7 +97,7 @@ async def test_customer_cannot_create_post(client):
     assert r.status_code == 403, r.text
 
 
-# ── 목록·피드·검색 ────────────────────────────────────────────
+# 목록·피드·검색
 
 @pytest.mark.asyncio
 async def test_list_feed_and_search_show_only_visible_posts(client, public_post: Post, others_feedback: Post):
@@ -121,7 +122,7 @@ async def test_private_feedback_is_hidden_from_other_customers(client, others_fe
     assert (await client.post(f"/posts/{others_feedback.id}/like")).status_code == 403
 
 
-# ── 댓글·대댓글 ───────────────────────────────────────────────
+# 댓글·대댓글
 
 @pytest.mark.asyncio
 async def test_comment_reply_edit_delete(client, public_post: Post, db_conn_and_sessionmaker):
@@ -227,7 +228,7 @@ async def test_cannot_edit_or_delete_others_comment(client, public_post: Post, d
     assert (await client.delete(f"/posts/comments/{comment.id}")).status_code == 403
 
 
-# ── 좋아요 ────────────────────────────────────────────────────
+# 좋아요
 
 @pytest.mark.asyncio
 async def test_like_toggle_and_counts(client, public_post: Post):
@@ -269,7 +270,7 @@ async def test_unlike_removes_like_notification(client, public_post: Post, db_co
     assert await like_notifications() == 1
 
 
-# ── 미디어 ────────────────────────────────────────────────────
+# 미디어
 
 @pytest.mark.asyncio
 async def test_media_is_served_with_presigned_url(instructor_client, db_conn_and_sessionmaker, monkeypatch):

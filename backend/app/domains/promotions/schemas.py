@@ -1,3 +1,4 @@
+# 프로모션 스키마
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -9,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 DiscountType = Literal["PERCENT", "AMOUNT", "NONE"]
 
 
+# 할인 값 검사 (비율은 1~100, 금액은 1 이상)
 def _check_discount(discount_type: Optional[str], value: Optional[int]) -> None:
     if discount_type == "PERCENT" and not (value and 1 <= value <= 100):
         raise ValueError("할인율은 1~100(%) 이어야 합니다.")

@@ -1,3 +1,4 @@
+# 요청 로깅 미들웨어: request-id 부여, 처리 시간 기록
 from __future__ import annotations
 
 import logging

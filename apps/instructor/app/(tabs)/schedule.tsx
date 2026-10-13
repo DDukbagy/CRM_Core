@@ -1,3 +1,4 @@
+// 스케줄 탭: 월간 달력, 날짜별 예약·휴무 관리
 import { useCallback, useRef, useState } from "react";
 import {
   View, Text, ScrollView, Pressable, Modal, TextInput,
@@ -26,7 +27,7 @@ const START_H = 6, END_H = 22, HOUR_H = 60, TIME_LABEL_W = 52;
 const timeToY = (t: string) => _timeToY(t, START_H, HOUR_H);
 const timeDiff = (s: string, e: string) => _timeDiff(s, e, HOUR_H);
 
-// ─── MonthGrid ──────────────────────────────────────────
+// MonthGrid
 // 그 날짜에 걸친 블록인지
 function coversDate(b: CalendarBlockRead, ds: string) {
   return b.start_date <= ds && ds <= b.end_date;
@@ -146,7 +147,7 @@ const mg = StyleSheet.create({
   noLessonTxt: { fontSize: 9, fontWeight: "700", color: "#9ca3af", textAlign: "center" },
 });
 
-// ─── DayPanel ───────────────────────────────────────────
+// DayPanel
 function DayPanel({
   date, bookings, slots, customerMap, isHoliday, isRecurringOff,
   workOverrideSlotIds, closedSlotBlocks,
@@ -266,7 +267,7 @@ function DayPanel({
     { label: "취소됨", data: cancelledBookings },
   ];
 
-  // 확정/신청 예약이 있는 슬롯 ID (work override 복원 방지용)
+  // 확정/신청 예약이 있는 슬롯 ID (그날 휴무 처리 전 확인용)
   const activeBookingSlotIds = new Set(
     bookings.filter(b => b.status === "REQUESTED" || b.status === "CONFIRMED").map(b => b.time_slot_id)
   );
@@ -631,7 +632,7 @@ const dp = StyleSheet.create({
   inactiveTxt: { fontSize: 11, color: "#6b7280", fontWeight: "600" },
 });
 
-// ─── TimelineView ───────────────────────────────────────
+// TimelineView
 function TimelineView({
   date, bookings, slots, customerMap, onAction, onBack,
 }: {
@@ -782,7 +783,7 @@ const tl = StyleSheet.create({
   eventLabel: { fontSize: 12, fontWeight: "500" },
 });
 
-// ─── Main ───────────────────────────────────────────────
+// Main
 type ConfirmState = { title: string; body: string; isDecline?: boolean; onConfirm: (reason?: string) => Promise<void> } | null;
 
 export default function ScheduleScreen() {
@@ -1183,7 +1184,7 @@ const s = StyleSheet.create({
   panelOverlay: { position: "absolute", bottom: 0, left: 0, right: 0, height: PANEL_H },
 });
 
-// ─── 예약 상세 모달 ──────────────────────────────────────
+// 예약 상세 모달
 function BookingDetailModal({ visible, booking, slots, customerMap, onClose, onAction }: {
   visible: boolean;
   booking: BookingRead | null;

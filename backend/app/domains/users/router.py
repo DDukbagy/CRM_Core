@@ -1,3 +1,4 @@
+# 사용자 API: 내 정보·탈퇴·담당 강사 지정, 관리자 회원 관리
 from __future__ import annotations
 
 from uuid import UUID

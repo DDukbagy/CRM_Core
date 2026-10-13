@@ -1,4 +1,4 @@
-// app/(tabs)/_layout.tsx
+// 하단 탭 구성과 커스텀 탭 바
 import { Tabs, useRouter } from "expo-router";
 import { useRef, useState, useEffect } from "react";
 import { View, Text, Pressable, Animated, StyleSheet, Dimensions, Platform } from "react-native";
@@ -31,7 +31,7 @@ const TABS: TabDef[] = [
   { name: "notes",    label: "레슨노트", icon: "document-text-outline",     activeIcon: "document-text"       },
 ];
 
-// ─── Custom Tab Bar ──────────────────────────────────────────────────────────
+// 커스텀 탭 바
 function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   return (
     <View style={tb.container}>
@@ -80,7 +80,7 @@ function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   );
 }
 
-// ─── Layout ──────────────────────────────────────────────────────────────────
+// 탭 레이아웃
 export default function TabsLayout() {
   const router = useRouter();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -217,7 +217,7 @@ export default function TabsLayout() {
   );
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
+// 스타일
 const tb = StyleSheet.create({
   container: {
     backgroundColor: "#fff",

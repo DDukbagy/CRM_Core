@@ -1,3 +1,4 @@
+# 수강권 API: 상품 관리, 발급·관리, 내 수강권, 공개 상품 목록
 from __future__ import annotations
 
 from typing import Optional
@@ -19,7 +20,7 @@ from app.domains.passes.schemas import (
 router = APIRouter(prefix="/passes", tags=["Passes"])
 
 
-# ─── 권한 확인 ───────────────────────────────────────────────────────────────
+# 권한 확인
 
 def _require_instructor(user: CurrentUser) -> None:
     if user.role not in ("INSTRUCTOR", "ADMIN"):
@@ -31,7 +32,7 @@ def _require_customer(user: CurrentUser) -> None:
         raise HTTPException(status_code=403, detail="고객 전용 기능입니다.")
 
 
-# ─── 응답 변환 ───────────────────────────────────────────────────────────────
+# 응답 변환
 
 async def _to_read(
     repo: PassRepository,
@@ -57,7 +58,7 @@ async def _to_read(
     return read
 
 
-# ─── 강사: 수강권 상품 CRUD ────────────────────────────────────────────────────
+# 강사: 수강권 상품 CRUD
 
 @router.get("/types", response_model=list[PassTypeRead])
 async def list_my_pass_types(
@@ -109,7 +110,7 @@ async def delete_pass_type(
     await repo.delete_type(pt)
 
 
-# ─── 강사: 고객 수강권 발급 및 관리 ────────────────────────────────────────────
+# 강사: 고객 수강권 발급 및 관리
 
 @router.get("/customer-passes", response_model=list[CustomerPassRead])
 async def list_my_customer_passes(
@@ -169,7 +170,7 @@ async def add_sessions_service(
     return await _to_read(repo, cp, include_customer_name=True)
 
 
-# ─── 고객: 내 수강권 조회 ─────────────────────────────────────────────────────
+# 고객: 내 수강권 조회
 
 @router.get("/me", response_model=list[CustomerPassRead])
 async def get_my_passes(
@@ -183,7 +184,7 @@ async def get_my_passes(
     return [await _to_read(repo, cp, include_instructor=True, include_pass_type=True) for cp in passes]
 
 
-# ─── 공개: 강사 수강권 상품 목록 ─────────────────────────────────────────────
+# 공개: 강사 수강권 상품 목록
 
 @router.get("/instructor/{instructor_id}/types", response_model=list[PassTypeRead])
 async def get_instructor_pass_types(

@@ -1,4 +1,4 @@
-// frontend/src/app/(protected)/admin/page.tsx
+// 관리자 대시보드
 export const dynamic = "force-dynamic";
 
 import DashboardLayout from "@/components/layout/DashboardLayout";

@@ -1,4 +1,4 @@
-// frontend/src/app/login/actions.ts
+// 로그인 서버 액션
 "use server";
 
 import { redirect } from "next/navigation";

@@ -1,3 +1,4 @@
+# Alembic 실행 설정: 모델 등록, 비교 대상 조정, 온라인 마이그레이션
 from __future__ import annotations
 
 import asyncio
@@ -11,9 +12,7 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from dotenv import load_dotenv
 
-# ----------------------------------------------------------------------
 # 경로 설정 및 .env 로딩
-# ----------------------------------------------------------------------
 current_file = Path(__file__).resolve()
 project_root = current_file.parents[1]
 sys.path.append(str(project_root))
@@ -21,9 +20,7 @@ sys.path.append(str(project_root))
 env_path = project_root / ".env"
 load_dotenv(dotenv_path=env_path)
 
-# ----------------------------------------------------------------------
 # 모델 등록
-# ----------------------------------------------------------------------
 try:
     from app.core.config import settings
 
@@ -75,15 +72,11 @@ except ImportError as e:
     print(f"🔍 Current sys.path: {sys.path}")
     raise e
 
-# ----------------------------------------------------------------------
 # DB URL 확인 — 주소는 출력하지 않는다 (호스트·계정 정보 노출 방지)
-# ----------------------------------------------------------------------
 if not settings.ASYNC_DATABASE_URL:
     print("❌ ERROR: settings.ASYNC_DATABASE_URL is empty!")
 
-# ----------------------------------------------------------------------
-# Alembic 설정 (Standard)
-# ----------------------------------------------------------------------
+# Alembic 설정
 config = context.config
 
 def include_object(object_, name, type_, reflected, compare_to):

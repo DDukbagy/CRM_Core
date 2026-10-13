@@ -1,4 +1,4 @@
-// app/(auth)/login.tsx
+// 로그인 화면 (Supabase, 고객 계정만)
 import { useEffect, useState } from "react";
 import { View, Text, TextInput, Pressable } from "react-native";
 import { router } from "expo-router";

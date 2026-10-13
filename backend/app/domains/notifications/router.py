@@ -1,3 +1,4 @@
+# 알림 API: 내 알림 목록, 읽음 처리
 from __future__ import annotations
 
 from typing import List

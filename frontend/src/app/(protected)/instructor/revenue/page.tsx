@@ -1,4 +1,5 @@
 "use client";
+// 강사 웹 매출: 결제 내역, 수동 결제 등록
 
 import React, { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/axios";

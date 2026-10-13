@@ -1,3 +1,4 @@
+# 예약 저장소: 레슨 신청·확정·취소·완료와 수강권 차감
 from datetime import date, datetime
 from typing import Optional
 from uuid import UUID
@@ -47,7 +48,7 @@ class BookingRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    # ── 조회·권한 ────────────────────────────────────────────────────────────
+    # 조회·권한
 
     async def get_or_404(self, booking_id: int) -> Booking:
         booking = (await self.session.execute(select(Booking).where(Booking.id == booking_id))).scalar_one_or_none()
@@ -76,12 +77,14 @@ class BookingRepository:
         if booking.guest_id != UUID(str(user.id)):
             raise HTTPException(status_code=403, detail=f"Only the guest can {action}")
 
+    # 고객의 예약 목록
     async def list_by_guest(self, guest_id: UUID) -> list[Booking]:
         res = await self.session.execute(
             select(Booking).where(Booking.guest_id == guest_id).order_by(Booking.when.desc(), Booking.id.desc())
         )
         return list(res.scalars().all())
 
+    # 강사 캘린더의 예약 목록
     async def list_by_calendar(self, calendar_id: int, start: date, end: date) -> list[Booking]:
         if end < start:
             raise HTTPException(status_code=400, detail="end must be >= start")
@@ -93,7 +96,7 @@ class BookingRepository:
         )
         return list(res.scalars().all())
 
-    # ── 생성 ─────────────────────────────────────────────────────────────────
+    # 생성
 
     async def create(self, data: BookingCreate, user: CurrentUser) -> Booking:
         """고객(또는 관리자)의 레슨 신청 → REQUESTED. 그날 영업 중인 시간(day_status)에만 가능"""
@@ -158,7 +161,7 @@ class BookingRepository:
         )
         return res.scalar_one_or_none() is not None
 
-    # ── 고객 동작 ────────────────────────────────────────────────────────────
+    # 고객 동작
 
     async def update_by_guest(self, booking: Booking, user: CurrentUser, topic: Optional[str], description_set: bool, description: Optional[str]) -> Booking:
         """신청(REQUESTED) 중인 레슨의 주제·메모 수정"""
@@ -215,7 +218,7 @@ class BookingRepository:
         booking.status = "CONFIRMED"
         return await self._save(booking)
 
-    # ── 강사 동작 ────────────────────────────────────────────────────────────
+    # 강사 동작
 
     async def confirm(self, booking: Booking, host: CurrentUser, topic: Optional[str]) -> Booking:
         """확정: REQUESTED → CONFIRMED (강사가 수업 내용 지정 가능)"""
@@ -311,7 +314,7 @@ class BookingRepository:
         await self._push_guest(booking, "취소 거절", f"{booking.topic} ({booking.when}) 취소 신청이 거절되었습니다. 예약이 유지됩니다.")
         return booking
 
-    # ── 캘린더 파일 (.ics) ───────────────────────────────────────────────────
+    # 캘린더 파일 (.ics)
 
     async def ics_for(self, booking: Booking, user: CurrentUser) -> bytes:
         """예약한 고객, 그 캘린더의 강사, 관리자만 받을 수 있다"""
@@ -334,7 +337,7 @@ class BookingRepository:
         cal.add_component(event)
         return cal.to_ical()
 
-    # ── 내부 ─────────────────────────────────────────────────────────────────
+    # 내부
 
     async def _save(self, booking: Booking) -> Booking:
         self.session.add(booking)
@@ -342,11 +345,13 @@ class BookingRepository:
         await self.session.refresh(booking)
         return booking
 
+    # 완료·노쇼 시 수강권 1회 차감
     async def _deduct_pass(self, booking: Booking) -> None:
         instructor_id = await self.host_id_of(booking)
         if instructor_id:
             await PassRepository(self.session).deduct_for_lesson(UUID(str(booking.guest_id)), instructor_id)
 
+    # 고객에게 푸시 알림
     async def _push_guest(self, booking: Booking, title: str, body: str) -> None:
         guest = await self.session.get(User, UUID(str(booking.guest_id)))
         await send_push(getattr(guest, "push_token", None) if guest else None, title, body)

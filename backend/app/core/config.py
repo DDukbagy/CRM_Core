@@ -1,3 +1,4 @@
+# 환경변수 설정 (pydantic-settings)
 from __future__ import annotations
 
 import json
@@ -100,6 +101,7 @@ class Settings(BaseSettings):
             url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
         return url
 
+    # CORS 허용 주소 목록 (JSON 배열 또는 쉼표 구분)
     @property
     def cors_origins(self) -> List[str]:
         v = self.CORS_ALLOW_ORIGINS
@@ -121,12 +123,14 @@ class Settings(BaseSettings):
         parts = [o.strip() for o in s.split(",") if o.strip()]
         return parts
 
+    # 토큰 발급자(iss). 지정이 없으면 SUPABASE_URL + /auth/v1
     @property
     def SUPABASE_ISSUER(self) -> str:
         if self.SUPABASE_JWT_ISSUER and self.SUPABASE_JWT_ISSUER.strip():
             return self.SUPABASE_JWT_ISSUER.strip().rstrip("/")
         return self.SUPABASE_URL.rstrip("/") + "/auth/v1"
 
+    # Supabase pooler 주소인지
     @property
     def DB_IS_POOLER(self) -> bool:
         return ".pooler.supabase.com" in self.DATABASE_URL

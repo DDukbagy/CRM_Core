@@ -1,3 +1,4 @@
+# 예약 모델: 레슨 예약과 상태
 from datetime import date, datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional
@@ -53,10 +54,8 @@ class Booking(SQLModel, table=True):
     when: date
     topic: Optional[str] = None
     
-    # 예약 타입 (기본값: LESSON)
     type: BookingType = Field(default=BookingType.LESSON, description="LESSON / HOLIDAY")
     
-    # REQUESTED
     status: str = Field(default="REQUESTED", description="REQUESTED / CONFIRMED / CANCELLED / COMPLETED")
 
     description: Optional[str] = Field(default=None, sa_type=Text, description="예약 설명")

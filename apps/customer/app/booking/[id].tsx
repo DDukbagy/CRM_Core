@@ -1,4 +1,4 @@
-// app/booking/[id].tsx
+// 예약 상세 화면
 import { useEffect, useState } from "react";
 import { View, Text, ScrollView, Pressable, ActivityIndicator, StyleSheet } from "react-native";
 import { appAlert } from "@/lib/alert";

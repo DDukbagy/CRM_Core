@@ -1,4 +1,4 @@
-// frontend/src/app/(protected)/instructor/schedule/page.tsx
+// 강사 웹 스케줄: 시간 슬롯 추가·켜기/끄기·삭제
 "use client";
 
 import React, { useEffect, useState } from "react";

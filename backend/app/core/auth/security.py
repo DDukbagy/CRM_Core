@@ -1,3 +1,4 @@
+# 비밀번호 해시·검증과 백엔드 HS256 토큰 발급
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -6,12 +7,11 @@ from jose import jwt
 
 from app.core.config import settings
 
-# ---- exported settings (deps.py 등에서 import하는 심볼들) ----
-# 운영 기준: 환경변수로만 주입(코드/레포에 하드코딩 금지)
+# 토큰 설정 (값은 환경변수로만 받는다)
 SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = settings.ALGORITHM
 
-# 기본 24시간(분 단위). 환경변수로 조절 가능.
+# 토큰 유효 시간(분), 기본 24시간
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 # bcrypt는 비밀번호 앞 72바이트만 사용한다. 넘는 값은 자르지 않고 입력 단계(UserCreate)에서 거부한다.
@@ -30,6 +30,7 @@ def _require_secret_key() -> str:
     return key
 
 
+# 비밀번호 확인
 def verify_password(plain_password: str, hashed_password: Optional[str]) -> bool:
     # 비밀번호 없이 만들어진 계정(Supabase 로그인으로 자동 생성)은 항상 불일치
     if not hashed_password:
@@ -41,10 +42,12 @@ def verify_password(plain_password: str, hashed_password: Optional[str]) -> bool
         return False
 
 
+# 비밀번호 해시 (bcrypt)
 def get_password_hash(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
+# HS256 access token 발급
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
 

@@ -1,3 +1,4 @@
+# 전역 예외 처리: 오류 응답 형식 통일, 예상 못한 오류 로깅
 from __future__ import annotations
 
 import json
@@ -21,6 +22,7 @@ def _error(code: str, message: str, details: Any = None, request_id: str | None 
     return payload
 
 
+# 앱에 예외 처리기 등록
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
@@ -34,8 +36,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
         request_id = getattr(request.state, "request_id", None)
-        # Pydantic v2 errors() may contain non-JSON-serializable objects (e.g. ValueError
-        # in ctx["error"]). Serialize via json.dumps(default=str) to make them safe.
+        # 검증 오류 정보에 JSON 으로 바꿀 수 없는 객체가 섞일 수 있어 문자열로 바꿔 내보낸다
         safe_errors = json.loads(json.dumps(exc.errors(), default=str))
         return JSONResponse(
             status_code=422,
@@ -47,6 +48,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             ),
         )
 
+    # DB 제약 위반은 409 로
     @app.exception_handler(IntegrityError)
     async def integrity_error_handler(request: Request, exc: IntegrityError):
         request_id = getattr(request.state, "request_id", None)

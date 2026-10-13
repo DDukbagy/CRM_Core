@@ -1,3 +1,4 @@
+# 강사 공개 프로필·통계·대시보드 스키마
 from uuid import UUID
 from datetime import datetime
 from typing import Optional
@@ -16,7 +17,7 @@ class InstructorStaffRead(BaseModel):
     created_at: datetime
 
 
-# ── 강사 공개 프로필 ────────────────────────────────────────
+# 강사 공개 프로필
 class InstructorPublicRead(BaseModel):
     id: UUID
     display_name: str
@@ -27,5 +28,5 @@ class InstructorPublicRead(BaseModel):
     location: Optional[str] = None
     specialties: list[str] = []     # 파싱된 스타일 태그 목록
     bio: Optional[str] = None
-    career_years: Optional[int] = None   # 강사 상세 프로필(문의하기 모달)용
+    career_years: Optional[int] = None   # 강사 상세 프로필용
     certifications: Optional[str] = None

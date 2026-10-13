@@ -10,5 +10,6 @@
   "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
   "python.analysis.extraPaths": ["./backend"],
 
-  "terminal.integrated.defaultProfile.linux": null
+  "terminal.integrated.defaultProfile.linux": null,
+  "python-envs.defaultPackageManager": "ms-python.python:pip"
 }

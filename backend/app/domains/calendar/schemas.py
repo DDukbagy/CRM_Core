@@ -1,3 +1,4 @@
+# 캘린더·시간 슬롯·날짜별 예외 스키마
 from __future__ import annotations
 
 from datetime import date, datetime, time

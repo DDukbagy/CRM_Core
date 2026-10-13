@@ -1,3 +1,4 @@
+# 수강권 저장소: 상품 관리, 발급·사용·횟수 추가, 기록 보존
 from typing import Optional
 from uuid import UUID
 
@@ -17,8 +18,9 @@ class PassRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    # ── 수강권 상품 (강사) ────────────────────────────────────────────────────
+    # 수강권 상품 (강사)
 
+    # 강사의 수강권 상품 목록
     async def list_types_of(self, instructor_id: UUID, active_only: bool = False) -> list[LessonPassType]:
         stmt = select(LessonPassType).where(LessonPassType.instructor_id == instructor_id)
         if active_only:
@@ -29,6 +31,7 @@ class PassRepository:
             stmt = stmt.order_by(LessonPassType.duration_hours, LessonPassType.id)
         return list((await self.session.execute(stmt)).scalars().all())
 
+    # 수강권 상품 만들기
     async def create_type(self, data: PassTypeCreate, instructor_id: UUID) -> LessonPassType:
         pt = LessonPassType(
             instructor_id=instructor_id,
@@ -51,6 +54,7 @@ class PassRepository:
             raise HTTPException(status_code=403, detail="권한이 없습니다.")
         return pt
 
+    # 수강권 상품 수정
     async def update_type(self, pt: LessonPassType, data: PassTypeUpdate) -> LessonPassType:
         for field, value in data.model_dump(exclude_none=True).items():
             setattr(pt, field, value)
@@ -69,8 +73,9 @@ class PassRepository:
         await self.session.delete(pt)
         await self.session.commit()
 
-    # ── 고객 수강권 ──────────────────────────────────────────────────────────
+    # 고객 수강권
 
+    # 강사가 발급한 수강권 목록
     async def list_by_instructor(self, instructor_id: UUID) -> list[CustomerPass]:
         res = await self.session.execute(
             select(CustomerPass)
@@ -79,6 +84,7 @@ class PassRepository:
         )
         return list(res.scalars().all())
 
+    # 고객의 수강권 목록
     async def list_by_customer(self, customer_id: UUID) -> list[CustomerPass]:
         res = await self.session.execute(
             select(CustomerPass)
@@ -175,7 +181,7 @@ class PassRepository:
                 active_pass.status = "COMPLETED"
             self.session.add(active_pass)
 
-    # ── 응답 조립용 ──────────────────────────────────────────────────────────
+    # 응답 조립용
 
     async def get_user(self, user_id: UUID) -> Optional[User]:
         return await self.session.get(User, user_id)
@@ -183,7 +189,7 @@ class PassRepository:
     async def get_type(self, pass_type_id: int) -> Optional[LessonPassType]:
         return await self.session.get(LessonPassType, pass_type_id)
 
-    # ── 계약 기록 보존 (회원 삭제 시) ─────────────────────────────────────────
+    # 계약 기록 보존 (회원 삭제 시)
     # 발급된 수강권은 계약 기록. 기준은 마지막 변경(사용·상태 변경) 시점
 
     @staticmethod

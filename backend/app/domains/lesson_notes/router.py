@@ -1,3 +1,4 @@
+# 레슨노트 API: 작성·목록·PDF 업로드 주소·예약별 조회·수정·삭제
 from __future__ import annotations
 
 from typing import Optional
@@ -78,6 +79,7 @@ async def update_lesson_note(
     return await repo.to_read(await repo.update(await repo.get_by_booking_or_404(booking_id), data, instructor))
 
 
+# 노트 상세
 @router.get("/{note_id}", response_model=LessonNoteRead)
 async def get_lesson_note_by_id(
     note_id: UUID,
@@ -90,6 +92,7 @@ async def get_lesson_note_by_id(
     return await repo.to_read(note)
 
 
+# 노트 수정
 @router.patch("/{note_id}", response_model=LessonNoteRead)
 async def update_lesson_note_by_id(
     note_id: UUID,
@@ -101,6 +104,7 @@ async def update_lesson_note_by_id(
     return await repo.to_read(await repo.update(await repo.get_or_404(note_id), data, instructor))
 
 
+# 노트 삭제
 @router.delete("/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_lesson_note(
     note_id: UUID,

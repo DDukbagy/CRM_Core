@@ -1,3 +1,4 @@
+# 푸시 토큰 저장·삭제와 내 정보
 from __future__ import annotations
 
 import pytest

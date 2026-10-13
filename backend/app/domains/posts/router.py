@@ -1,3 +1,4 @@
+# 게시물 API: 목록·검색, 작성·수정·삭제, 업로드 주소, 댓글, 좋아요, 공개 동의
 from __future__ import annotations
 
 import uuid as _uuid
@@ -28,7 +29,7 @@ ALLOWED_CONTENT_TYPES = {
 router = APIRouter(prefix="/posts", tags=["Posts"])
 
 
-# ─── 응답 변환 ────────────────────────────────────────────────────────────────
+# 응답 변환
 
 async def _to_post_reads(
     repo: PostRepository, posts: list[Post], user: Optional[CurrentUser]
@@ -82,8 +83,9 @@ async def _to_comment_reads(repo: PostRepository, comments: list[PostComment]) -
     return result
 
 
-# ─── S3 업로드 URL ────────────────────────────────────────────────────────────
+# S3 업로드 URL
 
+# 미디어 업로드용 서명 주소
 @router.post("/upload-url", response_model=UploadUrlResponse)
 async def get_upload_url(
     req: UploadUrlRequest,
@@ -109,7 +111,7 @@ async def get_upload_url(
     )
 
 
-# ─── 게시물 목록 (고정 경로는 /{post_id} 보다 먼저 등록) ──────────────────────
+# 게시물 목록 (고정 경로는 /{post_id} 보다 먼저 등록)
 
 # 역할별 목록: 강사는 본인 글, 고객은 공개 글 + 본인 피드백
 @router.get("", response_model=list[PostRead])
@@ -165,8 +167,9 @@ async def list_my_posts(
     return await _to_post_reads(repo, posts, user)
 
 
-# ─── 댓글 수정·삭제 (댓글 ID 기준) ────────────────────────────────────────────
+# 댓글 수정·삭제 (댓글 ID 기준)
 
+# 댓글 수정
 @router.patch("/comments/{comment_id}", response_model=CommentRead)
 async def update_comment(
     comment_id: int,
@@ -180,6 +183,7 @@ async def update_comment(
     return (await _to_comment_reads(repo, [comment]))[0]
 
 
+# 댓글 삭제
 @router.delete("/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_comment(
     comment_id: int,
@@ -192,8 +196,9 @@ async def delete_comment(
     return None
 
 
-# ─── 게시물 CRUD ──────────────────────────────────────────────────────────────
+# 게시물 CRUD
 
+# 게시물 작성
 @router.post("", response_model=PostRead, status_code=status.HTTP_201_CREATED)
 async def create_post(
     data: PostCreate,
@@ -218,6 +223,7 @@ async def get_post(
     return await _to_post_read(repo, post, user)
 
 
+# 게시물 수정
 @router.patch("/{post_id}", response_model=PostRead)
 async def update_post(
     post_id: UUID,
@@ -231,6 +237,7 @@ async def update_post(
     return await _to_post_read(repo, post, user)
 
 
+# 게시물 삭제
 @router.delete("/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_post(
     post_id: UUID,
@@ -245,8 +252,9 @@ async def delete_post(
     return None
 
 
-# ─── 댓글 ─────────────────────────────────────────────────────────────────────
+# 댓글
 
+# 댓글 목록
 @router.get("/{post_id}/comments", response_model=list[CommentRead])
 async def list_comments(
     post_id: UUID,
@@ -259,6 +267,7 @@ async def list_comments(
     return await _to_comment_reads(repo, await repo.list_comments(post_id))
 
 
+# 댓글 작성
 @router.post("/{post_id}/comments", response_model=CommentRead, status_code=status.HTTP_201_CREATED)
 async def add_comment(
     post_id: UUID,
@@ -273,8 +282,9 @@ async def add_comment(
     return (await _to_comment_reads(repo, [comment]))[0]
 
 
-# ─── 좋아요 ───────────────────────────────────────────────────────────────────
+# 좋아요
 
+# 좋아요 누르기/취소
 @router.post("/{post_id}/like")
 async def toggle_like(
     post_id: UUID,
@@ -288,8 +298,9 @@ async def toggle_like(
     return {"ok": True, "is_liked": is_liked}
 
 
-# ─── 피드백 공개 동의 (대상 고객) ─────────────────────────────────────────────
+# 피드백 공개 동의 (대상 고객)
 
+# 피드백 공개 동의
 @router.post("/{post_id}/consent/grant")
 async def grant_public_consent(
     post_id: UUID,
@@ -302,6 +313,7 @@ async def grant_public_consent(
     return {"ok": True, "post_id": str(post.id), "is_public": post.is_public}
 
 
+# 피드백 공개 동의 철회
 @router.post("/{post_id}/consent/revoke")
 async def revoke_public_consent(
     post_id: UUID,

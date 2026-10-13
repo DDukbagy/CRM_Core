@@ -1,3 +1,4 @@
+# 캘린더 API: 내 캘린더·시간 슬롯·날짜별 휴무, 고객용 예약 가능 시간
 from __future__ import annotations
 
 from datetime import date
@@ -28,7 +29,7 @@ cal_router = APIRouter(prefix="/calendars", tags=["Calendar"])
 HOST_ROLES = {"INSTRUCTOR", "CONTENT_MANAGER", "ADMIN"}
 
 
-# --- Host: My Calendar ---
+# 강사: 내 캘린더
 @cal_router.post("/me", response_model=CalendarRead, status_code=status.HTTP_201_CREATED)
 async def create_my_calendar(
     data: CalendarCreate,
@@ -38,6 +39,7 @@ async def create_my_calendar(
     return await CalendarRepository(session).create(UUID(str(host.id)), data)
 
 
+# 내 캘린더
 @cal_router.get("/me", response_model=CalendarRead)
 async def get_my_calendar(
     session: AsyncSession = Depends(get_session),
@@ -46,6 +48,7 @@ async def get_my_calendar(
     return await CalendarRepository(session).get_by_host(UUID(str(host.id)))
 
 
+# 내 캘린더 수정
 @cal_router.patch("/me", response_model=CalendarRead)
 async def update_my_calendar(
     data: CalendarUpdate,
@@ -55,7 +58,7 @@ async def update_my_calendar(
     return await CalendarRepository(session).update(UUID(str(host.id)), data)
 
 
-# --- Host: TimeSlots CRUD (전역 설정 — 모든 날짜에 적용) ---
+# 강사: 시간 슬롯 (모든 날짜에 적용)
 @cal_router.post("/me/time-slots", response_model=TimeSlotRead, status_code=status.HTTP_201_CREATED)
 async def add_time_slot(
     data: TimeSlotCreate,
@@ -67,6 +70,7 @@ async def add_time_slot(
     return await repo.add_slot(calendar_id, data)
 
 
+# 내 시간 슬롯 목록
 @cal_router.get("/me/time-slots", response_model=list[TimeSlotRead])
 async def list_my_time_slots(
     session: AsyncSession = Depends(get_session),
@@ -101,7 +105,7 @@ async def delete_time_slot(
     return None
 
 
-# --- 날짜별 예외: 임시 휴무일·시간 휴무(CLOSE), 정기 휴무일 열기(OPEN) — 슬롯 자체(is_active)는 바꾸지 않는다 ---
+# 날짜별 예외: 임시 휴무일·시간 휴무(CLOSE), 정기 휴무일 열기(OPEN). 슬롯 자체(is_active)는 바꾸지 않는다
 @cal_router.get("/me/blocks", response_model=list[CalendarBlockRead])
 async def list_my_blocks(
     start: date = Query(..., description="조회 시작일 (YYYY-MM-DD)"),
@@ -116,6 +120,7 @@ async def list_my_blocks(
     return await repo.list_overlapping(calendar_id, start, end)
 
 
+# 특정 날짜 닫기/열기
 @cal_router.post("/me/blocks", response_model=list[CalendarBlockRead], status_code=status.HTTP_201_CREATED)
 async def create_my_blocks(
     data: CalendarBlockCreate,
@@ -127,6 +132,7 @@ async def create_my_blocks(
     return await repo.create_for_date(calendar, data.date, data.time_slot_ids, data.reason, data.kind)
 
 
+# 날짜별 예외 해제
 @cal_router.delete("/me/blocks/{block_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_my_block(
     block_id: int,
@@ -139,7 +145,7 @@ async def delete_my_block(
     return None
 
 
-# --- Public: Host Calendar & Availability ---
+# 공개: 강사 캘린더와 예약 가능 시간
 @cal_router.get("/{host_id}", response_model=CalendarRead)
 async def get_host_calendar(
     host_id: UUID,
@@ -160,6 +166,7 @@ async def get_host_time_slots(
     return await repo.list_slots(calendar.id, order_by_id=False)
 
 
+# 기간 내 날짜별 예약 가능 시간
 @cal_router.get("/{host_id}/availability", response_model=AvailabilityResponse)
 async def get_availability(
     host_id: UUID,

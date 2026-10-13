@@ -1,3 +1,4 @@
+// 내 정보 탭: 강사 프로필, 정기 휴무 요일, 로그아웃
 import { useEffect, useState } from "react";
 import { View, Text, ScrollView, Pressable, TextInput, Alert, StyleSheet, ActivityIndicator, Platform } from "react-native";
 import { appAlert } from "@/lib/alert";

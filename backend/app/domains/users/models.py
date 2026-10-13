@@ -1,3 +1,4 @@
+# 사용자 모델: 역할·상태, 강사·고객 추가 정보
 from datetime import datetime, timezone, date
 from typing import TYPE_CHECKING, Optional, List
 from uuid import UUID
@@ -43,7 +44,7 @@ class User(SQLModel, table=True):
         description="사용자 역할 (CUSTOMER, INSTRUCTOR, CONTENT_MANAGER, ADMIN)",
     )
 
-    # ✅승인/상태
+    # 승인·상태
     status: str = Field(
         default="ACTIVE",
         sa_type=String(20),
@@ -85,7 +86,7 @@ class User(SQLModel, table=True):
         description="강사 소개글",
     )
 
-    # ── 강사 추가 정보 ────────────────────────────
+    # 강사 추가 정보
     career_years: Optional[int] = Field(
         default=None,
         sa_type=SmallInteger,
@@ -100,7 +101,7 @@ class User(SQLModel, table=True):
         description="강사 자격증 (콤마 구분)",
     )
 
-    # ── 고객 추가 정보 ────────────────────────────
+    # 고객 추가 정보
     birth_date: Optional[date] = Field(
         default=None,
         sa_type=Date,
