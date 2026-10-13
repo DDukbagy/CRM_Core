@@ -1,12 +1,13 @@
+# 강사 저장소: 스태프, 강사 신청·승인, 공개 목록, 담당 고객, 통계·매출 대시보드
 from datetime import date, datetime
 from typing import Optional
-from zoneinfo import ZoneInfo
 from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.clock import KST
 from app.core.config import settings
 from app.domains.booking.models import Booking
 from app.domains.calendar.models import Calendar, TimeSlot
@@ -39,8 +40,9 @@ class InstructorRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    # ── 스태프 (콘텐츠 매니저 등 대리 작성자) ─────────────────────────────────
+    # 스태프 (콘텐츠 매니저 등 대리 작성자)
 
+    # 스태프 추가
     async def add_staff(self, instructor_id: UUID, staff_email: str) -> None:
         staff_user = (await self.session.execute(select(User).where(User.email == staff_email))).scalar_one_or_none()
         if not staff_user:
@@ -54,6 +56,7 @@ class InstructorRepository:
             await self.session.rollback()
             raise HTTPException(status_code=409, detail="Staff already assigned")
 
+    # 스태프 제거
     async def remove_staff(self, instructor_id: UUID, staff_user_id: UUID) -> None:
         entry = (
             await self.session.execute(
@@ -67,6 +70,7 @@ class InstructorRepository:
         await self.session.delete(entry)
         await self.session.commit()
 
+    # 내 스태프 목록
     async def list_staff(self, instructor_id: UUID) -> list:
         res = await self.session.execute(
             select(
@@ -82,7 +86,7 @@ class InstructorRepository:
         )
         return list(res)
 
-    # ── 강사 신청·승인 ───────────────────────────────────────────────────────
+    # 강사 신청·승인
 
     async def apply(self, user_id: UUID) -> User:
         """CUSTOMER → INSTRUCTOR(PENDING). 이미 강사면 그대로"""
@@ -101,6 +105,7 @@ class InstructorRepository:
         await self.session.refresh(db_user)
         return db_user
 
+    # 승인 대기 강사 목록
     async def list_pending(self) -> list[User]:
         res = await self.session.execute(
             select(User)
@@ -109,6 +114,7 @@ class InstructorRepository:
         )
         return list(res.scalars().all())
 
+    # 강사 승인 (기본 캘린더 생성)
     async def approve(self, user_id: UUID) -> User:
         if settings.SUPER_ADMIN_USER_ID and str(user_id) == str(settings.SUPER_ADMIN_USER_ID):
             raise HTTPException(status_code=403, detail="Cannot modify super admin")
@@ -125,7 +131,7 @@ class InstructorRepository:
         await self.session.refresh(target)
         return target
 
-    # ── 공개 목록 ────────────────────────────────────────────────────────────
+    # 공개 목록
 
     async def list_public(
         self, location: Optional[str], specialty: Optional[str], name: Optional[str]
@@ -150,8 +156,9 @@ class InstructorRepository:
             result.append((u, specialties))
         return result
 
-    # ── 고객 조회·담당 등록 ──────────────────────────────────────────────────
+    # 고객 조회·담당 등록
 
+    # 전화번호로 고객 찾기
     async def lookup_customer_by_phone(self, phone: str) -> tuple[User, Optional[str]]:
         customer = (
             await self.session.execute(
@@ -182,7 +189,7 @@ class InstructorRepository:
         self.session.add(customer)
         await self.session.commit()
 
-    # ── 통계 ─────────────────────────────────────────────────────────────────
+    # 통계
 
     async def _status_counts(self, *where) -> dict[str, int]:
         res = await self.session.execute(
@@ -202,6 +209,7 @@ class InstructorRepository:
         ).scalar_one()
         return {"customer_count": customer_count, **_attendance(await self._status_counts(User.manager_id == instructor_id))}
 
+    # 담당 고객 한 명의 예약 집계·출석률
     async def customer_stats(self, instructor_id: UUID, customer_id: UUID) -> dict:
         customer = (
             await self.session.execute(
@@ -215,11 +223,11 @@ class InstructorRepository:
         counts = await self._status_counts(Booking.guest_id == customer_id)
         return {"customer_id": str(customer_id), "customer_name": customer.display_name, **_attendance(counts)}
 
-    # ── 매출·운영 대시보드 (강사 웹에서 보고, 앱에서 확인) ─────────────────────
+    # 매출·운영 대시보드 (강사 웹에서 보고, 앱에서 확인)
 
     async def dashboard(self, instructor_id: UUID, months: int = 6) -> dict:
         """최근 N개월 월별 매출, 결제수단·수강권별 합계, 고객·수강권 현황. 월 구분은 한국 시간"""
-        kst = ZoneInfo("Asia/Seoul")
+        kst = KST
         now = datetime.now(kst)
         keys: list[str] = []
         y, m = now.year, now.month

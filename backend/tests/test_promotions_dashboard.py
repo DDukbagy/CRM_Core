@@ -1,15 +1,17 @@
 """강사 프로모션(웹 관리·고객 표시)과 매출 대시보드"""
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import text
 
+from app.core import clock
+from app.core.clock import today_kst
 from tests.conftest import insert_user
 
 pytestmark = pytest.mark.asyncio
-TODAY = date.today()
+TODAY = today_kst()
 
 
 async def _setup(db, people):
@@ -72,3 +74,23 @@ async def test_dashboard_aggregates(actor, db_conn_and_sessionmaker):
     # 다른 강사는 0, 고객은 볼 수 없음
     assert (await act("rival").get("/instructors/me/dashboard")).json()["this_month"] == 0
     assert (await act("cust").get("/instructors/me/dashboard")).status_code == 403
+
+
+async def test_today_is_korean_date(actor, db_conn_and_sessionmaker, monkeypatch):
+    """서버(UTC)가 아직 전날이어도 한국 날짜로 오늘 시작한 프로모션은 진행 중 (00~09시 누락 방지)"""
+    act, people = actor
+    type_id = await _setup(db_conn_and_sessionmaker, people)
+
+    class FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # UTC 10-06 15:30 = 한국 10-07 00:30
+            return datetime(2026, 10, 6, 15, 30, tzinfo=timezone.utc).astimezone(tz)
+
+    monkeypatch.setattr(clock, "datetime", FakeDatetime)
+    assert today_kst() == date(2026, 10, 7)
+    body = {"title": "자정 할인", "pass_type_id": type_id, "discount_type": "PERCENT", "discount_value": 10,
+            "start_date": "2026-10-07", "end_date": "2026-10-31"}
+    created = (await act("inst").post("/promotions", json=body)).json()
+    assert created["status"] == "ONGOING"
+    shown = (await act("cust").get(f"/promotions/instructor/{people['inst'][0]}")).json()
+    assert [p["title"] for p in shown] == ["자정 할인"]
