@@ -51,14 +51,6 @@
 > - 브라우저 버전에서는 사진 스캔 → PDF, 푸시 알림이 동작하지 않습니다.
 > - 배포 구성: 백엔드 Render · 웹·앱 Vercel · DB·인증 Supabase ([`docs/operations/demo-deploy.md`](docs/operations/demo-deploy.md))
 
----|---|---|
-| 관리자·강사 웹 | 준비 중 | 강사 · 관리자 |
-| 고객 앱 (브라우저) | 준비 중 | 고객 |
-| 강사 앱 (브라우저) | 준비 중 | 강사 |
-
-> 무료 호스팅이라 첫 접속은 30초~1분 걸릴 수 있습니다. 브라우저 버전에서는 사진 스캔 → PDF, 푸시 알림이 동작하지 않습니다.
-> 배포 방법: [`docs/operations/demo-deploy.md`](docs/operations/demo-deploy.md)
-
 ---
 
 ## 📱 앱 소개
