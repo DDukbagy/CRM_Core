@@ -12,7 +12,7 @@ from sqlmodel import Field, SQLModel, func
 
 class Promotion(SQLModel, table=True):
     """
-    강사의 할인·이벤트 프로모션 (프로토타입, 2026-10-04)
+    강사의 할인·이벤트 프로모션 (프로토타입)
     - 강사 웹에서 만들고 수정, 강사 앱은 확인만, 고객 앱 수강권 탭에 표시
     - 결제 연동 전이라 실제 가격 할인은 적용하지 않고 안내만 한다
     - pass_type_id 를 지정하면 그 수강권 상품의 할인 (없으면 강사 전체 이벤트)

@@ -1,4 +1,4 @@
-// 고객 상세: 정보, 예약 통계, 발급한 수강권
+// 고객 상세: 고객 정보, 발급한 수강권
 import { useEffect, useState } from "react";
 import { View, Text, ScrollView, StyleSheet } from "react-native";
 import { useLocalSearchParams } from "expo-router";

@@ -1,4 +1,4 @@
-// 고객 탭: 담당 고객 목록, 전화번호·이메일로 등록
+// 고객 탭: 담당 고객 목록·검색, 이메일로 등록
 import { useEffect, useState, useCallback } from "react";
 import { View, Text, ScrollView, Pressable, TextInput, RefreshControl, StyleSheet, Modal, ActivityIndicator } from "react-native";
 import { appAlert } from "@/lib/alert";

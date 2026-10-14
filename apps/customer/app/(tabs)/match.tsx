@@ -153,7 +153,7 @@ export default function MatchScreen() {
   );
 }
 
-// 숨고식 단계별 매칭
+// 단계별 매칭 (목적 → 지역 → 추천 강사)
 function WizardFlow({
   step, purpose, location, results, totalCount, me,
   onSelectPurpose, onSelectLocation, onBack, onReset, onSelect,

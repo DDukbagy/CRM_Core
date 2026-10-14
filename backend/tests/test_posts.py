@@ -78,7 +78,7 @@ async def test_instructor_creates_public_types(instructor_client, post_type: str
 
 @pytest.mark.asyncio
 async def test_feedback_posts_moved_to_lesson_notes(instructor_client, managed_customer_id: uuid.UUID):
-    """피드백은 레슨 노트로 통합 (2026-10-04) — 게시물로는 만들 수 없다"""
+    """피드백은 레슨노트로 쓴다 — 게시물로는 만들 수 없다"""
     r = await instructor_client.post(
         "/posts", json={"type": "FEEDBACK", "title": "fb", "customer_id": str(managed_customer_id)}
     )
