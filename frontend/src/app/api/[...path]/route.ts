@@ -93,8 +93,11 @@ async function proxyToUpstream(req: NextRequest, pathParts: string[]) {
 
     // 응답 그대로
     const resHeaders = new Headers(upstreamRes.headers);
-    // fetch가 자동으로 디코드한 경우 헤더 불일치 방지
+    // fetch 가 압축(gzip·br)을 풀어서 받으므로 압축 관련 헤더를 지운다.
+    // content-length 는 압축된 크기라 남겨 두면 브라우저가 본문을 그 길이에서 잘라 JSON 이 깨진다 (Render 등 압축하는 환경)
     resHeaders.delete("content-encoding");
+    resHeaders.delete("content-length");
+    resHeaders.delete("transfer-encoding");
 
     return new NextResponse(upstreamRes.body, {
       status: upstreamRes.status,
