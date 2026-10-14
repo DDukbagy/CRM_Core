@@ -33,8 +33,25 @@
 
 ## 👀 데모
 
-| 클라이언트 | 링크 | 데모 계정 |
+| 클라이언트 | 링크 | 로그인 계정 |
 |---|---|---|
+| 관리자·강사 웹 | [crm-core-demo-web.vercel.app](https://crm-core-demo-web.vercel.app) | `instructor@test.com` (강사) · `admin@test.com` (관리자) |
+| 고객 앱 (브라우저) | [crm-core-demo-customer.vercel.app](https://crm-core-demo-customer.vercel.app) | `customer1@test.com` · `customer2@test.com` |
+| 강사 앱 (브라우저) | [crm-core-demo-instructor.vercel.app](https://crm-core-demo-instructor.vercel.app) | `instructor@test.com` |
+
+모든 데모 계정의 비밀번호는 `password` 입니다.
+
+**둘러보기 추천 순서**
+1. 고객 앱 `customer1` → 수강권 탭(진행 중 할인) · 레슨노트 · 채팅 · 달력에서 예약 신청
+2. 강사 앱 또는 웹 `instructor` → 대시보드에서 방금 신청한 예약 확정 · 레슨노트 작성
+3. 웹 `instructor` → 매출 분석 · 프로모션 만들기 → 고객 앱 수강권 탭에서 확인
+
+> - 데모 전용 DB 입니다. 누구나 같은 계정으로 들어오므로 데이터가 바뀌어 있을 수 있습니다.
+> - 무료 호스팅이라 첫 접속은 30초~1분 걸릴 수 있습니다.
+> - 브라우저 버전에서는 사진 스캔 → PDF, 푸시 알림이 동작하지 않습니다.
+> - 배포 구성: 백엔드 Render · 웹·앱 Vercel · DB·인증 Supabase ([`docs/operations/demo-deploy.md`](docs/operations/demo-deploy.md))
+
+---|---|---|
 | 관리자·강사 웹 | 준비 중 | 강사 · 관리자 |
 | 고객 앱 (브라우저) | 준비 중 | 고객 |
 | 강사 앱 (브라우저) | 준비 중 | 강사 |
