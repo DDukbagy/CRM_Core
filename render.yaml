@@ -1,0 +1,32 @@
+# 데모 백엔드 (Render Blueprint). 운영 배포는 AWS Copilot(backend/copilot) 이고, 이 파일은 포트폴리오 데모 전용
+# 절차: docs/operations/demo-deploy.md. 값이 필요한 변수(sync: false)는 Render 대시보드에서 직접 입력한다
+services:
+  - type: web
+    name: crm-core-demo-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /health
+    branch: staging
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - backend/**
+    envVars:
+      - key: DATABASE_URL           # 데모 Supabase Session pooler 주소
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: SUPER_ADMIN_EMAIL      # 데모 관리자 계정 이메일
+        sync: false
+      - key: CORS_ALLOW_ORIGINS     # 데모 고객 앱·강사 앱 주소 (쉼표로 구분)
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: demo
