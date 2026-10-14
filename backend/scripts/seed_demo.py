@@ -14,9 +14,11 @@
   DEMO_CUSTOMER2_EMAIL   (선택) 두 번째 고객
 
 실행: cd backend && poetry run python scripts/seed_demo.py
+중간에 실패하면 다시 실행한다. 이미 만든 단계는 건너뛴다.
 """
 import os
 import sys
+import time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -41,9 +43,16 @@ tok: dict[str, str] = {}
 
 
 def call(who: str, method: str, path: str, **kw):
-    r = http.request(method, API + path, headers={"Authorization": f"Bearer {tok[who]}"}, **kw)
+    # 502·503·504 는 무료 호스팅이 잠들었다 깨거나 재시작하는 중일 때 난다 → 기다렸다가 다시 시도
+    for attempt in range(5):
+        r = http.request(method, API + path, headers={"Authorization": f"Bearer {tok[who]}"}, **kw)
+        if r.status_code not in (502, 503, 504):
+            break
+        print(f"  서버 응답 없음({r.status_code}), {10 * (attempt + 1)}초 뒤 다시 시도…")
+        time.sleep(10 * (attempt + 1))
     if r.status_code >= 400:
-        sys.exit(f"실패: {method} {path} → {r.status_code} {r.text[:200]}")
+        body = r.text[:200] if "json" in r.headers.get("content-type", "") else f"(본문 {len(r.content)}바이트, HTML)"
+        sys.exit(f"실패: {method} {path} → {r.status_code} {body}\n다시 실행하면 이미 만든 것은 건너뛰고 이어서 진행합니다")
     return r.json() if r.content else None
 
 
@@ -69,56 +78,75 @@ def main() -> None:
     if me["inst"]["role"] != "INSTRUCTOR" or me["inst"]["status"] != "ACTIVE":
         call("inst", "POST", "/instructors/apply")
         call("admin", "POST", f"/instructors/{ids['inst']}/approve")
-    if call("inst", "GET", "/passes/types"):
-        sys.exit("이미 데모 데이터가 있습니다. 다시 넣으려면 데모 DB 를 비우고 실행하세요")
+    done: list[str] = []
 
-    for who, name in NAMES.items():
-        if who in ids:
-            call("admin", "PATCH", f"/users/{ids[who]}", json={"display_name": name})
-    call("inst", "PATCH", "/users/me", json={
-        "instructor_location": "서울 강남", "instructor_specialties": "드라이버,숏게임,초보",
-        "instructor_bio": "10년차 KPGA 프로. 초보부터 싱글까지 체계적으로 지도합니다.",
-        "career_years": 10, "certifications": "KPGA 정회원", "recurring_off_days": [0],
-    })
+    def step(name: str, exists: bool) -> bool:
+        """이미 있으면 건너뛰고 False"""
+        print(f"- {name}: {'이미 있음, 건너뜀' if exists else '만드는 중'}")
+        if not exists:
+            done.append(name)
+        return not exists
 
-    # 담당 고객, 수강권, 결제
+    if step("이름·강사 프로필", me["inst"].get("instructor_bio") is not None):
+        for who, name in NAMES.items():
+            if who in ids:
+                call("admin", "PATCH", f"/users/{ids[who]}", json={"display_name": name})
+        call("inst", "PATCH", "/users/me", json={
+            "instructor_location": "서울 강남", "instructor_specialties": "드라이버,숏게임,초보",
+            "instructor_bio": "10년차 KPGA 프로. 초보부터 싱글까지 체계적으로 지도합니다.",
+            "career_years": 10, "certifications": "KPGA 정회원", "recurring_off_days": [0],
+        })
+
     customers = [w for w in ("cust", "cust2") if w in ids]
+    managed = {u["id"] for u in call("inst", "GET", "/users", params={"limit": 200})["items"]} if customers else set()
     for c in customers:
-        call("inst", "POST", "/users/me/customers", json={"email": EMAILS[c]})
-    t10 = call("inst", "POST", "/passes/types", json={"name": "10회권", "duration_hours": 1, "session_count": 10, "price": 500000})
-    call("inst", "POST", "/passes/types", json={"name": "20회권", "duration_hours": 1, "session_count": 20, "price": 900000})
-    cp = call("inst", "POST", "/passes/assign", json={"customer_id": ids["cust"], "pass_type_id": t10["id"]})
-    call("inst", "POST", "/payments", json={"customer_id": ids["cust"], "customer_pass_id": cp["id"], "amount": 500000, "method": "TRANSFER"})
-    if "cust2" in ids:
-        cp2 = call("inst", "POST", "/passes/assign", json={"customer_id": ids["cust2"], "pass_type_id": t10["id"]})
-        call("inst", "POST", "/payments", json={"customer_id": ids["cust2"], "customer_pass_id": cp2["id"], "amount": 500000, "method": "CASH"})
+        if step(f"담당 고객 등록({NAMES[c]})", ids[c] in managed):
+            call("inst", "POST", "/users/me/customers", json={"email": EMAILS[c]})
+
+    types = {t["name"]: t for t in call("inst", "GET", "/passes/types")}
+    if step("수강권 상품", "10회권" in types):
+        types["10회권"] = call("inst", "POST", "/passes/types", json={"name": "10회권", "duration_hours": 1, "session_count": 10, "price": 500000})
+        types["20회권"] = call("inst", "POST", "/passes/types", json={"name": "20회권", "duration_hours": 1, "session_count": 20, "price": 900000})
+    t10 = types["10회권"]
+
+    for c, method in (("cust", "TRANSFER"), ("cust2", "CASH")):
+        if c not in ids:
+            continue
+        has_pass = bool(call("inst", "GET", "/passes/customer-passes", params={"customer_id": ids[c]}))
+        if step(f"수강권 발급·결제({NAMES[c]})", has_pass):
+            cp = call("inst", "POST", "/passes/assign", json={"customer_id": ids[c], "pass_type_id": t10["id"]})
+            call("inst", "POST", "/payments", json={"customer_id": ids[c], "customer_pass_id": cp["id"], "amount": 500000, "method": method})
 
     # 예약: 내일 이후 영업일 2개 (하나는 확정, 하나는 신청 중)
-    inst_cal = call("inst", "GET", "/calendars/me")
-    avail = call("cust", "GET", f"/calendars/{ids['inst']}/availability",
-                 params={"start": str(TODAY + timedelta(days=1)), "end": str(TODAY + timedelta(days=14))})
-    open_days = [d for d in avail["days"] if d["slots"]]
-    booked = 0
-    for d in open_days[:2]:
-        slot = d["slots"][len(d["slots"]) // 2]
-        b = call("cust", "POST", "/bookings", json={"time_slot_id": slot["time_slot_id"], "when": d["date"], "topic": "드라이버 스윙"})
-        if booked == 0:
-            call("inst", "PATCH", f"/calendars/me/bookings/{b['id']}/confirm", json={"topic": "드라이버 스윙 교정"})
-        booked += 1
+    start, end = TODAY + timedelta(days=1), TODAY + timedelta(days=14)
+    window = {"start": str(start), "end": str(end)}
+    if step("예약 2건", bool(call("cust", "GET", "/bookings/me"))):
+        avail = call("cust", "GET", f"/calendars/{ids['inst']}/availability", params=window)
+        for i, d in enumerate([d for d in avail["days"] if d["slots"]][:2]):
+            slot = d["slots"][len(d["slots"]) // 2]
+            b = call("cust", "POST", "/bookings", json={"time_slot_id": slot["time_slot_id"], "when": d["date"], "topic": "드라이버 스윙"})
+            if i == 0:
+                call("inst", "PATCH", f"/calendars/me/bookings/{b['id']}/confirm", json={"topic": "드라이버 스윙 교정"})
 
-    # 레슨노트, 게시물, 프로모션, 채팅
-    call("inst", "POST", "/lesson-notes", json={"customer_id": ids["cust"], "title": "1회차 레슨",
-         "content": "어드레스 자세와 그립을 점검했습니다. 다음 시간에는 백스윙 궤도를 연습합니다."})
-    call("inst", "POST", "/posts", json={"type": "PROMOTION", "title": "가을 시즌 레슨 오픈",
-         "content": "10월 평일 오전 레슨 자리가 남아 있습니다. 문의하기로 편하게 연락 주세요."})
-    call("inst", "POST", "/promotions", json={"title": "가을맞이 10회권 할인", "description": "10월 한 달 10회권 10% 할인",
-         "pass_type_id": t10["id"], "discount_type": "PERCENT", "discount_value": 10,
-         "start_date": str(TODAY), "end_date": str(TODAY + timedelta(days=30))})
-    room = call("cust", "POST", "/chat/rooms", json={"instructor_id": ids["inst"]})
-    call("cust", "POST", f"/chat/rooms/{room['id']}/messages", json={"content": "안녕하세요, 주말 레슨도 가능한가요?"})
-    call("inst", "POST", f"/chat/rooms/{room['id']}/messages", json={"content": "네, 토요일 오전 가능합니다. 달력에서 신청해 주세요!"})
+    if step("레슨노트", bool(call("inst", "GET", "/lesson-notes"))):
+        call("inst", "POST", "/lesson-notes", json={"customer_id": ids["cust"], "title": "1회차 레슨",
+             "content": "어드레스 자세와 그립을 점검했습니다. 다음 시간에는 백스윙 궤도를 연습합니다."})
 
-    print(f"완료: 강사 1명, 고객 {len(customers)}명, 수강권·결제, 예약 {booked}건, 레슨노트, 게시물, 프로모션, 채팅 (캘린더 {inst_cal['id']})")
+    if step("홍보 게시물", bool(call("inst", "GET", "/posts/me"))):
+        call("inst", "POST", "/posts", json={"type": "PROMOTION", "title": "가을 시즌 레슨 오픈",
+             "content": "10월 평일 오전 레슨 자리가 남아 있습니다. 문의하기로 편하게 연락 주세요."})
+
+    if step("프로모션", bool(call("inst", "GET", "/promotions/me"))):
+        call("inst", "POST", "/promotions", json={"title": "가을맞이 10회권 할인", "description": "10월 한 달 10회권 10% 할인",
+             "pass_type_id": t10["id"], "discount_type": "PERCENT", "discount_value": 10,
+             "start_date": str(TODAY), "end_date": str(TODAY + timedelta(days=30))})
+
+    room = call("cust", "POST", "/chat/rooms", json={"instructor_id": ids["inst"]})  # 이미 있으면 그 방
+    if step("채팅", bool(call("cust", "GET", f"/chat/rooms/{room['id']}/messages"))):
+        call("cust", "POST", f"/chat/rooms/{room['id']}/messages", json={"content": "안녕하세요, 주말 레슨도 가능한가요?"})
+        call("inst", "POST", f"/chat/rooms/{room['id']}/messages", json={"content": "네, 토요일 오전 가능합니다. 달력에서 신청해 주세요!"})
+
+    print(f"완료: 이번에 만든 것 {len(done)}개" + (f" ({', '.join(done)})" if done else " (모두 이미 있음)"))
 
 
 if __name__ == "__main__":
