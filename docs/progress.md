@@ -112,7 +112,7 @@
 ## 6. 해야 할 것
 
 1. **§4 테스트** (사용자) — 결과에 따라 결함 수정
-2. **데모 배포** (배포 완료, README 데모 표에 링크·계정): 남은 것 — 상세 화면 주소 404 수정 반영 확인. [operations/demo-deploy.md](operations/demo-deploy.md) — Supabase 데모 프로젝트 → 마이그레이션 → Render → Vercel 3개 → CORS → `scripts/seed_demo.py`. 링크는 README "데모" 표에
+2. **데모 배포** ✅ 완료 (2026-10-14): 웹·고객 앱·강사 앱 Vercel, 백엔드 Render, 데모 전용 Supabase. 링크·계정은 README "데모" 표. 설정 체크리스트·문제 해결은 [operations/demo-deploy.md](operations/demo-deploy.md)
 3. **실기기 터널 정리**: `make ctunnel`·`itunnel` 이 아직 예전 위치 `apps/.env` 에서 `NGROK_AUTHTOKEN` 을 읽음 → 각 앱 폴더로 맞출지 결정
 4. **관리자 웹**: 강사 관리(승인 포함, 운영 방식 결정 후)·회원 관리(탈퇴 처리 버튼)·시스템·통계
 5. **프로모션·매출 분석 고도화**(프로토타입 → 정식): 결제 연동 시 할인 실제 적용, 기간·대상 확장 여부
@@ -167,5 +167,6 @@
 - **`users` 본인 행 읽기 정책**: 개발 DB 에는 대시보드에서 수동으로 만들어져 있었고 마이그레이션에 없었다 → `z1a2b3c4d5e6` 추가 (Supabase 일 때만, SELECT 정책이 이미 있으면 건너뜀). 원격 개발 DB 에는 아직 미적용 (적용해도 수동 정책이 있어 변화 없음)
 - **Supabase 무료 프로젝트는 7일 미사용 시 일시 중지**: 2026-10-14 개발 DB 연결 실패(tenant not found) → 대시보드에서 Restore
 - **프록시는 압축을 푼 본문을 넘긴다**: `content-encoding`·`content-length` 를 같이 지워야 한다. 로컬(압축 없음)에서는 재현되지 않으므로 배포 환경에서 웹 로그인으로 확인
+- **Vercel 프로젝트마다 Production 브랜치가 따로다**: 웹이 `main` 추적 상태라 merge 가 데모에 안 올라감(2026-10-14). 세 프로젝트 모두 Branch Tracking = `staging`
 - **DB 연결 방식**: `NullPool` 로 되돌리지 않는다(요청마다 연결 약 0.9초). 끊김 오류가 나면 `pool_pre_ping=True` 로 대응
 - env 파일은 열람·검색·출력 금지(CLAUDE.md §4). 원격 확인은 결과만 보고

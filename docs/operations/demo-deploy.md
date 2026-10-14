@@ -113,6 +113,21 @@ poetry run python scripts/seed_demo.py
 - [ ] 강사 앱: 로그인 → 대시보드·고객·스케줄·매출 → 운영 현황
 - [ ] 브라우저 개발자 도구에 CORS 오류 없음
 
+## 재발 방지: 꼭 맞춰 둘 설정
+
+Vercel 세 프로젝트는 같은 저장소를 쓰지만 설정은 **프로젝트마다 따로**다. 만든 시점에 따라 기본값이 엇갈릴 수 있다.
+
+| 서비스 | 설정 | 위치 | 값 |
+|---|---|---|---|
+| Vercel (3개 모두) | **Production 브랜치** | Settings → Environments → Production → Branch Tracking | `staging` |
+| Vercel | Root Directory | Settings → Build and Deployment | `frontend` / `apps/customer` / `apps/instructor` |
+| Vercel | 환경변수 범위 | Settings → Environment Variables | Production and Preview |
+| Vercel | Ignored Build Step | Settings → Git | 비어 있음 (Automatic) |
+| Render | Branch · Auto-Deploy | 서비스 Settings | `staging` · On (`render.yaml`) |
+
+**merge 후 확인**: Vercel 세 프로젝트의 Deployments 맨 위 **Production** 배포 커밋이 staging 최신 커밋과 같은지 본다.
+`staging` 으로 만든 배포가 **Preview** 로 표시되면 그 프로젝트의 Branch Tracking 이 `staging` 이 아니라는 뜻이다 → 고치고 그 배포를 **Promote to Production**.
+
 ## 문제가 생기면
 
 | 증상 | 원인·해결 |
@@ -122,3 +137,5 @@ poetry run python scripts/seed_demo.py
 | 앱에서 `Failed to fetch` | `CORS_ALLOW_ORIGINS` 에 앱 주소가 정확한지 (끝 `/` 없이) |
 | 웹 로그인 후 다시 로그인 화면 (`ROLE_UNAVAILABLE`) | 마이그레이션이 head(`z1a2b3c4d5e6`)까지 안 됨 → 2단계 다시 |
 | 상세 화면 새로고침 시 404 | `vercel.json` 의 rewrites 확인 |
+| merge 했는데 데모가 옛 버전 | 그 프로젝트의 Branch Tracking 이 `main` 등으로 되어 있음 → `staging` 으로 바꾸고 최신 배포를 Promote |
+| 웹 로그인 후 "일반 회원은 접속할 수 없습니다" | 웹이 옛 배포(압축 응답 잘림 수정 전, `91bf506` 이전)에 머물러 있음 → 위 항목 |
