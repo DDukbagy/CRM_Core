@@ -11,7 +11,7 @@ iOS·Android·Web(브라우저) 모두 지원합니다.
 ```bash
 cd apps/customer
 npm install
-npx expo start
+npx expo start      # 또는 저장소 루트에서 make cweb (브라우저)
 ```
 
 터미널 출력에서 플랫폼을 선택합니다.
@@ -42,7 +42,7 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 | 프레임워크 | Expo SDK · React Native |
 | 라우팅 | Expo Router (파일 기반) |
 | 인증 | Supabase Auth (signInWithPassword) |
-| 세션 유지 | AsyncStorage |
+| 세션 유지 | AsyncStorage (웹은 브라우저 저장소) |
 | API | 공통 `lib/api.ts` (Supabase 세션 토큰 자동 첨부) |
 | 에러 트래킹 | Sentry (`@sentry/react-native`) |
 
@@ -52,10 +52,10 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 
 ```
 app/
-├── (auth)/          # 로그인·회원가입 (인증 없이 접근 가능)
+├── (auth)/          # 로그인 (인증 없이 접근 가능)
 │   └── login.tsx
 ├── (tabs)/          # 메인 탭 (인증 필요)
-│   ├── index.tsx    # 홈 (오늘 예약)
+│   ├── index.tsx    # 홈 (오늘·이번 주·이번 달 예약, 알림)
 │   ├── schedule.tsx # 스케줄 (강사 슬롯 + 예약 신청)
 │   ├── bookings.tsx # 내 예약 목록 + 취소/철회
 │   ├── match.tsx    # 강사 찾기 → 프로필 → 문의하기(채팅)
@@ -63,12 +63,18 @@ app/
 │   ├── notes.tsx    # 레슨노트 (강사가 쓴 글·PDF)
 │   ├── chat.tsx     # 강사 채팅 (모임 채팅 준비 중)
 │   ├── passes.tsx   # 수강권 현황 · 담당 강사 상품 · 진행 중 프로모션
-│   └── profile.tsx  # 내 정보·로그아웃
+│   ├── store.tsx    # 스토어 (준비 중)
+│   └── profile.tsx  # 내 정보 · 로그아웃 · 회원 탈퇴
+├── booking/[id].tsx # 예약 상세
+├── edit-profile.tsx # 정보 수정 (피드백 공개 동의)
 └── _layout.tsx      # 인증 상태 → 라우팅 제어
 
 lib/
 ├── supabase.ts      # Supabase 클라이언트 (AsyncStorage 세션)
-└── api.ts           # API 클라이언트 (토큰 자동 첨부)
+├── api.ts           # API 클라이언트 (토큰 자동 첨부)
+├── config.ts        # 환경 설정 (EXPO_PUBLIC_ 변수)
+├── alert.ts         # 알림·확인창 (폰 Alert, 웹 브라우저 창)
+└── bookingUtils.ts  # 예약·달력 공통 유틸 (강사 앱과 동일)
 
 types/
 └── api.ts           # API 응답 타입 정의
