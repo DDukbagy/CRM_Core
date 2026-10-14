@@ -6,6 +6,6 @@
   "outputDirectory": "dist",
   "cleanUrls": true,
   "rewrites": [
-    { "source": "/booking/:id", "destination": "/booking/[id].html" }
+    { "source": "/booking/:id", "destination": "/booking/%5Bid%5D" }
   ]
 }
