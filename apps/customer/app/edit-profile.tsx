@@ -220,7 +220,7 @@ export default function EditProfileScreen() {
             style={[s.input, { height: 72, textAlignVertical: "top" }]}
           />
 
-          {/* 피드백 공개 동의 (2026-03 화면 개편 때 빠졌던 기능 복원) */}
+          {/* 피드백 공개 동의 */}
           <View style={s.consentRow}>
             <View style={{ flex: 1 }}>
               <Text style={s.label}>피드백 게시물 공개 동의</Text>

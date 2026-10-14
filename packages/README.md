@@ -10,7 +10,7 @@ packages/
 
 ## api
 
-`frontend`와 `apps/customer`가 공통으로 사용하는 API 클라이언트 유틸리티를 담을 예정입니다.
+웹(`frontend`)과 두 앱(`apps/customer`, `apps/instructor`)이 공통으로 사용하는 API 클라이언트 유틸리티를 담을 예정입니다.
 
 - 엔드포인트 정의
 - 요청/응답 타입
@@ -21,6 +21,6 @@ packages/
 
 ## ui
 
-`frontend`와 `apps/customer`가 공유하는 디자인 시스템 컴포넌트를 담을 예정입니다.
+웹과 두 앱이 공유하는 디자인 시스템 컴포넌트를 담을 예정입니다.
 
 현재는 각 앱 내부에서 독립적으로 관리합니다.

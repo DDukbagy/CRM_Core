@@ -1,4 +1,4 @@
-// 홈 탭: 담당 강사, 다가오는 예약, 알림
+// 홈 탭: 오늘·이번 주·이번 달 예약, 알림
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,

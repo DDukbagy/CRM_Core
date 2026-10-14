@@ -277,7 +277,7 @@ async def test_withdraw_keeps_contract_records(actor, db_conn_and_sessionmaker):
 
 
 async def test_feedback_consent_can_be_changed_by_customer(actor, db_conn_and_sessionmaker):
-    """고객 프로필 수정의 '피드백 게시물 공개 동의' (2026-03 빠졌던 필드 복원)"""
+    """고객 프로필 수정의 '피드백 게시물 공개 동의'"""
     act, people = actor
     await _people(db_conn_and_sessionmaker, people)
     r = await act("free").patch("/users/me", json={"feedback_consent": False})

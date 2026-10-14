@@ -38,23 +38,22 @@ make apiverify   # 로컬 DB → 서버 → 토큰 → 플로우까지 원클릭
 
 ## 로컬 개발 환경 설정
 
-**요구사항**: Python 3.11, Poetry, PostgreSQL 16
+**요구사항**: Python 3.11, Poetry, Docker (테스트용 로컬 Postgres 컨테이너)
 
 ```bash
 # 의존성 설치
 cd backend
 poetry install
 
-# 환경변수 설정 (.env.example 참고)
+# 환경변수 설정 (.env.example 참고, 변수 설명은 docs/operations/env-setup.md)
 cp .env.example .env
 # DATABASE_URL, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_JWT_SECRET, SECRET_KEY 필수 설정
 
-# DB 마이그레이션
-poetry run alembic upgrade head
-
-# 서버 실행
-poetry run uvicorn app.main:app --reload
+# 서버 실행 (저장소 루트에서)
+make api
 ```
+
+> `backend/.env` 의 DB 는 원격 Supabase 입니다. 원격에 `alembic upgrade` 는 **승인 후에만** 실행합니다. 모델과 원격 DB 차이는 `make migcheck`(읽기 전용)로 확인합니다.
 
 ---
 
@@ -102,7 +101,7 @@ poetry run alembic history --verbose
 ```
 
 > **규칙**: 이미 공유/배포된 revision은 절대 수정하지 않는다.
-> 자세한 내용은 루트 `CLAUDE.md` 섹션 10 참고.
+> 자세한 내용은 루트 `CLAUDE.md` 섹션 9 참고.
 
 ---
 
@@ -110,15 +109,19 @@ poetry run alembic history --verbose
 
 | 테스트 | 검증 내용 |
 |--------|-----------|
-| `tests/test_bookings.py` | 예약 생성 · 중복 예약 정책 (취소된 예약은 중복 판정에서 제외) |
-| `tests/test_consent_policy.py` | 게시물 · 미디어 동의 정책 |
+| `test_auth.py` · `test_password_login.py` | 토큰 검증·폴백, 최초 로그인 생성, 역할 확인, 비밀번호 로그인 |
+| `test_users.py` · `test_users_api.py` | 내 정보, 역할별 목록, 계정 관리, 결제·계약 기록 보존, 탈퇴 |
+| `test_instructor.py` | 스태프, 강사 신청·승인, 공개 목록, 담당 고객 등록 |
+| `test_calendar.py` · `test_booking_flow.py` · `test_bookings.py` | 슬롯, 휴무, 예약 상태 전환, 중복 방지, 수강권 차감 |
+| `test_passes.py` · `test_payment.py` | 수강권 발급·사용, 결제 등록 권한·수강권 연결 |
+| `test_lesson_notes.py` · `test_posts.py` · `test_consent_policy.py` | 레슨노트, 게시물·댓글·좋아요, 피드백 공개 동의 |
+| `test_chat.py` · `test_inquiry.py` · `test_match_request.py` | 채팅, 문의하기 → 담당 강사 지정, 매칭 요청 |
+| `test_promotions_dashboard.py` | 프로모션, 매출 대시보드, 한국 날짜 기준 |
 
 ```bash
-# 전체 테스트
-poetry run pytest
-
-# 특정 파일
-poetry run pytest tests/test_bookings.py -v
+# 저장소 루트에서 (로컬 DB 컨테이너, 원격 DB 연결 없음)
+make apitest
+make apitest ARGS="-k booking"   # 일부만
 ```
 
 테스트는 outer transaction + savepoint 방식으로 격리됩니다.

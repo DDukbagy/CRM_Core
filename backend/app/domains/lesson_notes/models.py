@@ -12,7 +12,7 @@ from pydantic import AwareDatetime
 
 class LessonNote(SQLModel, table=True):
     """
-    강사가 고객에게 남기는 레슨 노트 (피드백 게시물을 여기로 통합, 2026-10-04)
+    강사가 고객에게 남기는 레슨 노트 (피드백도 여기에 쓴다)
     - 고객별로 자유롭게 작성. 특정 예약(레슨)에 연결하는 것은 선택 (예약당 최대 1개)
     - 앱에서 쓴 글(content) 또는 수기 노트를 스캔한 PDF(file_key) 중 하나 이상
     - is_shared=True 이면 고객이 레슨노트 탭에서 볼 수 있음

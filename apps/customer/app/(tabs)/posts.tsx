@@ -271,7 +271,7 @@ function PostCard({ post }: { post: InstructorPostRead }) {
         <MediaCarousel items={post.media_items} />
       )}
 
-      {/* 좋아요 (2026-03 화면 개편 때 빠졌던 기능 복원) */}
+      {/* 좋아요 */}
       <LikeButton post={post} />
 
       {/* 댓글 */}
