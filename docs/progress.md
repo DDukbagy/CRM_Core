@@ -30,19 +30,19 @@
 
 ---
 
-## 2. 현재 상태 (2026-10-04)
+## 2. 현재 상태 (2026-10-14)
 
 | 영역 | 상태 |
 |---|---|
 | 백엔드 | 13개 도메인(auth, booking, calendar, chat, instructor, lesson_notes, matching, notifications, passes, payment, posts, promotions, users) 모두 `models/schemas/repository/router`. router 는 요청·권한·응답만, 규칙은 repository |
-| 테스트 | pytest **182개** 통과, `make check`(백엔드·웹·두 앱) 통과. 로컬 Postgres 컨테이너, 원격 DB 미사용 |
-| 원격 DB (Supabase) | head **`y0z1a2b3c4d5`**, 모델 ↔ 원격 차이 0, RLS 꺼진 테이블 0 |
+| 테스트 | pytest **183개** 통과, `make check`(백엔드·웹·두 앱) 통과. 로컬 Postgres 컨테이너, 원격 DB 미사용 |
+| 원격 DB (Supabase) | **개발 DB**: head `y0z1a2b3c4d5` (`z1a2b3c4d5e6` 미적용 — 수동 정책이 이미 있어 적용해도 변화 없음, 원격 적용은 승인 후). 2026-10-14 일시 중지 상태 → Restore 필요<br>**데모 DB**(별도 프로젝트): head `z1a2b3c4d5e6`, 데모 데이터 시드 완료 |
 | 강사 웹 (`/instructor`) | 대시보드·고객 관리·스케줄·게시물·**레슨노트**·매출·**매출 분석**·**프로모션**·내 정보 |
 | 관리자 웹 (`/admin`) | 대시보드 자리만. 강사 관리·시스템 관리·영업/통계 = "준비 중" |
 | 강사 앱 | 대시보드·고객 관리·스케줄(휴무 5종)·채팅·글쓰기·**레슨노트**·매출(+운영 현황, 확인 전용)·내 정보·수강권 관리 |
 | 고객 앱 | 홈·달력(예약)·게시글(좋아요·댓글)·**레슨노트**·채팅·강사 찾기(프로필 → 문의하기)·수강권(프로모션 안내)·내 정보(탈퇴)·스토어(준비 중) |
-| 배포 | AWS 오프라인(개발 중 배포 안 함). CI 검증 job 정상, deploy job 실패는 정상 |
-| 브랜치 | 2026-10-04 PR #73(`crm` → `staging`, 커밋 19개) squash merge → staging `f3109e0`. CI(Orchestrator) 전부 통과, merge 후 Deploy Staging 은 배포 단계만 실패(AWS 오프라인, 정상). **main 미반영** — 배포 재개 때 Release PR(`make gitpr`, prod 반영 전 실제 인프라 smoke test 1회). `gh` 미설치라 PR·merge·CI 확인은 Codespace 기본 GitHub 토큰으로 API 호출 |
+| 배포 | **정식(AWS Copilot)**: 오프라인. CI 검증 job 정상, deploy job 실패는 정상<br>**데모(포트폴리오용 임시)**: Render 백엔드 · Vercel 3개(`crm-core-demo-web`·`-customer`·`-instructor`) · 데모 Supabase, 모두 `staging` 추적. 링크·계정은 README |
+| 브랜치 | `crm` → `staging` squash merge 로 진행. PR #73(10-04 대규모 정리), #74(커넥션 풀·한국 날짜·주석), #75(README·users 정책 마이그레이션·데모 설정), #76(프록시 압축 응답 수정·데모 수정), #77(문서) — 모두 CI 통과. **main 미반영** — 정식 배포 재개 때 Release PR(`make gitpr`, 실제 인프라 smoke test 1회 후). merge 후 GitHub 봇이 `crm` 에 병합 커밋을 push 하므로 다음 작업 전 `git pull`. `gh` 미설치라 PR·CI 는 Codespace GitHub 토큰으로 API 호출 |
 
 ---
 
@@ -51,6 +51,10 @@
 ### 구조
 - 도메인 재편: lesson_notes·matching·notifications·booking 분리, posts+content 병합, 로그인 API → auth, 멤버십 → 수강권 통합(도메인 삭제), promotions 신설
 - 전 도메인 repository 전환. 도메인 사이 호출은 repository 끼리 같은 세션(한 트랜잭션)
+- 백엔드 폴더: `app/domains/{기능}` 4파일(models·schemas·router·repository) + 공통은 `app/core`(auth·config·exceptions·middleware·health·push·s3·retention·clock·constants)와 `app/db`(base·models 등록·session). 흩어져 있던 단독 파일을 이 둘로 모음
+- import 정리, 프론트(웹·두 앱) 구조 점검: 완전히 죽은 파일만 삭제(Expo 템플릿 잔재 등), 준비 중 페이지·기존 버튼은 유지
+- 웹: 개발용 `dev-login` 제거, 관리자 메뉴(`admin/nav.ts`) 공용화 + 404 나던 메뉴를 "준비 중" 페이지(`ComingSoon`)로
+- 마이그레이션 (모두 원격 리허설 → 승인 → 적용): `p0` 전 테이블 RLS · `q1` 옛 게시물 데이터 정리 · `r2` FK 정렬 · `s3` 결제 회원 삭제 제한 · `t4` 탈퇴 상태 · `u6` 휴무 재설계(calendar_blocks) · `v7` 계약 기록 보존·withdrawn_at · `w8` 멤버십 → 수강권 · `x9` 레슨노트(고객별·PDF) · `y0` 프로모션 · `z1` users 본인 행 읽기 정책(데모 DB 에만 적용)
 - 문서를 `docs/operations`, `docs/requirements` 로 정리. Makefile 타깃 `<대상><동작>` 통일. 로컬 검증 명령(`make apitest`·`apiverify`·`check`)
 
 ### 결함 수정 (대표)
@@ -69,11 +73,15 @@
 - 레슨노트(고객별, 글·스캔 PDF, 피드백 통합) — 강사 앱·강사 웹 작성, 고객 앱 열람
 - 매출 분석·프로모션(웹 수정, 앱 확인, 고객 수강권 탭 안내) — 프로토타입
 - 복원: 게시글 좋아요, 피드백 공개 동의 스위치
+- 강사 앱: 웹(브라우저)에서 로그아웃 안 되던 문제, 정기 휴무 요일을 "수정 → 저장" 방식으로(실수로 바로 바뀌지 않게)
+- 개발 환경: `tsconfig` `baseUrl` 빨간 밑줄 제거, 편집기 Python 을 `backend/.venv` 로(노란 밑줄), `make iweb` 시 Expo 버전 확인 네트워크 오류는 재실행 또는 `EXPO_NO_DEPENDENCY_VALIDATION=1`
 
 ### 검증
 - 실제 Supabase 토큰 → `/auth/me` 200, `make apiflow` 14단계(원격 DB), 두 앱 실제 로그인·로그아웃·역할 차단
 - 로컬 화면 점검(Playwright): 화면 52개 열람, 버튼 동작 23개, 신기능 21개 — 전부 통과
 - 재점검(로딩 개선·주석 정리 후): 화면 37개 열람(고객 11·강사 11·웹 13 + 이동 2), 다시 들어오기 3개, 신기능 10개 — 전부 통과. 이때 한국 날짜 결함 발견·수정 (회귀 테스트 추가, 백엔드 테스트 183개)
+- 문서: README 7개를 코드와 대조해 다시 작성 (루트 README 에 앱별 소개·기능·스택·데모 표·아키텍처 다이어그램). 남은 날짜 주석·사실과 다른 파일 설명 수정
+- 데모 배포 (10-14): `render.yaml`, 두 앱 `vercel.json`(정적 웹 빌드, 상세 화면 주소 rewrite), `scripts/seed_demo.py`(실제 API 로 데모 데이터, 단계별 이어서 실행·502 재시도), 절차서 `operations/demo-deploy.md`. 데모 3곳 실제 로그인 확인
 - 주석 정리: 작업 기록식 주석·장식 구분선 제거, 파일·주요 함수 설명 추가 (코드 동작 변경 없음)
 
 ---
@@ -118,10 +126,90 @@
 5. **프로모션·매출 분석 고도화**(프로토타입 → 정식): 결제 연동 시 할인 실제 적용, 기간·대상 확장 여부
 6. **PG 연동** (배포 후)
 7. **모임 찾기** (matching 도메인, 맨 마지막): 모집 인원·마감·신청·취소·모임 채팅. 고객 앱 "모임채팅" 탭 자리만 있음
-8. **staging → main Release PR**: 배포 재개 시. 실제 인프라 smoke test 1회 후
+8. **정식 출시 (AWS)**: [§6-1 체크리스트](#6-1-정식-출시-체크리스트-aws) 완료 후 staging → main Release PR. 실제 인프라 smoke test 1회 후
 9. **포트폴리오 정리**: 큰 화면 파일 분리 → 주요 기능·폴더 구조와 이유 작성 → 배포(실제 인프라 smoke test 1회 필수)
 
 ---
+
+## 6-1. 정식 출시 체크리스트 (AWS)
+
+> 2026-10-14 저장소 점검 기준. 법적 요건은 일반 기준이므로 출시 전 전문가·공식 안내로 확인.
+
+### 🔴 출시 전 필수
+| # | 할 일 | 현재 상태 |
+|---|---|---|
+| 1 | **회원가입·비밀번호 찾기** (고객 앱·강사 앱, 필요 시 웹) | ❌ 없음. 지금은 Supabase 대시보드에서 만든 계정으로만 로그인 |
+| 2 | **이용약관·개인정보처리방침** 페이지 + 가입 시 동의(필수·선택 구분) | ❌ 없음. 앱 스토어 심사에도 개인정보처리방침 주소 필요 |
+| 3 | **관리자 화면: 강사 승인·회원 관리** | API 만 있음. 운영 방식(강사 신청 vs 합의 후 생성) 결정 먼저 (§5) |
+| 4 | **운영 인프라** (아래 표) | 데모만 있음 |
+| 5 | **결제 범위 결정**: 앱 결제 포함 → PG 연동 필수(사업자등록·통신판매업 신고). 현장 결제 + 수동 기록으로 시작 → 결제 버튼 문구 정리 | 수강권 "결제하기" = "결제 준비 중" 안내 |
+| 6 | **남은 결함·직접 테스트**: 웹 "💬 피드백" 버튼(400), 실기기(푸시·사진 스캔 → PDF·카메라), S3 업로드 | §4, §5 |
+
+**운영 인프라 세부**
+| 항목 | 할 일 |
+|---|---|
+| 운영 Supabase | 새 프로젝트(유료 플랜 권장: 일시 중지 없음·백업), 이메일 인증 켜기, 마이그레이션 head 적용(승인 후, `z1a2b3c4d5e6` 포함) |
+| 백엔드 (AWS Copilot) | prod 재가동. `backend/copilot/api/manifest.yml` 의 `SUPABASE_URL` 이 **지금 개발 프로젝트를 가리킴** → 운영 값으로. 비밀값은 SSM 에 먼저 등록. CORS 를 운영 도메인으로 |
+| 웹 (Vercel, 기존 비데모 프로젝트) | 운영 환경변수, 운영 도메인, Branch Tracking = `main` |
+| S3 | 운영 버킷·권한 |
+| 모니터링 | Sentry DSN (백엔드·앱), 오류 알림 |
+| 반영 | staging → main Release PR(`make gitpr`) → **실제 인프라 smoke test 1회** |
+
+**AWS 설정 상세** (`backend/copilot/`, `.github/workflows/deploy-*.yml`, [operations/aws.md](operations/aws.md) 기준)
+
+| 영역 | 설정할 것 | 현재 상태 / 주의 |
+|---|---|---|
+| 계정·권한 | AWS 계정, 결제 수단, **예산 알림(AWS Budgets)** | 비용 때문에 중단했던 이력 → 월 예산 알림 먼저 |
+| GitHub → AWS | IAM OIDC 역할 2개 + GitHub Secrets `AWS_ROLE_ARN_STAGING`·`AWS_ROLE_ARN_PROD` | 워크플로가 이 역할로 `copilot svc deploy` 실행. 역할 신뢰 정책(저장소·브랜치 제한) 확인 |
+| GitHub Environment | `prod` 환경 보호 규칙 (승인자 지정) | `deploy-prod.yml` 이 `environment: prod` 사용, `main` push 때 실행 |
+| Copilot 앱·환경 | 앱 이름, `staging`·`prod` 환경 (`copilot env init`/`env deploy`), 리전 `ap-northeast-2` | 환경 manifest 는 `container_insights: false` 만 있음 |
+| 서비스 `api` | Load Balanced Web Service, 포트 8080, 헬스체크 `/health/ready`, CPU 256·메모리 512MB·1개 | 운영 트래픽에 맞춰 크기·개수·오토스케일 검토 |
+| 비밀값 (SSM, 환경별) | `DATABASE_URL`(운영 Supabase Session pooler), `SUPABASE_JWT_SECRET`, `SUPABASE_ANON_KEY`, `SECRET_KEY`, `S3_BUCKET_NAME`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | `copilot secret init` 으로 **배포 전에** 등록. 없으면 배포 실패 |
+| 일반 변수 (`manifest.yml` `variables:`) | `SUPABASE_URL`, `AWS_REGION`, `CORS_ALLOW_ORIGINS` | ⚠️ `SUPABASE_URL` 이 **개발 프로젝트** → 운영 값. ⚠️ CORS 에 `localhost` 3개 포함 → 운영에서 제거. 환경별로 다르게 하려면 `environments:` 덮어쓰기 사용 |
+| **manifest 에 빠진 변수** | `SUPER_ADMIN_EMAIL`(또는 `SUPER_ADMIN_USER_ID`) — 첫 관리자, `SENTRY_DSN`·`SENTRY_ENVIRONMENT=prod` | 없으면 관리자 계정이 생기지 않고, 오류 추적이 안 됨 |
+| S3 (addon `crm-videos.yml`) | 환경별 버킷(암호화·버전 관리), 태스크 IAM 정책(Get/Put/Delete) | addon 이 태스크 역할 권한을 주므로 **IAM 액세스 키 비밀값은 없어도 될 수 있음** → 키 대신 역할만 쓰는 쪽으로 정리 검토. 버킷 공개 차단·CORS(앱 직접 업로드) 확인 |
+| 도메인·HTTPS | 운영 도메인(예: CORS 에 있는 `albatro.site`), Route 53 + ACM 인증서, `http.alias` | ❌ manifest 에 alias·인증서 설정 없음 → 지금은 ALB 기본 주소만 |
+| 모니터링 | CloudWatch 로그(`make prodlogs`), 알람(ALB 5xx·지연, `make prodalarm` 로 이름 확인), Sentry | 알람·알림 대상(이메일·Slack) 설정 필요 |
+| 배포 후 확인 | `make prodstatus`, `/health/ready`, 실제 로그인·예약 흐름 smoke test | CLAUDE.md: prod 반영 전 실제 인프라 smoke test 1회 필수 |
+
+**AWS 배포 때 자동으로 되지 않는 것** (직접 해야 함)
+- **DB 마이그레이션**: 배포 워크플로·Copilot·Dockerfile 어디에도 `alembic upgrade` 없음 (의도된 것: 원격 DB 는 승인 후 적용). 필요하면 나중에 "승인 버튼" 마이그레이션 단계 추가 검토
+- **비밀 환경변수**: `manifest.yml` 의 `secrets:` 는 SSM 값을 읽기만 함 → 배포 전 `copilot secret init` 으로 등록 (없으면 배포 실패)
+- 일반 환경변수는 `manifest.yml` 의 `variables:` 에 추가·커밋하면 배포 때 반영
+
+### 🟡 앱 스토어 출시 (설치형 앱)
+- 개발자 계정: Apple(연 유료), Google Play(1회 유료)
+- EAS 빌드·제출: `eas.json` 있음, 번들 ID `com.albatro.customer` · `com.albatro.instructor`
+- 스토어 정보: 아이콘·스크린샷·설명·개인정보 수집 항목 표시
+- 푸시: iOS APNs, Android FCM
+- 계정 삭제 기능: ✅ 있음 (회원 탈퇴)
+
+### 🟢 출시 직후 가능
+화면 경미 항목, 큰 화면 파일 분리, lint 경고, `packages/api` 통합, 백업 복구 연습, 결제 상태 변경(환불) 화면, 강사 스태프 관리, 모임 찾기, 프로모션 정식화
+
+## 6-2. 데모 유지 규칙
+
+데모 = 포트폴리오용 임시 배포 (Render · Vercel 3개 · 데모 전용 Supabase, 모두 `staging` 추적). 정식(AWS)과 완전히 별개라 AWS 를 켜도 그대로 살아 있다.
+
+| 바뀌는 것 | 데모 반영 | 할 일 |
+|---|---|---|
+| 코드 (백엔드·웹·앱) | ✅ 자동 | staging merge 후 Vercel 세 프로젝트의 맨 위 **Production** 배포 커밋이 staging 최신인지 확인 |
+| **DB 구조 (마이그레이션)** | ❌ 직접 | staging merge 후 데모 DB 에 `alembic upgrade head` (demo-deploy.md 2단계 명령). 안 하면 새 코드 + 옛 DB 로 데모 오류 |
+| **새 환경변수** | ❌ 직접 | Render·Vercel 대시보드에 추가 (공개 접두사 `NEXT_PUBLIC_`·`EXPO_PUBLIC_` 는 Sensitive 끄고). Vercel 은 Redeploy 필요 |
+| 데모 데이터 | ❌ 그대로 | 새 기능 예시가 필요하면 `scripts/seed_demo.py` 에 단계 추가 후 재실행 (이미 있는 단계는 건너뜀) |
+
+- 데모는 정식보다 **먼저** 새 코드를 받는다 (staging → 데모 즉시, main → AWS 는 Release PR 후). 데모가 잠깐 깨져도 실제 사용자 영향 없음
+- Supabase 무료 프로젝트는 7일 미사용 시 일시 중지 → 대시보드에서 Restore. Render 무료는 15분 미사용 시 잠듦(첫 접속 30초~1분)
+- 데모 값(키·주소)은 대시보드에만 둔다. `backend/.env`(개발 DB)에 넣지 않는다
+
+**정식 출시 후 데모를 지운다면**
+- 지울 것 (저장소 먼저: `render.yaml` 이 남아 있으면 merge 때마다 Render 가 배포함)
+  - 저장소: `render.yaml`, `apps/*/vercel.json`, `scripts/seed_demo.py`, `operations/demo-deploy.md`, README 데모 섹션, CLAUDE.md 데모 줄
+  - 대시보드: Render `crm-core-demo-api`, Vercel 데모 3개, Supabase 데모 프로젝트
+- **남길 것** (데모 때 만들었지만 운영에 필요)
+  - `z1a2b3c4d5e6` users 읽기 정책 마이그레이션
+  - 웹 프록시 압축 헤더 수정
+- 권장: AWS 운영이 안정된 뒤에 정한다 (그동안 포트폴리오 링크 유지)
 
 ## 7. 결정 기록 (요약)
 
@@ -150,6 +238,7 @@
 | 10-04 | 멤버십 → 수강권 통합 | 같은 역할의 두 체계 |
 | 10-04 | 강사 웹 유지. 매출 분석·프로모션은 웹 수정, 앱 확인 | 사용자 결정 |
 | 10-04 | PR #73 은 squash merge, main 은 배포 재개 때 | 커밋 이력 정리(첫 커밋에 멤버십 삭제가 섞인 문제 포함). prod 는 smoke test 전 반영 금지 |
+| 10-14 | 데모(포트폴리오용) 임시 배포 = Render(백엔드) · Vercel 3개(웹·앱) · 데모 전용 Supabase, `staging` 추적. **정식 출시는 AWS Copilot** | AWS 는 비용으로 오프라인. 데모 데이터가 개발·운영 DB 와 섞이지 않게 분리 |
 | 10-05 | DB 커넥션 풀(5+5), `pool_recycle=300`, `pool_pre_ping=False` | 10분 쉰 연결도 안 끊김(실측). pre_ping 이 요청마다 약 250ms. 끊기면 요청 1번만 실패 후 복구(실측). 잦아지면 True 로 |
 
 ---

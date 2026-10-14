@@ -11,7 +11,8 @@
 * 고객용 모바일 앱 (Expo React Native)
 * 강사용 모바일 앱 (Expo React Native)
 * PostgreSQL (Supabase)
-* 배포: 백엔드 AWS Copilot / 프론트엔드 Vercel
+* 배포 (정식 출시): 백엔드 AWS Copilot / 프론트엔드 Vercel — 현재 AWS 는 오프라인
+* 배포 (데모, 포트폴리오용 임시): 백엔드 Render · 웹·앱 Vercel · DB·인증 데모 전용 Supabase (`docs/operations/demo-deploy.md`)
 
 결제·회원권·수강권 등 **거래성 데이터**를 다루므로, 정확성과 구조적 규율을 최우선으로 한다.
 
@@ -240,6 +241,9 @@ secrets.*
 ## 7.3 현재 운영 상태
 
 * **AWS(백엔드 배포)는 현재 오프라인.** CI 검증 job은 정상 동작, deploy job은 실패가 예상된 상태.
+* **데모는 정식 배포가 아니다.** 포트폴리오용으로 2026-10-14 에 임시 배포했다 (Render `render.yaml` · Vercel 프로젝트 3개 · 데모 전용 Supabase, 모두 `staging` 브랜치 추적).
+  * 정식 출시 때는 AWS Copilot 으로 배포한다. Render 는 출시 경로가 아니며, `render.yaml` 을 운영 설정으로 쓰지 않는다.
+  * 데모 DB 는 개발 DB 와 다른 Supabase 프로젝트다. 데모 값(키·주소)은 Render·Vercel 대시보드에만 있고 `backend/.env` 에 넣지 않는다.
 * staging → main Release PR은 `make gitpr`로 생성한다. 의미 있는 작업 단위 완료 시에만 실행.
 * prod 반영 전 실제 인프라에서 최소 1회 smoke test 필수.
 
