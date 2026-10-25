@@ -8,6 +8,14 @@
 - 남은 일은 **결정이 필요한 것**과 **출시 준비**뿐: [launch-readiness.md](launch-readiness.md) (A 출시 전 할 일, B 개선할 문제, C 결정 필요, D 바로 할 수 있는 것)
 - 진행 기록·타임라인·결정 이유: [progress.md](progress.md) (§3 타임라인, §7 결정 기록, §8 주의할 것)
 
+## 1-1. 로컬 첫 세션에서 확인할 것
+
+1. **브랜치**: `git checkout crm && git pull`. 기본 브랜치(staging)에는 이 문서·`launch-readiness.md`·`claude-memory/`·`tools/ui-check/` 가 아직 없을 수 있다 (merge 전)
+2. **메모리 복원**: `docs/claude-memory/*.md` 를 로컬 메모리 폴더로 복사 (4절)
+3. **`.devcontainer/` 변경**: 로컬 VS Code 의 Dev Containers 확장이 `devcontainer.json` 을 고치거나 `devcontainer-lock.json` 을 만들 수 있다. 우리 작업이 아니다 → Dev Container 를 안 쓰면 커밋하지 말고 되돌린다(`git restore .devcontainer/devcontainer.json`, lock 파일 삭제). 쓸 거면 `git diff .devcontainer` 확인 후 결정
+4. **다음 작업 우선순위**: `progress.md` §6 목록보다 [launch-readiness.md](launch-readiness.md) **C(결정 필요)** 가 먼저 — 회원가입 방식, 강사 승인 운영 방식
+5. **§4 테스트 상태**: 웹 실제 로그인 ✅(데모), 두 앱 화면·신기능은 일부 완료, S3·실기기 남음 (`progress.md` §4)
+
 ## 2. 직접 옮겨야 하는 것
 
 | 옮길 것 | 위치 | 방법 |
