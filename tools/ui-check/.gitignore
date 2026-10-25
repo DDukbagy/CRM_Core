@@ -1,0 +1,7 @@
+# 실행할 때 생기는 파일 (커밋 안 함)
+node_modules/
+logs/
+shots/
+ids.json
+hid.txt
+pr_body.md
