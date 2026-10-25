@@ -8,6 +8,10 @@
     "POETRY_VIRTUALENVS_IN_PROJECT": "1",
     "POETRY_VIRTUALENVS_CREATE": "1"
   },
+  "remoteEnv": {
+    "VIRTUAL_ENV": "${containerWorkspaceFolder}/backend/.venv",
+    "PATH": "${containerWorkspaceFolder}/backend/.venv/bin:${containerEnv:PATH}"
+  },
   "postCreateCommand": "bash -lc \"git config --global --add safe.directory ${containerWorkspaceFolder} && cd backend && poetry config virtualenvs.in-project true --local && bash -lc './scripts/install_aws_tools.sh' && poetry install --no-root\"",
   "postStartCommand": "bash -lc \"git config --global --add safe.directory ${containerWorkspaceFolder} && cd backend && poetry config virtualenvs.in-project true --local && (test -f .venv/pyvenv.cfg && .venv/bin/python -c 'import fastapi' >/dev/null 2>&1 || poetry install --no-root)\"",
   "customizations": {
@@ -17,11 +21,7 @@
         "ms-python.vscode-pylance"
       ],
       "settings": {
-        "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
-        "terminal.integrated.env.linux": {
-          "VIRTUAL_ENV": "${workspaceFolder}/backend/.venv",
-          "PATH": "${workspaceFolder}/backend/.venv/bin:${env:PATH}"
-        },
+        "python.defaultInterpreterPath": "${containerWorkspaceFolder}/backend/.venv/bin/python",
         "workbench.colorTheme": "Default Dark+"
       }
     }
