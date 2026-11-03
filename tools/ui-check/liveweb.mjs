@@ -1,0 +1,13 @@
+import { chromium } from "playwright";
+const b = await chromium.launch({ channel: "chromium", args: ["--disable-dev-shm-usage", "--no-sandbox"] });
+const p = await b.newPage({ viewport: { width: 1366, height: 900 } });
+const log = [];
+p.on("response", async r => { if (r.url().includes("/api/users/me")) { const ct = r.headers()["content-type"] || ""; let info = ct; try { if (ct.includes("json")) { const j = await r.json(); info += " role=" + j.role + " keys=" + Object.keys(j).slice(0,6).join(","); } else { const t = await r.text(); info += " 본문앞=" + t.slice(0, 60).replace(/\s+/g, " "); } } catch (e) { info += " 읽기실패"; } log.push("users/me 응답: " + info); } const u = r.url(); if (/supabase\.co|\/api\/|vercel\.app\/(instructor|login|forbidden)/.test(u)) log.push(`${r.status()} ${r.request().method()} ${u.replace(/^https?:\/\/([^.]+)[^/]*/, "<$1>").split("?")[0]}${u.includes("error=") ? " ?" + new URL(u).searchParams.get("error") : ""}`); });
+await p.goto("https://crm-core-demo-web.vercel.app/login", { timeout: 120000 }); await p.waitForTimeout(3000);
+await p.locator('input[type="email"]').fill("instructor@test.com"); await p.locator('input[type="password"]').fill("password"); await p.locator('button[type="submit"]').click();
+await p.waitForTimeout(25000);
+console.log("현재 경로:", new URL(p.url()).pathname, new URL(p.url()).search.replace(/next=[^&]*/, "next=…"));
+const msg = (await p.locator("body").innerText()).split("\n").filter(l => /오류|실패|권한|ROLE|없|error/i.test(l)).slice(0, 5);
+console.log("화면 문구:", msg.join(" / ") || "(없음)");
+console.log([...new Set(log)].slice(0, 25).join("\n"));
+await b.close();

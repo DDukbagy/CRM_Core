@@ -2,7 +2,7 @@
 
 > 세션 시작 시 이 파일을 먼저 읽는다. 세션 종료 시 §3~§6 을 갱신한다.
 > 규칙(무엇을 지켜야 하는가)은 CLAUDE.md, 상태(어디까지 했는가)는 이 파일에 둔다. 자세한 변경 이력은 git log.
-> 마지막 갱신: 2026-10-14 (데모 배포: Render·Vercel·Supabase 데모)
+> 마지막 갱신: 2026-10-25 (Codespace → 로컬 이전 준비: [handoff-local.md](handoff-local.md))
 
 ## 관련 문서
 
@@ -15,6 +15,8 @@
 | [operations/troubleshooting.md](operations/troubleshooting.md) | 자주 겪은 문제와 해결 |
 | [operations/aws.md](operations/aws.md) | AWS·Copilot 배포 (배포 재개 시) |
 | [portfolio/performance-db-connection.md](portfolio/performance-db-connection.md) | 포트폴리오: 앱 로딩 속도 개선(DB 커넥션 풀) 원인·측정·해결 |
+| [handoff-local.md](handoff-local.md) | Codespace → 로컬 이전: 옮길 것·로컬 준비·Claude 메모리 복원·기억할 것 |
+| [launch-readiness.md](launch-readiness.md) | 출시 전 할 일 · AWS 설정 · 프로그램상 개선할 문제 |
 | [requirements/CRM_Requirements_v1.0.html](requirements/CRM_Requirements_v1.0.html) | 요구사항 원본 |
 
 ---
@@ -30,27 +32,48 @@
 
 ---
 
-## 2. 현재 상태 (2026-10-04)
+## 2. 현재 상태 (2026-10-14)
 
 | 영역 | 상태 |
 |---|---|
 | 백엔드 | 13개 도메인(auth, booking, calendar, chat, instructor, lesson_notes, matching, notifications, passes, payment, posts, promotions, users) 모두 `models/schemas/repository/router`. router 는 요청·권한·응답만, 규칙은 repository |
-| 테스트 | pytest **182개** 통과, `make check`(백엔드·웹·두 앱) 통과. 로컬 Postgres 컨테이너, 원격 DB 미사용 |
-| 원격 DB (Supabase) | head **`y0z1a2b3c4d5`**, 모델 ↔ 원격 차이 0, RLS 꺼진 테이블 0 |
+| 테스트 | pytest **183개** 통과, `make check`(백엔드·웹·두 앱) 통과. 로컬 Postgres 컨테이너, 원격 DB 미사용 |
+| 원격 DB (Supabase) | **개발 DB**: head `y0z1a2b3c4d5` (`z1a2b3c4d5e6` 미적용 — 수동 정책이 이미 있어 적용해도 변화 없음, 원격 적용은 승인 후). 2026-10-14 일시 중지 상태 → Restore 필요<br>**데모 DB**(별도 프로젝트): head `z1a2b3c4d5e6`, 데모 데이터 시드 완료 |
 | 강사 웹 (`/instructor`) | 대시보드·고객 관리·스케줄·게시물·**레슨노트**·매출·**매출 분석**·**프로모션**·내 정보 |
 | 관리자 웹 (`/admin`) | 대시보드 자리만. 강사 관리·시스템 관리·영업/통계 = "준비 중" |
 | 강사 앱 | 대시보드·고객 관리·스케줄(휴무 5종)·채팅·글쓰기·**레슨노트**·매출(+운영 현황, 확인 전용)·내 정보·수강권 관리 |
 | 고객 앱 | 홈·달력(예약)·게시글(좋아요·댓글)·**레슨노트**·채팅·강사 찾기(프로필 → 문의하기)·수강권(프로모션 안내)·내 정보(탈퇴)·스토어(준비 중) |
-| 배포 | AWS 오프라인(개발 중 배포 안 함). CI 검증 job 정상, deploy job 실패는 정상 |
-| 브랜치 | 2026-10-04 PR #73(`crm` → `staging`, 커밋 19개) squash merge → staging `f3109e0`. CI(Orchestrator) 전부 통과, merge 후 Deploy Staging 은 배포 단계만 실패(AWS 오프라인, 정상). **main 미반영** — 배포 재개 때 Release PR(`make gitpr`, prod 반영 전 실제 인프라 smoke test 1회). `gh` 미설치라 PR·merge·CI 확인은 Codespace 기본 GitHub 토큰으로 API 호출 |
+| 배포 | **정식(AWS Copilot)**: 오프라인. CI 검증 job 정상, deploy job 실패는 정상<br>**데모(포트폴리오용 임시)**: Render 백엔드 · Vercel 3개(`crm-core-demo-web`·`-customer`·`-instructor`) · 데모 Supabase, 모두 `staging` 추적. 링크·계정은 README |
+| 브랜치 | `crm` → `staging` squash merge 로 진행. PR #73(10-04 대규모 정리), #74(커넥션 풀·한국 날짜·주석), #75(README·users 정책 마이그레이션·데모 설정), #76(프록시 압축 응답 수정·데모 수정), #77(문서) — 모두 CI 통과. **main 미반영** — 정식 배포 재개 때 Release PR(`make gitpr`, 실제 인프라 smoke test 1회 후). merge 후 GitHub 봇이 `crm` 에 병합 커밋을 push 하므로 다음 작업 전 `git pull`. `gh` 미설치라 PR·CI 는 Codespace GitHub 토큰으로 API 호출 |
 
 ---
 
 ## 3. 지금까지 한 일 (요약)
 
+### 타임라인 (복귀 이후)
+> 작업일 기준. 커밋은 여러 날 작업을 모아 올린 경우가 있어 커밋 날짜와 다를 수 있다 (`git log` 참고).
+
+| 날짜 | 한 일 | 결과 |
+|---|---|---|
+| 07-29 ~ 07-30 | README 수정, Makefile PR 트리거 (가벼운 정리) | PR #70·#71 |
+| 09-25 | 복귀. CLAUDE.md 작업 규칙 재작성 (작업 방식·브랜치·마이그레이션·보안) | |
+| 09-27 ~ 10-02 | 백엔드 재구성(도메인 분리·repository), 결함 수정(RLS·휴무·기록 보존·500 오류), 마이그레이션 원격 리허설·적용, 회원 탈퇴, 테스트 작성, 개발 환경·CI 정비, 실제 Supabase 토큰 검증, 앱·웹 정리 | 커밋 10-02 |
+| 10-02 ~ 10-04 | 화면 점검(Playwright), 앱 결함(날짜·확인창), 기능 결정·구현(문의하기, 레슨노트, 좋아요·동의 복원, 매출 분석·프로모션), 문서 정리 | PR #73 (10-04) |
+| 10-05 ~ 10-07 | 앱 로딩 성능 개선(커넥션 풀, 실측), 주석 정리, 화면 재점검 → 한국 날짜 결함 수정 | PR #74 (커밋 10-13) |
+| 10-14 | README 재작성, users 정책 마이그레이션, 데모 배포(Render·Vercel·데모 Supabase), 배포 중 웹 프록시 압축 결함 발견·수정 | PR #75·#76·#77 |
+| 10-14 ~ 10-15 | 데모/정식 배포 구분 문서화, 출시 체크리스트·개선 목록(`launch-readiness.md`) | |
+
+
 ### 구조
 - 도메인 재편: lesson_notes·matching·notifications·booking 분리, posts+content 병합, 로그인 API → auth, 멤버십 → 수강권 통합(도메인 삭제), promotions 신설
 - 전 도메인 repository 전환. 도메인 사이 호출은 repository 끼리 같은 세션(한 트랜잭션)
+- 백엔드 폴더: `app/domains/{기능}` 4파일(models·schemas·router·repository) + 공통은 `app/core`(auth·config·exceptions·middleware·health·push·s3·retention·clock·constants)와 `app/db`(base·models 등록·session). 흩어져 있던 단독 파일을 이 둘로 모음
+- import 정리, 프론트(웹·두 앱) 구조 점검: 완전히 죽은 파일만 삭제(Expo 템플릿 잔재 등), 준비 중 페이지·기존 버튼은 유지
+- 웹: 개발용 `dev-login` 제거, 관리자 메뉴(`admin/nav.ts`) 공용화 + 404 나던 메뉴를 "준비 중" 페이지(`ComingSoon`)로
+- 마이그레이션 (모두 원격 리허설 → 승인 → 적용): `p0` 전 테이블 RLS · `q1` 옛 게시물 데이터 정리 · `r2` FK 정렬 · `s3` 결제 회원 삭제 제한 · `t4` 탈퇴 상태 · `u6` 휴무 재설계(calendar_blocks) · `v7` 계약 기록 보존·withdrawn_at · `w8` 멤버십 → 수강권 · `x9` 레슨노트(고객별·PDF) · `y0` 프로모션 · `z1` users 본인 행 읽기 정책(데모 DB 에만 적용)
+- 작업 규칙: CLAUDE.md 재작성 (09-25) — 작업 방식(영향 보고 → 승인), 브랜치 흐름, 마이그레이션 안전 규칙, env·민감 파일 보안
+- 개발 환경·CI: 민감 파일 패턴 `.gitignore`, devcontainer(Node 24), CI 에 `alembic check` 와 두 앱 타입 검사(`apps-CI`) 추가, 로컬 Postgres 컨테이너 스크립트
+- 백엔드 테스트: 도메인별 테스트 파일 13개 새로 작성(약 2,600줄) → 이후 기능과 함께 늘어 183개
 - 문서를 `docs/operations`, `docs/requirements` 로 정리. Makefile 타깃 `<대상><동작>` 통일. 로컬 검증 명령(`make apitest`·`apiverify`·`check`)
 
 ### 결함 수정 (대표)
@@ -69,11 +92,15 @@
 - 레슨노트(고객별, 글·스캔 PDF, 피드백 통합) — 강사 앱·강사 웹 작성, 고객 앱 열람
 - 매출 분석·프로모션(웹 수정, 앱 확인, 고객 수강권 탭 안내) — 프로토타입
 - 복원: 게시글 좋아요, 피드백 공개 동의 스위치
+- 강사 앱: 웹(브라우저)에서 로그아웃 안 되던 문제, 정기 휴무 요일을 "수정 → 저장" 방식으로(실수로 바로 바뀌지 않게)
+- 개발 환경: `tsconfig` `baseUrl` 빨간 밑줄 제거, 편집기 Python 을 `backend/.venv` 로(노란 밑줄), `make iweb` 시 Expo 버전 확인 네트워크 오류는 재실행 또는 `EXPO_NO_DEPENDENCY_VALIDATION=1`
 
 ### 검증
 - 실제 Supabase 토큰 → `/auth/me` 200, `make apiflow` 14단계(원격 DB), 두 앱 실제 로그인·로그아웃·역할 차단
 - 로컬 화면 점검(Playwright): 화면 52개 열람, 버튼 동작 23개, 신기능 21개 — 전부 통과
 - 재점검(로딩 개선·주석 정리 후): 화면 37개 열람(고객 11·강사 11·웹 13 + 이동 2), 다시 들어오기 3개, 신기능 10개 — 전부 통과. 이때 한국 날짜 결함 발견·수정 (회귀 테스트 추가, 백엔드 테스트 183개)
+- 문서: README 7개를 코드와 대조해 다시 작성 (루트 README 에 앱별 소개·기능·스택·데모 표·아키텍처 다이어그램). 남은 날짜 주석·사실과 다른 파일 설명 수정
+- 데모 배포 (10-14): `render.yaml`, 두 앱 `vercel.json`(정적 웹 빌드, 상세 화면 주소 rewrite), `scripts/seed_demo.py`(실제 API 로 데모 데이터, 단계별 이어서 실행·502 재시도), 절차서 `operations/demo-deploy.md`. 데모 3곳 실제 로그인 확인
 - 주석 정리: 작업 기록식 주석·장식 구분선 제거, 파일·주요 함수 설명 추가 (코드 동작 변경 없음)
 
 ---
@@ -82,14 +109,13 @@
 
 절차는 [verification.md](operations/verification.md).
 
-| # | 항목 | 비고 |
-|---|---|---|
-| 1 | 두 앱 화면별 확인 (4-1단계) | 실제 Supabase 계정으로 홈·달력·내 정보·대시보드·스케줄 |
-| 2 | 웹 실제 로그인 (5단계) | `frontend/.env.local` 필요. 웹은 로그인 후 역할을 Supabase `users` 테이블에서 직접 읽음 |
-| 3 | S3 업로드 (6단계) | 게시물 사진·영상, **레슨노트 PDF** 업로드·열람·삭제. AWS 버킷·키 필요 |
-| 4 | 실기기 (폰) | 푸시 알림, 사진 스캔 → PDF(브라우저에서는 안 됨), 카메라·사진 권한. `make ctunnel`·`itunnel` |
-| 5 | 이번 신기능 실제 데이터로 | 문의하기 → 담당 강사 지정, 레슨노트, 프로모션, 매출 분석 |
-
+| # | 항목 | 상태 (2026-10-15) | 비고 |
+|---|---|---|---|
+| 1 | 두 앱 화면별 확인 (4-1단계) | 🟡 일부 | 데모(실제 Supabase)에서 두 앱 로그인·홈·수강권·레슨노트·채팅·고객 관리 확인. **남음**: 달력·내 정보·스케줄 (로컬 화면 점검만) |
+| 2 | 웹 실제 로그인 (5단계) | ✅ 데모에서 완료 | 강사 로그인 → 대시보드·매출 분석·프로모션. 이때 프록시 압축 결함 발견·수정. 개발 env(`frontend/.env.local`)로는 미확인이나 같은 코드 |
+| 3 | S3 업로드 (6단계) | ❌ | 게시물 사진·영상, **레슨노트 PDF** 업로드·열람·삭제. AWS 버킷·키 필요 (데모에도 S3 없음) |
+| 4 | 실기기 (폰) | ❌ | 푸시 알림, 사진 스캔 → PDF(브라우저에서는 안 됨), 카메라·사진 권한. `make ctunnel`·`itunnel` |
+| 5 | 이번 신기능 실제 데이터로 | 🟡 일부 | 데모 데이터(실제 API)로 레슨노트·프로모션·매출 분석·채팅 확인. **남음**: "담당 강사로 지정" 버튼 (데모 `customer2` → 강사 찾기 → 문의하기 → 채팅방) |
 ---
 
 ## 5. 보류
@@ -118,10 +144,38 @@
 5. **프로모션·매출 분석 고도화**(프로토타입 → 정식): 결제 연동 시 할인 실제 적용, 기간·대상 확장 여부
 6. **PG 연동** (배포 후)
 7. **모임 찾기** (matching 도메인, 맨 마지막): 모집 인원·마감·신청·취소·모임 채팅. 고객 앱 "모임채팅" 탭 자리만 있음
-8. **staging → main Release PR**: 배포 재개 시. 실제 인프라 smoke test 1회 후
+8. **정식 출시 (AWS)**: [launch-readiness.md](launch-readiness.md) A 완료 후 staging → main Release PR. 실제 인프라 smoke test 1회 후
 9. **포트폴리오 정리**: 큰 화면 파일 분리 → 주요 기능·폴더 구조와 이유 작성 → 배포(실제 인프라 smoke test 1회 필수)
 
 ---
+
+## 6-1. 정식 출시 체크리스트 (AWS)
+
+출시 전 할 일(기능·운영 인프라·AWS 설정·스토어)과 프로그램상 개선할 문제는 **[launch-readiness.md](launch-readiness.md)** 에 모았다.
+
+## 6-2. 데모 유지 규칙
+
+데모 = 포트폴리오용 임시 배포 (Render · Vercel 3개 · 데모 전용 Supabase, 모두 `staging` 추적). 정식(AWS)과 완전히 별개라 AWS 를 켜도 그대로 살아 있다.
+
+| 바뀌는 것 | 데모 반영 | 할 일 |
+|---|---|---|
+| 코드 (백엔드·웹·앱) | ✅ 자동 | staging merge 후 Vercel 세 프로젝트의 맨 위 **Production** 배포 커밋이 staging 최신인지 확인 |
+| **DB 구조 (마이그레이션)** | ❌ 직접 | staging merge 후 데모 DB 에 `alembic upgrade head` (demo-deploy.md 2단계 명령). 안 하면 새 코드 + 옛 DB 로 데모 오류 |
+| **새 환경변수** | ❌ 직접 | Render·Vercel 대시보드에 추가 (공개 접두사 `NEXT_PUBLIC_`·`EXPO_PUBLIC_` 는 Sensitive 끄고). Vercel 은 Redeploy 필요 |
+| 데모 데이터 | ❌ 그대로 | 새 기능 예시가 필요하면 `scripts/seed_demo.py` 에 단계 추가 후 재실행 (이미 있는 단계는 건너뜀) |
+
+- 데모는 정식보다 **먼저** 새 코드를 받는다 (staging → 데모 즉시, main → AWS 는 Release PR 후). 데모가 잠깐 깨져도 실제 사용자 영향 없음
+- Supabase 무료 프로젝트는 7일 미사용 시 일시 중지 → 대시보드에서 Restore. Render 무료는 15분 미사용 시 잠듦(첫 접속 30초~1분)
+- 데모 값(키·주소)은 대시보드에만 둔다. `backend/.env`(개발 DB)에 넣지 않는다
+
+**정식 출시 후 데모를 지운다면**
+- 지울 것 (저장소 먼저: `render.yaml` 이 남아 있으면 merge 때마다 Render 가 배포함)
+  - 저장소: `render.yaml`, `apps/*/vercel.json`, `scripts/seed_demo.py`, `operations/demo-deploy.md`, README 데모 섹션, CLAUDE.md 데모 줄
+  - 대시보드: Render `crm-core-demo-api`, Vercel 데모 3개, Supabase 데모 프로젝트
+- **남길 것** (데모 때 만들었지만 운영에 필요)
+  - `z1a2b3c4d5e6` users 읽기 정책 마이그레이션
+  - 웹 프록시 압축 헤더 수정
+- 권장: AWS 운영이 안정된 뒤에 정한다 (그동안 포트폴리오 링크 유지)
 
 ## 7. 결정 기록 (요약)
 
@@ -150,6 +204,7 @@
 | 10-04 | 멤버십 → 수강권 통합 | 같은 역할의 두 체계 |
 | 10-04 | 강사 웹 유지. 매출 분석·프로모션은 웹 수정, 앱 확인 | 사용자 결정 |
 | 10-04 | PR #73 은 squash merge, main 은 배포 재개 때 | 커밋 이력 정리(첫 커밋에 멤버십 삭제가 섞인 문제 포함). prod 는 smoke test 전 반영 금지 |
+| 10-14 | 데모(포트폴리오용) 임시 배포 = Render(백엔드) · Vercel 3개(웹·앱) · 데모 전용 Supabase, `staging` 추적. **정식 출시는 AWS Copilot** | AWS 는 비용으로 오프라인. 데모 데이터가 개발·운영 DB 와 섞이지 않게 분리 |
 | 10-05 | DB 커넥션 풀(5+5), `pool_recycle=300`, `pool_pre_ping=False` | 10분 쉰 연결도 안 끊김(실측). pre_ping 이 요청마다 약 250ms. 끊기면 요청 1번만 실패 후 복구(실측). 잦아지면 True 로 |
 
 ---
@@ -161,7 +216,7 @@
   - 지운 컬럼을 옛 마이그레이션이 참조하면 `env.py` 가 upgrade 때만 잠시 붙임(예: `payments.membership_id`)
   - 모델 변경 시 `make apitest`(빈 DB) + `make migcheck`(원격) 둘 다 통과해야 함
 - **Expo env 우선순위**: `.env.local` > `.env` > 셸 변수. 화면 점검용 임시 `.env.local` 이 남아 있으면 앱이 엉뚱한 주소로 요청함
-- **Codespace 재시작 시 `/tmp` 삭제**: 화면 점검 도구는 저장소 밖 `/workspaces/.crm-ui-check` 에 둠(커밋 안 됨)
+- **화면 점검 도구는 `tools/ui-check/`** (예전 Codespace `/workspaces/.crm-ui-check` 에서 옮김, 2026-10-25). 생성 파일(`logs/`·`shots/`·`ids.json`)은 git 제외
 - **Codespace 는 언제든 삭제될 수 있다**: 남아야 할 것은 커밋·푸시, 비밀값은 Codespaces Secrets
 - **"오늘" 판단은 `today_kst()`**: `date.today()` 는 서버(UTC) 날짜라 한국 00~09시에 하루 전이 된다. 앱·웹은 `toLocalDateStr`
 - **`users` 본인 행 읽기 정책**: 개발 DB 에는 대시보드에서 수동으로 만들어져 있었고 마이그레이션에 없었다 → `z1a2b3c4d5e6` 추가 (Supabase 일 때만, SELECT 정책이 이미 있으면 건너뜀). 원격 개발 DB 에는 아직 미적용 (적용해도 수동 정책이 있어 변화 없음)

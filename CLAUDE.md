@@ -11,7 +11,8 @@
 * 고객용 모바일 앱 (Expo React Native)
 * 강사용 모바일 앱 (Expo React Native)
 * PostgreSQL (Supabase)
-* 배포: 백엔드 AWS Copilot / 프론트엔드 Vercel
+* 배포 (정식 출시): 백엔드 AWS Copilot / 프론트엔드 Vercel — 현재 AWS 는 오프라인
+* 배포 (데모, 포트폴리오용 임시): 백엔드 Render · 웹·앱 Vercel · DB·인증 데모 전용 Supabase (`docs/operations/demo-deploy.md`)
 
 결제·회원권·수강권 등 **거래성 데이터**를 다루므로, 정확성과 구조적 규율을 최우선으로 한다.
 
@@ -20,6 +21,9 @@
 # 0 작업 방식 (모든 세션 공통)
 
 1. 세션 시작 시 `docs/progress.md`를 먼저 읽고 현재 단계를 파악한다.
+   * 먼저 **현재 브랜치가 최신인지** 확인한다 (`git branch --show-current`, `git fetch && git status`). 작업 브랜치(`crm`)에 staging 보다 새 문서가 있을 수 있다
+   * 이어서 읽을 것: `docs/launch-readiness.md`(출시 전 할 일·개선할 문제·**결정이 필요한 것**), 환경을 옮긴 직후라면 `docs/handoff-local.md`
+   * Claude 메모리가 비어 있으면 `docs/claude-memory/` 에 사본이 있다 (복원 방법은 `docs/handoff-local.md` 4절). 사본이 없어도 그 규칙은 지킨다
 2. 코드 수정 전 **영향 범위(파일·도메인·API 계약·DB)** 를 먼저 보고하고, 승인 후 진행한다.
 3. **한 항목 = 한 브랜치 = 한 커밋(또는 PR)** 원칙. 여러 이슈를 한 변경에 섞지 않는다.
 4. "고칠 필요 없음"도 정당한 결론이다. 불필요한 변경을 만들지 않는다.
@@ -232,6 +236,8 @@ secrets.*
 * main에 직접 커밋/PR 금지.
 * 브랜치 이름: `fix/…`, `feat/…`, `refactor/…`, `docs/…`, `wip/…`
 * 미완성 작업도 세션 종료 전 `wip/…` 브랜치로 푸시한다. (Codespace는 일정 기간 미사용 시 삭제됨)
+* 현재 쓰는 작업 브랜치는 `crm` 이다: `crm` → staging PR → CI 확인 → squash merge. merge 후 GitHub 봇이 `crm` 에 병합 커밋을 push 하므로 다음 작업 전 `git pull`.
+* 개발 환경은 2026-10-25 에 Codespace 에서 로컬 PC 로 옮겼다. env 파일은 폴더마다 직접 다시 만든다 (`docs/operations/env-setup.md`).
 
 ## 7.2 환경
 
@@ -240,6 +246,9 @@ secrets.*
 ## 7.3 현재 운영 상태
 
 * **AWS(백엔드 배포)는 현재 오프라인.** CI 검증 job은 정상 동작, deploy job은 실패가 예상된 상태.
+* **데모는 정식 배포가 아니다.** 포트폴리오용으로 2026-10-14 에 임시 배포했다 (Render `render.yaml` · Vercel 프로젝트 3개 · 데모 전용 Supabase, 모두 `staging` 브랜치 추적).
+  * 정식 출시 때는 AWS Copilot 으로 배포한다. Render 는 출시 경로가 아니며, `render.yaml` 을 운영 설정으로 쓰지 않는다.
+  * 데모 DB 는 개발 DB 와 다른 Supabase 프로젝트다. 데모 값(키·주소)은 Render·Vercel 대시보드에만 있고 `backend/.env` 에 넣지 않는다.
 * staging → main Release PR은 `make gitpr`로 생성한다. 의미 있는 작업 단위 완료 시에만 실행.
 * prod 반영 전 실제 인프라에서 최소 1회 smoke test 필수.
 

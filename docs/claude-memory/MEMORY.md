@@ -1,0 +1,6 @@
+- [keep-existing-features](keep-existing-features.md) — Never delete features/placeholder pages/buttons or change UI unilaterally; only fully dead code may go
+- [no-commit-unless-asked](no-commit-unless-asked.md) — Never commit, push, or create PRs in CRM_Core unless the user explicitly asks, and never ask…
+- [makefile-target-naming](makefile-target-naming.md) — Makefile targets use short <대상><동작> names like iweb (api/web/c/i/db/mig/dock/git/aws/stg/prod)
+- [dev-db-is-supabase](dev-db-is-supabase.md) — Dev DB is remote Supabase (D1); tests stay on local container; remote migrations only with approval
+- [no-repeat-status-reminders](no-repeat-status-reminders.md) — Say a pending status (e.g. PR not merged) once; don't repeat it every reply
+- [demo-vs-production-deploy](demo-vs-production-deploy.md) — Demo = Render + Vercel x3 + separate demo Supabase (portfolio, temporary); real launch = AWS Copilot
