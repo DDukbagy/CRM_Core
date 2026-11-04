@@ -10,9 +10,12 @@
   },
   "remoteEnv": {
     "VIRTUAL_ENV": "${containerWorkspaceFolder}/backend/.venv",
-    "PATH": "${containerWorkspaceFolder}/backend/.venv/bin:${containerEnv:PATH}"
+    "PATH": "${containerWorkspaceFolder}/backend/.venv/bin:/root/.local/bin:${containerEnv:PATH}"
   },
-  "postCreateCommand": "bash -lc \"git config --global --add safe.directory ${containerWorkspaceFolder} && cd backend && poetry config virtualenvs.in-project true --local && bash -lc './scripts/install_aws_tools.sh' && poetry install --no-root\"",
+  "mounts": [
+    "source=${localEnv:USERPROFILE}/.claude-crm,target=/root/.claude,type=bind"
+  ],
+  "postCreateCommand": "bash -lc \"git config --global --add safe.directory ${containerWorkspaceFolder} && cd backend && poetry config virtualenvs.in-project true --local && bash -lc './scripts/install_aws_tools.sh' && poetry install --no-root && curl -fsSL https://claude.ai/install.sh | bash\"",
   "postStartCommand": "bash -lc \"git config --global --add safe.directory ${containerWorkspaceFolder} && cd backend && poetry config virtualenvs.in-project true --local && (test -f .venv/pyvenv.cfg && .venv/bin/python -c 'import fastapi' >/dev/null 2>&1 || poetry install --no-root)\"",
   "customizations": {
     "vscode": {
