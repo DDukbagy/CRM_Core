@@ -24,8 +24,7 @@
         "ms-python.vscode-pylance"
       ],
       "settings": {
-        "python.defaultInterpreterPath": "${containerWorkspaceFolder}/backend/.venv/bin/python",
-        "workbench.colorTheme": "Default Dark+"
+        "python.defaultInterpreterPath": "${containerWorkspaceFolder}/backend/.venv/bin/python"
       }
     }
   },
