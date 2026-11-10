@@ -57,7 +57,7 @@ make apiverify
 
 ## 3. 실행 중인 서버 점검 (실제 Supabase)
 
-* 실제 Supabase 로그인·S3 검증 절차는 [verification.md](verification.md) 참고
+* 실제 Supabase 로그인·S3 검증은 실제 계정·자격 증명이 필요하다 (`make apitoken` 으로 토큰 발급)
 
 ```bash
 make apitoken   # 실제 Supabase 계정으로 access token 발급 (대화형)

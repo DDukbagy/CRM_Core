@@ -4,7 +4,7 @@
 외부 서비스 없이 **로컬 Postgres 컨테이너 + 가짜 Supabase(`mock_supabase.py`)** 로 돈다. 원격 DB 에 연결하지 않는다.
 
 > 원래 Codespace 의 `/workspaces/.crm-ui-check` 에 있던 것을 저장소로 옮겼다 (2026-10-25). 경로는 이 폴더 기준으로 찾는다.
-> 아직 CI 에는 연결되어 있지 않다 (`docs/launch-readiness.md` B-4).
+> 아직 CI 에는 연결되어 있지 않다.
 
 ## 준비 (처음 한 번)
 

@@ -14,3 +14,11 @@ id_rsa*
 service-account*.json
 credentials*.json
 secrets.*
+
+# 개인 작업 문서 (공개하지 않음, 로컬에만 둔다)
+docs/claude-memory/
+docs/progress.md
+docs/launch-readiness.md
+docs/handoff-local.md
+docs/operations/aws.md
+docs/operations/verification.md
