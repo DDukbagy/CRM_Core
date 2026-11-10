@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth.deps import CurrentUser
 from app.core.auth.security import get_password_hash
+from app.core.push import DEVICE_NOT_REGISTERED, send_push
 from app.domains.calendar.repository import CalendarRepository
 from app.domains.chat.repository import ChatRepository
 from app.core.retention import RECORD_RETENTION_YEARS
@@ -112,6 +113,24 @@ class UserRepository:
         if user and (token is not None or user.push_token):
             user.push_token = token
             self.session.add(user)
+            await self.session.commit()
+
+    async def notify(self, user_id: Optional[UUID], title: str, body: str, data: Optional[dict] = None) -> None:
+        """
+        사용자에게 푸시 알림. 상태 변경을 commit 한 뒤에 부른다 (알림 실패가 거래를 되돌리지 않게).
+        Expo 가 DeviceNotRegistered(앱 삭제·토큰 만료)를 돌려주면 그 토큰을 지워 다시 보내지 않는다.
+        """
+        if not user_id:
+            return
+        user = await self.session.get(User, user_id)
+        token = user.push_token if user else None
+        if not token:
+            return
+        if await send_push(token, title, body, data) == DEVICE_NOT_REGISTERED:
+            # 그 사이 새 토큰이 등록됐으면 건드리지 않는다
+            await self.session.execute(
+                update(User).where(User.id == user_id, User.push_token == token).values(push_token=None)
+            )
             await self.session.commit()
 
     # 목록·상세 (역할별 범위)

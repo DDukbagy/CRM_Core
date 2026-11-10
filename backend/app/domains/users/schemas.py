@@ -4,9 +4,10 @@ from __future__ import annotations
 from datetime import datetime, date
 from uuid import UUID
 from typing import List
-from pydantic import BaseModel, EmailStr, ConfigDict, field_validator
+from pydantic import BaseModel, EmailStr, ConfigDict, Field, field_validator
 
 from app.core.auth.security import MAX_PASSWORD_BYTES
+from app.core.push import is_expo_push_token
 
 
 class UserRead(BaseModel):
@@ -119,9 +120,17 @@ class UserCreateFromAuth(BaseModel):
 
 
 class PushTokenUpdate(BaseModel):
-    token: str | None = None
+    """Expo 푸시 토큰 (null 이면 지움). 형식이 틀린 값은 저장하지 않는다 (422)"""
+    token: str | None = Field(default=None, max_length=200)
 
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("token")
+    @classmethod
+    def _expo_token_format(cls, v: str | None) -> str | None:
+        if v is not None and not is_expo_push_token(v):
+            raise ValueError("Expo push token 형식이 아닙니다 (ExponentPushToken[...])")
+        return v
 
 
 class UserCreate(BaseModel):
