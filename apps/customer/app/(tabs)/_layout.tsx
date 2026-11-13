@@ -5,6 +5,7 @@ import { View, Text, Pressable, Animated, StyleSheet, Dimensions, Platform } fro
 import { appAlert } from "@/lib/alert";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "@/lib/supabase";
+import { unregisterPushToken } from "@/lib/push";
 import { apiFetch } from "@/lib/api";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import type { UserRead } from "@/types/api";
@@ -111,7 +112,7 @@ export default function TabsLayout() {
 
   async function handleLogout() {
     const doLogout = async () => {
-      try { await apiFetch("/users/me/push-token", { method: "DELETE" }); } catch {}
+      await unregisterPushToken();
       await supabase.auth.signOut();
     };
     if (Platform.OS === "web") {

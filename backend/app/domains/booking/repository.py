@@ -10,13 +10,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth.deps import CurrentUser
-from app.core.push import send_push
 from app.domains.booking.models import Booking, BookingType
 from app.domains.booking.schemas import BookingCreate
 from app.domains.calendar.models import Calendar, TimeSlot
 from app.domains.calendar.repository import CalendarBlockRepository
 from app.domains.passes.repository import PassRepository
 from app.domains.users.models import User
+from app.domains.users.repository import UserRepository
 
 
 def _booking_conflict_detail(*, time_slot_id: int, when: date, error: str) -> dict:
@@ -191,7 +191,11 @@ class BookingRepository:
         booking = await self._save(booking)
         guest = await self.session.get(User, UUID(str(booking.guest_id)))
         guest_name = guest.display_name if guest else "고객"
-        await send_push(await self._host_push_token(booking), "취소 신청", f"{guest_name}님이 {booking.topic} ({booking.when}) 취소를 신청했습니다.")
+        await UserRepository(self.session).notify(
+            await self.host_id_of(booking), "취소 신청",
+            f"{guest_name}님이 {booking.topic} ({booking.when}) 취소를 신청했습니다.",
+            {"booking_id": booking.id},
+        )
         return booking
 
     async def withdraw_by_guest(self, booking: Booking, user: CurrentUser, reason: Optional[str]) -> Booking:
@@ -351,12 +355,8 @@ class BookingRepository:
         if instructor_id:
             await PassRepository(self.session).deduct_for_lesson(UUID(str(booking.guest_id)), instructor_id)
 
-    # 고객에게 푸시 알림
+    # 고객에게 푸시 알림 (알림을 누르면 앱이 booking_id 로 예약 상세를 연다)
     async def _push_guest(self, booking: Booking, title: str, body: str) -> None:
-        guest = await self.session.get(User, UUID(str(booking.guest_id)))
-        await send_push(getattr(guest, "push_token", None) if guest else None, title, body)
-
-    async def _host_push_token(self, booking: Booking) -> Optional[str]:
-        host_id = await self.host_id_of(booking)
-        host = await self.session.get(User, host_id) if host_id else None
-        return getattr(host, "push_token", None) if host else None
+        await UserRepository(self.session).notify(
+            UUID(str(booking.guest_id)), title, body, {"booking_id": booking.id}
+        )

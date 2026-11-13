@@ -141,7 +141,7 @@ CRM_Core/
 ├── apps/customer/    # 고객 모바일 앱 (Expo React Native)
 ├── apps/instructor/  # 강사 모바일 앱 (Expo React Native)
 ├── packages/         # 공통 패키지 (api, ui — 예정)
-└── docs/             # 운영 문서 · 진행 현황 · 포트폴리오
+└── docs/             # 운영 문서 · 요구사항 · 포트폴리오
 ```
 
 **설계 원칙**
@@ -268,7 +268,6 @@ make migcheck   # 마이그레이션 차이 확인 (읽기 전용)
 | [`frontend/README.md`](frontend/README.md) | 관리자·강사 웹 개발 가이드 |
 | [`apps/customer/README.md`](apps/customer/README.md) | 고객 앱 개발 가이드 |
 | [`apps/instructor/README.md`](apps/instructor/README.md) | 강사 앱 개발 가이드 |
-| [`docs/operations/`](docs/operations/) | 개발 Runbook · env 설정 · 실제 환경 검증 · PG 연동 방법 · 트러블슈팅 · AWS 운영 |
+| [`docs/operations/`](docs/operations/) | 개발 Runbook · env 설정 · 데모 배포 · PG 연동 방법 · 트러블슈팅 |
 | [`docs/requirements/`](docs/requirements/) | 요구사항 정의서 |
-| [`docs/progress.md`](docs/progress.md) | 진행 현황 · 테스트할 것 · 보류 · 해야 할 것 · 결정 기록 |
 | [`docs/portfolio/`](docs/portfolio/) | 문제 해결 기록 (예: DB 커넥션 성능 개선) |

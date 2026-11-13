@@ -21,9 +21,11 @@
 # 0 작업 방식 (모든 세션 공통)
 
 1. 세션 시작 시 `docs/progress.md`를 먼저 읽고 현재 단계를 파악한다.
-   * 먼저 **현재 브랜치가 최신인지** 확인한다 (`git branch --show-current`, `git fetch && git status`). 작업 브랜치(`crm`)에 staging 보다 새 문서가 있을 수 있다
+   * 먼저 **현재 브랜치가 최신인지** 확인한다 (`git branch --show-current`, `git fetch && git status`)
    * 이어서 읽을 것: `docs/launch-readiness.md`(출시 전 할 일·개선할 문제·**결정이 필요한 것**), 환경을 옮긴 직후라면 `docs/handoff-local.md`
    * Claude 메모리가 비어 있으면 `docs/claude-memory/` 에 사본이 있다 (복원 방법은 `docs/handoff-local.md` 4절). 사본이 없어도 그 규칙은 지킨다
+   * **개인 작업 문서는 git 에 올리지 않는다** (루트 `.gitignore`): `progress.md` · `launch-readiness.md` · `handoff-local.md` · `claude-memory/` · `operations/aws.md` · `operations/verification.md` · `improvement-plan.md` · `worklog/README.md` · `worklog/_template.md`. 로컬에만 있으므로 새로 clone 한 환경에는 없을 수 있다. 없으면 건너뛰고 사용자에게 알린다. 이 문서들을 갱신해도 커밋 대상이 아니다
+   * 공개 문서(git 관리)는 `docs/operations/`(나머지) · `docs/requirements/` · `docs/portfolio/` · `docs/worklog/` 의 작업 기록(`YYYY-MM-DD-주제.md`) 이다. 공개 문서에서 개인 작업 문서를 링크하지 않고, 받은 피드백이나 AI 작업 지시 같은 내부 사정을 쓰지 않는다
 2. 코드 수정 전 **영향 범위(파일·도메인·API 계약·DB)** 를 먼저 보고하고, 승인 후 진행한다.
 3. **한 항목 = 한 브랜치 = 한 커밋(또는 PR)** 원칙. 여러 이슈를 한 변경에 섞지 않는다.
 4. "고칠 필요 없음"도 정당한 결론이다. 불필요한 변경을 만들지 않는다.
@@ -40,7 +42,7 @@ CRM_Core/
 ├── apps/customer/      # 고객 모바일 앱 (Expo)
 ├── apps/instructor/    # 강사 모바일 앱 (Expo)
 ├── packages/           # 공통 패키지 (api, ui — 현재 미구현, 예정)
-├── docs/               # 운영 문서, 진행 현황(progress.md)
+├── docs/               # 공개: operations·requirements·portfolio / 로컬 전용: progress.md 등 (0절)
 ├── Makefile            # 주요 작업 진입점
 └── CLAUDE.md
 ```
