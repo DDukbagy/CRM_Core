@@ -15,7 +15,7 @@
 | `SUPABASE_JWT_SECRET` | **필수** | Project Settings → JWT Keys (대시보드 버전에 따라 API → JWT Settings) |
 | `SECRET_KEY` | **필수** | 직접 만든 긴 무작위 문자열 (로컬 HS256 폴백 토큰용) |
 | `SUPER_ADMIN_EMAIL` 또는 `SUPER_ADMIN_USER_ID` | 첫 관리자 | 이 계정으로 로그인하면 ADMIN 으로 승격 |
-| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`, `AWS_REGION` | 파일 업로드 | AWS IAM·S3 ([verification.md](verification.md) 6단계) |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`, `AWS_REGION` | 파일 업로드 | AWS IAM·S3 |
 | `CORS_ALLOW_ORIGINS`, `CORS_ORIGIN_REGEX` | 선택 | 웹·앱 주소 |
 | `SUPABASE_JWT_ISSUER`, `SUPABASE_JWT_AUDIENCE` | 선택 | 발급자·대상이 기본값과 다를 때만 |
 | `SENTRY_DSN`, `SENTRY_ENVIRONMENT` | 선택 | Sentry |
@@ -48,7 +48,7 @@
 
 | 변수 | 값 |
 |---|---|
-| `NGROK_AUTHTOKEN` | ngrok 대시보드. `make ctunnel`·`make itunnel` 이 읽음 (각 앱 폴더로 옮길지 결정 대기, progress.md §6) |
+| `NGROK_AUTHTOKEN` | ngrok 대시보드. `make ctunnel`·`make itunnel` 이 읽음 |
 
 ### 결제 연동 시 추가 (아직 없음)
 

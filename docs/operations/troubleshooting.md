@@ -96,7 +96,7 @@ Expo 는 `.env.local` 을 `.env` 보다 우선한다. 각 앱 폴더에 남은 `
 
 ## 11. 빈 DB 에 `alembic upgrade head` 가 `DuplicateTable`·`DuplicateColumn`·`NoReferencedTableError` 로 실패
 
-init 마이그레이션(`91d68413f8d6`)이 *현재* 모델로 `create_all` 하기 때문. 새 컬럼은 `ADD COLUMN IF NOT EXISTS`, 나중에 만들어지는 테이블을 참조하는 모델은 `app/db/models.py` 에 등록하지 않고 `alembic/env.py` 의 비교 명령 분기에서 올린다(progress.md §8). 공유된 revision 은 고치지 않는다.
+init 마이그레이션(`91d68413f8d6`)이 *현재* 모델로 `create_all` 하기 때문. 새 컬럼은 `ADD COLUMN IF NOT EXISTS`, 나중에 만들어지는 테이블을 참조하는 모델은 `app/db/models.py` 에 등록하지 않고 `alembic/env.py` 의 비교 명령 분기에서 올린다. 공유된 revision 은 고치지 않는다.
 
 ---
 

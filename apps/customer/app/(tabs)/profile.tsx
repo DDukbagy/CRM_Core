@@ -5,6 +5,7 @@ import { appAlert } from "@/lib/alert";
 import { useRouter, useFocusEffect } from "expo-router";
 import { apiFetch } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
+import { unregisterPushToken } from "@/lib/push";
 import type { UserRead } from "@/types/api";
 
 const roleLabel: Record<string, string> = {
@@ -33,7 +34,7 @@ export default function ProfileScreen() {
 
   async function handleLogout() {
     const doLogout = async () => {
-      try { await apiFetch("/users/me/push-token", { method: "DELETE" }); } catch {}
+      await unregisterPushToken();
       await supabase.auth.signOut();
     };
     if (Platform.OS === "web") {

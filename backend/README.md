@@ -135,7 +135,6 @@ make apitest ARGS="-k booking"   # 일부만
 |------|------|
 | `../docs/operations/dev-runbook.md` | 개발 명령어 모음 |
 | `../docs/operations/troubleshooting.md` | 문제 해결 |
-| `../docs/operations/aws.md` | AWS / Copilot 운영 가이드 |
 | `../docs/operations/env-setup.md` | env 파일·변수 이름 |
 | `../docs/operations/pg-integration.md` | PG(온라인 결제) 연동 방법 |
 | 루트 `README.md` | 배포 파이프라인 |
