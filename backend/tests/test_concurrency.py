@@ -1,6 +1,6 @@
 """동시 요청: 예약 상태 전환과 수강권 차감
 
-명세: docs/worklog/2026-11-13-pass-deduct-concurrency.md 2절
+명세: docs/worklog/pass-deduct-concurrency.md 2절
 
 다른 테스트와 다른 점
 - conftest 의 db_conn_and_sessionmaker 는 DB 연결 1개를 모든 요청이 같이 쓰고, 끝나면 롤백한다.
@@ -10,8 +10,6 @@
 - RaceGate(gate fixture)로 요청들이 예약을 다 같이 읽은 뒤 진행하게 해서, 경쟁 상황을 매번 만든다.
 - 로그인 사용자는 요청 헤더 X-Test-As 로 고른다. 강사와 고객 요청을 동시에 보내야 하기 때문이다.
   (test_booking_flow 의 act() 는 "지금 사용자" 하나를 바꿔 끼우는 방식이라 동시 요청에 쓸 수 없다)
-
-빈칸: `# TODO(사용자)` 표시가 있는 줄을 채운다. `...` 자리에 코드를 쓴다.
 """
 from __future__ import annotations
 
@@ -209,60 +207,56 @@ async def test_spec4_같은_예약_완료_N번_동시_1회만_차감(real_db, wo
     N = 3
 
     gate.arm(N)  # 이 뒤로 보내는 N개 요청은 예약을 다 같이 읽은 뒤 진행한다
-    # TODO(사용자) 빈칸 1: 같은 완료 요청 N개를 "동시에" 보내고, 응답 N개를 responses 에 받는다
-    #   힌트: 요청을 await 하나씩 하면 앞 요청이 끝나야 다음이 출발한다 (= 순서대로).
-    #         동시에 출발시키려면 asyncio 의 함수 하나로 여러 요청을 한꺼번에 기다린다.
-    #   힌트: 요청 하나는 c.patch(url, headers=as_("host"))
+    # 같은 완료 요청 N개를 동시에 보낸다
     responses = await asyncio.gather(*(c.patch(url, headers=as_("host")) for _ in range(N)))
 
     codes = sorted(r.status_code for r in responses)
-    # TODO(사용자) 빈칸 2: 응답 코드가 "200 하나, 나머지 409" 인지 확인한다 (codes 는 정렬돼 있다)
+    # 응답 코드가 "200 하나, 나머지 409" 인지 확인한다 (정렬해서 누가 이겼는지와 상관없이 비교)
     assert codes == [200, 409, 409], f"Expected [200, 409, 409], but got {codes}"
-    # TODO(사용자) 빈칸 3: 수강권 사용 횟수가 정확히 1 인지 확인한다 (도우미 sessions_used 사용)
+    # 수강권 사용 횟수가 정확히 1 인지 확인한다
     assert await sessions_used(real_db, cp_id) == 1
 
 
 async def test_spec2_서로_다른_예약_완료와_노쇼_동시_2회_차감(real_db, world, gate):
     """명세 2: 한 고객의 서로 다른 예약 완료(노쇼 포함) 2건이 동시에 오면 → 수강권 2회 차감"""
     w, c = world, world["client"]
-    # TODO(사용자) 빈칸 1: 2회를 차감해도 충분한 수강권을 발급한다 (give_pass)
+    # 2회를 차감해도 충분한 수강권을 발급한다
     cp_id = await give_pass(real_db, w, total=2)
     b1 = await book(w, 0, confirm=True)
     b2 = await book(w, 1, confirm=True)
 
     gate.arm(2)
-    # TODO(사용자) 빈칸 2: b1 은 완료, b2 는 노쇼 요청을 동시에 보낸다
+    # b1 은 완료, b2 는 노쇼 요청을 동시에 보낸다
     responses = await asyncio.gather(
         c.patch(f"/calendars/me/bookings/{b1}/complete", headers=as_("host")),
         c.patch(f"/calendars/me/bookings/{b2}/no-show", headers=as_("host")),
     )
 
     assert [r.status_code for r in responses] == [200, 200], [r.text for r in responses]
-    # TODO(사용자) 빈칸 3: 수강권이 2회 차감됐는지 확인한다
+    # 수강권이 2회 차감됐는지 확인한다
     assert await sessions_used(real_db, cp_id) == 2
 
 
 async def test_spec3_잔여_1회에_서로_다른_예약_2건_동시_1건만(real_db, world, gate):
     """명세 3: 잔여 1회 수강권으로 서로 다른 예약 2건(노쇼 포함)의 완료가 동시에 오면 → 1건만 완료·차감, 나머지 409"""
     w, c = world, world["client"]
-    # TODO(사용자) 빈칸 1: 잔여 1회인 수강권을 발급한다
+    # 잔여 1회인 수강권을 발급한다
     cp_id = await give_pass(real_db, w, total=1)
     b1 = await book(w, 0, confirm=True)
     b2 = await book(w, 1, confirm=True)
 
     gate.arm(2)
-    # TODO(사용자) 빈칸 2: b1 완료, b2 노쇼를 동시에 보낸다
+    # b1 완료, b2 노쇼를 동시에 보낸다
     responses = await asyncio.gather(
         c.patch(f"/calendars/me/bookings/{b1}/complete", headers=as_("host")),
         c.patch(f"/calendars/me/bookings/{b2}/no-show", headers=as_("host")),
     )
 
-    # TODO(사용자) 빈칸 3: 응답이 200 하나, 409 하나인지 확인한다
+    # 응답이 200 하나, 409 하나인지 확인한다
     assert [r.status_code for r in responses] == [200, 409] or [r.status_code for r in responses] == [409, 200]
-    # TODO(사용자) 빈칸 4: 수강권 사용 횟수가 1 인지 확인한다 (총 횟수를 넘지 않는다)
+    # 수강권 사용 횟수가 1 인지 확인한다 (총 횟수를 넘지 않는다)
     assert await sessions_used(real_db, cp_id) == 1
-    # TODO(사용자) 빈칸 5: 409 를 받은 예약은 상태가 바뀌지 않았는지(CONFIRMED 그대로) 확인한다
-    #   힌트: responses 순서는 보낸 순서와 같다. 어느 쪽이 409 인지 보고 그 예약의 booking_status 를 확인한다
+    # 409 를 받은 예약은 상태가 바뀌지 않았는지(CONFIRMED 그대로) 확인한다
     if responses[0].status_code == 409:
         assert await booking_status(real_db, b1) == "CONFIRMED"
     else:
@@ -278,18 +272,18 @@ async def test_spec1_확정과_신청_철회_동시_하나만_성공(real_db, wo
     bid = await book(w, 0, confirm=False)  # 신청 중(REQUESTED)
 
     gate.arm(2)
-    # TODO(사용자) 빈칸 1: 강사 확정(host)과 고객 신청 철회(guest)를 동시에 보낸다
+    # 강사 확정(host)과 고객 신청 철회(guest)를 동시에 보낸다
     confirm_r, withdraw_r = await asyncio.gather(
         c.patch(f"/calendars/me/bookings/{bid}/confirm", headers=as_("host")),
         c.patch(f"/bookings/{bid}/withdraw", headers=as_("guest")),
     )
 
-    # TODO(사용자) 빈칸 2: 둘 중 정확히 하나만 200, 다른 하나는 409 인지 확인한다
+    # 둘 중 정확히 하나만 200, 다른 하나는 409 인지 확인한다
     assert [confirm_r.status_code, withdraw_r.status_code].count(200) == 1
     assert [confirm_r.status_code, withdraw_r.status_code].count(409) == 1
 
     final = await booking_status(real_db, bid)
-    # TODO(사용자) 빈칸 3: 확정이 성공했으면 최종 상태는 CONFIRMED, 철회가 성공했으면 CANCELLED 인지 확인한다
+    # 확정이 성공했으면 최종 상태는 CONFIRMED, 철회가 성공했으면 CANCELLED 인지 확인한다
     if confirm_r.status_code == 200:
         assert final == "CONFIRMED"
     else:
