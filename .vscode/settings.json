@@ -11,5 +11,12 @@
   "python.analysis.extraPaths": ["./backend"],
 
   "terminal.integrated.defaultProfile.linux": null,
-  "python-envs.defaultPackageManager": "ms-python.python:pip"
+  "python-envs.defaultPackageManager": "ms-python.python:pip",
+
+  "remote.portsAttributes": {
+    "3000": { "label": "web", "onAutoForward": "notify" },
+    "8000": { "label": "api", "onAutoForward": "notify" },
+    "8081": { "label": "expo", "onAutoForward": "silent" }
+  },
+  "remote.otherPortsAttributes": { "onAutoForward": "ignore" }
 }
