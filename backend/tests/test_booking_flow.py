@@ -110,8 +110,10 @@ async def _available(act, ids, day=DAY) -> dict:
 
 # 레슨 예약 상태 전환
 
-async def test_full_lesson_lifecycle(world):
+async def test_full_lesson_lifecycle(world, db_conn_and_sessionmaker):
     act, ids = world
+    async with db_conn_and_sessionmaker() as session:
+        await _customer_pass(session, ids["guest"], ids["host"])  # 완료하려면 쓸 수 있는 수강권이 있어야 한다
     b = await _book(act, ids)
     bid = b["id"]
 
@@ -133,12 +135,12 @@ async def test_full_lesson_lifecycle(world):
     await act("guest").patch(f"/bookings/{bid}/cancel")
     assert (await act("host").patch(f"/calendars/me/bookings/{bid}/reject-cancel")).json()["status"] == "CONFIRMED"
 
-    # 완료 (두 번 눌러도 그대로)
+    # 완료 (이미 완료된 예약에 다시 요청하면 409)
     r = await act("host").patch(f"/calendars/me/bookings/{bid}/complete")
     assert r.status_code == 200 and r.json()["status"] == "COMPLETED"
-    assert (await act("host").patch(f"/calendars/me/bookings/{bid}/complete")).json()["status"] == "COMPLETED"
-    assert (await act("guest").patch(f"/bookings/{bid}/cancel")).status_code == 400   # 완료된 예약 취소 불가
-    assert (await act("host").patch(f"/calendars/me/bookings/{bid}/cancel")).status_code == 400
+    assert (await act("host").patch(f"/calendars/me/bookings/{bid}/complete")).status_code == 409
+    assert (await act("guest").patch(f"/bookings/{bid}/cancel")).status_code == 409   # 완료된 예약 취소 불가
+    assert (await act("host").patch(f"/calendars/me/bookings/{bid}/cancel")).status_code == 409
 
 
 async def test_cancel_request_approved(world):
@@ -148,7 +150,7 @@ async def test_cancel_request_approved(world):
     await act("guest").patch(f"/bookings/{bid}/cancel")
     r = await act("host").patch(f"/calendars/me/bookings/{bid}/approve-cancel")
     assert r.status_code == 200 and r.json()["status"] == "CANCELLED"
-    assert (await act("host").patch(f"/calendars/me/bookings/{bid}/approve-cancel")).status_code == 400
+    assert (await act("host").patch(f"/calendars/me/bookings/{bid}/approve-cancel")).status_code == 409
     # 취소된 시간은 다시 열린다
     assert ids["slot_a"] in [s["time_slot_id"] for s in (await _available(act, ids))["slots"]]
 
@@ -158,18 +160,20 @@ async def test_decline_and_withdraw_reopen_slot(world):
     first = (await _book(act, ids))["id"]
     r = await act("host").patch(f"/calendars/me/bookings/{first}/decline", json={"reason": "개인 사정"})
     assert r.status_code == 200 and r.json()["status"] == "CANCELLED" and r.json()["cancel_reason"] == "개인 사정"
-    assert (await act("host").patch(f"/calendars/me/bookings/{first}/confirm")).status_code == 400  # 거절된 예약 확정 불가
+    assert (await act("host").patch(f"/calendars/me/bookings/{first}/confirm")).status_code == 409  # 거절된 예약 확정 불가
 
     second = (await _book(act, ids))["id"]  # 같은 시간 다시 신청 가능
-    assert (await act("guest").patch(f"/bookings/{second}/cancel")).status_code == 400  # 신청 중은 cancel 이 아니라 withdraw
-    assert (await act("host").patch(f"/calendars/me/bookings/{second}/cancel")).status_code == 400  # 강사도 decline 으로
+    assert (await act("guest").patch(f"/bookings/{second}/cancel")).status_code == 409  # 신청 중은 cancel 이 아니라 withdraw
+    assert (await act("host").patch(f"/calendars/me/bookings/{second}/cancel")).status_code == 409  # 강사도 decline 으로
     r = await act("guest").patch(f"/bookings/{second}/withdraw", json={"reason": "다른 날로"})
     assert r.status_code == 200 and r.json()["status"] == "CANCELLED"
-    assert (await act("host").patch(f"/calendars/me/bookings/{second}/decline")).json()["status"] == "CANCELLED"  # 이미 취소
+    assert (await act("host").patch(f"/calendars/me/bookings/{second}/decline")).status_code == 409  # 이미 취소
 
 
-async def test_host_cancel_and_no_show(world):
+async def test_host_cancel_and_no_show(world, db_conn_and_sessionmaker):
     act, ids = world
+    async with db_conn_and_sessionmaker() as session:
+        await _customer_pass(session, ids["guest"], ids["host"])  # 노쇼도 수강권을 차감한다
     a = (await _book(act, ids, slot="slot_a"))["id"]
     b = (await _book(act, ids, slot="slot_b"))["id"]
     for bid in (a, b):
@@ -180,8 +184,8 @@ async def test_host_cancel_and_no_show(world):
 
     r = await act("host").patch(f"/calendars/me/bookings/{b}/no-show")
     assert r.status_code == 200 and r.json()["status"] == "NO_SHOW"
-    assert (await act("host").patch(f"/calendars/me/bookings/{b}/no-show")).json()["status"] == "NO_SHOW"
-    assert (await act("host").patch(f"/calendars/me/bookings/{b}/complete")).status_code == 400
+    assert (await act("host").patch(f"/calendars/me/bookings/{b}/no-show")).status_code == 409
+    assert (await act("host").patch(f"/calendars/me/bookings/{b}/complete")).status_code == 409
 
 
 async def test_duplicate_request_is_409(world):

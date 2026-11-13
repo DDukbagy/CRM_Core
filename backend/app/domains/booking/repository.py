@@ -5,7 +5,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 from icalendar import Calendar as ICal, Event as ICalEvent
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,6 +36,15 @@ def _conflict(error: str, time_slot_id: int, when: date) -> HTTPException:
         status_code=status.HTTP_409_CONFLICT,
         detail=_booking_conflict_detail(time_slot_id=time_slot_id, when=when, error=error),
     )
+
+
+def _reject(detail: str) -> HTTPException:
+    """현재 상태와 맞지 않는 요청 (잘못된 상태 전환, 동시 요청에서 진 쪽, 쓸 수 있는 수강권 없음)"""
+    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+
+def _reason_values(reason: Optional[str]) -> dict:
+    return {"cancel_reason": reason} if reason else {}
 
 
 class BookingRepository:
@@ -177,17 +186,11 @@ class BookingRepository:
     async def request_cancel_by_guest(self, booking: Booking, user: CurrentUser, reason: Optional[str]) -> Booking:
         """확정된 예약의 취소 신청: CONFIRMED → CANCEL_REQUESTED (강사 승인 대기). 신청 중이면 withdraw"""
         self.ensure_guest(booking, user, "cancel this booking")
-        if booking.status in ("CANCELLED", "CANCEL_REQUESTED"):
-            return booking
         if booking.status == "COMPLETED":
-            raise HTTPException(status_code=400, detail="Completed booking cannot be cancelled")
+            raise _reject("Completed booking cannot be cancelled")
         if booking.status == "REQUESTED":
-            raise HTTPException(status_code=400, detail="Requested booking should be withdrawn, not cancelled")
-        if booking.status != "CONFIRMED":
-            raise HTTPException(status_code=400, detail=f"Invalid status transition: {booking.status} -> CANCEL_REQUESTED")
-        booking.status = "CANCEL_REQUESTED"
-        if reason:
-            booking.cancel_reason = reason
+            raise _reject("Requested booking should be withdrawn, not cancelled")
+        await self._transition(booking, "CONFIRMED", "CANCEL_REQUESTED", **_reason_values(reason))
         booking = await self._save(booking)
         guest = await self.session.get(User, UUID(str(booking.guest_id)))
         guest_name = guest.display_name if guest else "고객"
@@ -201,55 +204,33 @@ class BookingRepository:
     async def withdraw_by_guest(self, booking: Booking, user: CurrentUser, reason: Optional[str]) -> Booking:
         """신청 철회: REQUESTED → CANCELLED"""
         self.ensure_guest(booking, user, "withdraw this booking")
-        if booking.status == "CANCELLED":
-            return booking
         if booking.status == "COMPLETED":
-            raise HTTPException(status_code=400, detail="Completed booking cannot be withdrawn")
-        if booking.status != "REQUESTED":
-            raise HTTPException(status_code=400, detail=f"Invalid status transition: {booking.status} -> CANCELLED")
-        booking.status = "CANCELLED"
-        if reason:
-            booking.cancel_reason = reason
+            raise _reject("Completed booking cannot be withdrawn")
+        await self._transition(booking, "REQUESTED", "CANCELLED", **_reason_values(reason))
         return await self._save(booking)
 
     async def withdraw_cancel_by_guest(self, booking: Booking, user: CurrentUser) -> Booking:
         """취소 신청 철회: CANCEL_REQUESTED → CONFIRMED (강사 승인 전)"""
         self.ensure_guest(booking, user, "withdraw this cancel request")
-        if booking.status == "CONFIRMED":
-            return booking
-        if booking.status != "CANCEL_REQUESTED":
-            raise HTTPException(status_code=400, detail=f"Invalid status transition: {booking.status} -> CONFIRMED")
-        booking.status = "CONFIRMED"
+        await self._transition(booking, "CANCEL_REQUESTED", "CONFIRMED")
         return await self._save(booking)
 
     # 강사 동작
 
     async def confirm(self, booking: Booking, host: CurrentUser, topic: Optional[str]) -> Booking:
         """확정: REQUESTED → CONFIRMED (강사가 수업 내용 지정 가능)"""
-        if booking.status == "CONFIRMED":
-            return booking
-        if booking.status == "CANCELLED":
-            raise HTTPException(status_code=400, detail="Cancelled booking cannot be confirmed")
-        if booking.status != "REQUESTED":
-            raise HTTPException(status_code=400, detail=f"Invalid status transition: {booking.status} -> CONFIRMED")
         await self.ensure_host_can_manage(booking, host)
-        booking.status = "CONFIRMED"
-        if topic:
-            booking.topic = topic
+        if booking.status == "CANCELLED":
+            raise _reject("Cancelled booking cannot be confirmed")
+        await self._transition(booking, "REQUESTED", "CONFIRMED", **({"topic": topic} if topic else {}))
         booking = await self._save(booking)
         await self._push_guest(booking, "예약 확정", f"{booking.topic} ({booking.when}) 예약이 확정되었습니다.")
         return booking
 
     async def decline(self, booking: Booking, host: CurrentUser, reason: Optional[str]) -> Booking:
         """거절: REQUESTED → CANCELLED (슬롯 다시 열림). 확정 이후는 cancel"""
-        if booking.status == "CANCELLED":
-            return booking
-        if booking.status != "REQUESTED":
-            raise HTTPException(status_code=400, detail=f"Invalid status transition: {booking.status} -> CANCELLED")
         await self.ensure_host_can_manage(booking, host)
-        booking.status = "CANCELLED"
-        if reason:
-            booking.cancel_reason = reason
+        await self._transition(booking, "REQUESTED", "CANCELLED", **_reason_values(reason))
         booking = await self._save(booking)
         await self._push_guest(booking, "예약 신청 거절", f"{booking.topic} ({booking.when}) 예약 신청이 거절되었습니다.")
         return booking
@@ -257,53 +238,35 @@ class BookingRepository:
     async def cancel_by_host(self, booking: Booking, host: CurrentUser, reason: Optional[str]) -> Booking:
         """강사 취소: CONFIRMED → CANCELLED (신청 중은 decline)"""
         await self.ensure_host_can_manage(booking, host)
-        if booking.status == "CANCELLED":
-            return booking
         if booking.status == "COMPLETED":
-            raise HTTPException(status_code=400, detail="Completed booking cannot be cancelled")
+            raise _reject("Completed booking cannot be cancelled")
         if booking.status == "REQUESTED":
-            raise HTTPException(status_code=400, detail="Requested booking should be declined, not cancelled")
-        if booking.status != "CONFIRMED":
-            raise HTTPException(status_code=400, detail=f"Invalid status transition: {booking.status} -> CANCELLED")
-        booking.status = "CANCELLED"
-        if reason:
-            booking.cancel_reason = reason
+            raise _reject("Requested booking should be declined, not cancelled")
+        await self._transition(booking, "CONFIRMED", "CANCELLED", **_reason_values(reason))
         booking = await self._save(booking)
         await self._push_guest(booking, "예약 취소", f"{booking.topic} ({booking.when}) 예약이 취소되었습니다.")
         return booking
 
     async def complete(self, booking: Booking, host: CurrentUser) -> Booking:
-        """출석 완료: CONFIRMED → COMPLETED. 수강권 1회 차감"""
+        """출석 완료: CONFIRMED → COMPLETED. 수강권 1회 차감 (쓸 수 있는 수강권이 없으면 409, 예약도 그대로)"""
         await self.ensure_host_can_manage(booking, host)
-        if booking.status == "COMPLETED":
-            return booking
-        if booking.status != "CONFIRMED":
-            raise HTTPException(status_code=400, detail=f"Only CONFIRMED bookings can be completed (current: {booking.status})")
-        booking.status = "COMPLETED"
-        self.session.add(booking)
+        await self._transition(booking, "CONFIRMED", "COMPLETED")
         await self._deduct_pass(booking)
         booking = await self._save(booking)
         await self._push_guest(booking, "레슨 완료", f"{booking.topic} ({booking.when}) 레슨이 완료 처리되었습니다.")
         return booking
 
     async def mark_no_show(self, booking: Booking, host: CurrentUser) -> Booking:
-        """노쇼: CONFIRMED → NO_SHOW. 수강권은 차감"""
+        """노쇼: CONFIRMED → NO_SHOW. 수강권은 차감 (쓸 수 있는 수강권이 없으면 409, 예약도 그대로)"""
         await self.ensure_host_can_manage(booking, host)
-        if booking.status == "NO_SHOW":
-            return booking
-        if booking.status != "CONFIRMED":
-            raise HTTPException(status_code=400, detail=f"Only CONFIRMED bookings can be marked NO_SHOW (current: {booking.status})")
-        booking.status = "NO_SHOW"
-        self.session.add(booking)
+        await self._transition(booking, "CONFIRMED", "NO_SHOW")
         await self._deduct_pass(booking)
         return await self._save(booking)
 
     async def approve_cancel(self, booking: Booking, host: CurrentUser) -> Booking:
         """취소 신청 승인: CANCEL_REQUESTED → CANCELLED"""
         await self.ensure_host_can_manage(booking, host)
-        if booking.status != "CANCEL_REQUESTED":
-            raise HTTPException(status_code=400, detail=f"Invalid status: expected CANCEL_REQUESTED, got {booking.status}")
-        booking.status = "CANCELLED"
+        await self._transition(booking, "CANCEL_REQUESTED", "CANCELLED")
         booking = await self._save(booking)
         await self._push_guest(booking, "취소 승인", f"{booking.topic} ({booking.when}) 취소 신청이 승인되었습니다.")
         return booking
@@ -311,9 +274,7 @@ class BookingRepository:
     async def reject_cancel(self, booking: Booking, host: CurrentUser) -> Booking:
         """취소 신청 거절: CANCEL_REQUESTED → CONFIRMED"""
         await self.ensure_host_can_manage(booking, host)
-        if booking.status != "CANCEL_REQUESTED":
-            raise HTTPException(status_code=400, detail=f"Invalid status: expected CANCEL_REQUESTED, got {booking.status}")
-        booking.status = "CONFIRMED"
+        await self._transition(booking, "CANCEL_REQUESTED", "CONFIRMED")
         booking = await self._save(booking)
         await self._push_guest(booking, "취소 거절", f"{booking.topic} ({booking.when}) 취소 신청이 거절되었습니다. 예약이 유지됩니다.")
         return booking
@@ -343,6 +304,26 @@ class BookingRepository:
 
     # 내부
 
+    async def _transition(self, booking: Booking, expected: str, new_status: str, **values) -> None:
+        """상태 전환: 예약이 아직 expected 상태일 때만 new_status 로 바꾼다 (조건부 UPDATE, commit 은 호출한 쪽에서)
+
+        읽은 상태를 Python 에서 확인하고 저장하면, 동시에 온 요청이 모두 같은 상태를 읽고 통과해
+        나중에 저장한 쪽이 앞 결과를 덮어쓴다. WHERE status = expected 로 바꾸면 하나만 성공한다.
+        나중 요청의 UPDATE 는 앞 트랜잭션의 커밋을 기다린 뒤 WHERE 를 다시 확인하므로 바뀐 행이 0 → 409.
+        """
+        if booking.status != expected:
+            raise _reject(f"Invalid status transition: {booking.status} -> {new_status}")
+        res = await self.session.execute(
+            update(Booking)
+            .where(Booking.id == booking.id, Booking.status == expected)
+            .values(status=new_status, **values)
+            .returning(Booking.id)
+            .execution_options(synchronize_session=False)
+        )
+        if res.first() is None:
+            raise _reject(f"Booking status was changed by another request (expected {expected})")
+        await self.session.refresh(booking)  # 이 트랜잭션 안에서 바뀐 값으로 맞춘다
+
     async def _save(self, booking: Booking) -> Booking:
         self.session.add(booking)
         await self.session.commit()
@@ -352,8 +333,9 @@ class BookingRepository:
     # 완료·노쇼 시 수강권 1회 차감
     async def _deduct_pass(self, booking: Booking) -> None:
         instructor_id = await self.host_id_of(booking)
-        if instructor_id:
-            await PassRepository(self.session).deduct_for_lesson(UUID(str(booking.guest_id)), instructor_id)
+        if not instructor_id:
+            raise _reject("사용할 수 있는 수강권이 없습니다.")
+        await PassRepository(self.session).deduct_for_lesson(UUID(str(booking.guest_id)), instructor_id)
 
     # 고객에게 푸시 알림 (알림을 누르면 앱이 booking_id 로 예약 상세를 연다)
     async def _push_guest(self, booking: Booking, title: str, body: str) -> None:
