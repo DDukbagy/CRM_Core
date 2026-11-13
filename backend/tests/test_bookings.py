@@ -106,7 +106,7 @@ async def test_cancel_requested_booking_should_fail(client, free_slot_and_date):
     assert booking_id is not None
 
     res = await client.patch(f"/bookings/{booking_id}/cancel", json={"reason": "취소"})
-    assert res.status_code == 400, res.text
+    assert res.status_code == 409, res.text
 
 
 # 취소 신청(CANCEL_REQUESTED) 흐름

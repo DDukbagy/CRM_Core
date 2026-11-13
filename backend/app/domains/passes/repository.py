@@ -3,7 +3,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import delete, func, or_
+from sqlalchemy import case, delete, func, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -164,22 +164,46 @@ class PassRepository:
         return cp
 
     async def deduct_for_lesson(self, customer_id: UUID, instructor_id: UUID) -> None:
-        """레슨 완료·노쇼 시 그 강사의 활성 수강권에서 1회 차감 (commit 은 호출한 쪽에서)"""
-        res = await self.session.execute(
-            select(CustomerPass)
+        """레슨 완료·노쇼 시 그 강사의 활성 수강권에서 1회 차감 (commit 은 호출한 쪽에서)
+
+        조건부 UPDATE 한 문장으로 "잔여가 있으면 +1" 을 한다. Python 에서 읽고 더해 저장하면
+        동시에 온 요청이 같은 값을 읽어 차감 1회가 사라진다 (갱신 손실).
+        나중 요청의 UPDATE 는 앞 트랜잭션의 커밋을 기다린 뒤 WHERE 를 다시 확인하므로 잔여를 넘겨 차감하지 않는다.
+        쓸 수 있는 수강권이 없으면 409 — 호출한 쪽의 예약 상태 변경도 커밋되지 않는다.
+        수강권이 여러 개면 먼저 발급된 것부터 (예약 시 수강권 고정은 별도 작업).
+        """
+        target = (
+            select(CustomerPass.id)
             .where(
                 CustomerPass.customer_id == customer_id,
                 CustomerPass.instructor_id == instructor_id,
                 CustomerPass.status == "ACTIVE",
+                CustomerPass.sessions_used < CustomerPass.sessions_total,
             )
+            .order_by(CustomerPass.id)
             .limit(1)
+            .scalar_subquery()
         )
-        active_pass = res.scalars().first()
-        if active_pass and active_pass.sessions_used < active_pass.sessions_total:
-            active_pass.sessions_used += 1
-            if active_pass.sessions_used >= active_pass.sessions_total:
-                active_pass.status = "COMPLETED"
-            self.session.add(active_pass)
+        res = await self.session.execute(
+            update(CustomerPass)
+            .where(
+                CustomerPass.id == target,
+                CustomerPass.status == "ACTIVE",
+                CustomerPass.sessions_used < CustomerPass.sessions_total,
+            )
+            .values(
+                sessions_used=CustomerPass.sessions_used + 1,
+                # SET 의 오른쪽은 바뀌기 전 값으로 계산된다: 이번 차감으로 다 쓰면 COMPLETED
+                status=case(
+                    (CustomerPass.sessions_used + 1 >= CustomerPass.sessions_total, "COMPLETED"),
+                    else_=CustomerPass.status,
+                ),
+            )
+            .returning(CustomerPass.id)
+            .execution_options(synchronize_session=False)
+        )
+        if res.first() is None:
+            raise HTTPException(status_code=409, detail="사용할 수 있는 수강권이 없습니다.")
 
     # 응답 조립용
 
