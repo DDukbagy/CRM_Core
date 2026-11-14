@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     SECRET_KEY: SecretStr
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
+    # 로컬 HS256 토큰 검증(Supabase 장애 때의 비상구). 평소에는 끄고, 장애 때만 운영자가 켠다
+    LOCAL_JWT_FALLBACK_ENABLED: bool = False
 
     # Super Admin
     SUPER_ADMIN_USER_ID: str | None = None

@@ -1,4 +1,4 @@
-"""인증: 토큰 검증(Supabase 형식 → 실패 시 로컬 HS256 폴백), 최초 로그인 유저 생성(JIT), 역할 확인
+"""인증: 토큰 검증(Supabase 형식 → 실패 시 비상구 설정이 켜져 있으면 로컬 HS256 폴백), 최초 로그인 유저 생성(JIT), 역할 확인
 
 다른 테스트와 달리 get_current_user 를 바꿔 끼우지 않고 실제 토큰을 붙여 호출한다.
 """
@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import time
 import uuid
 from typing import AsyncIterator
@@ -154,14 +155,72 @@ async def test_email_used_by_another_account_is_409(raw_client, db_conn_and_sess
     assert r.status_code == 409, r.text
 
 
-# ── 로컬 HS256 폴백 ───────────────────────────────────────────
+# ── 로컬 HS256 폴백 (비상구) ──────────────────────────────────
+# 명세: docs/worklog/hs256-fallback-off.md 2절
+# 로컬 토큰 검증은 LOCAL_JWT_FALLBACK_ENABLED 가 켜져 있을 때만 열린다 (기본값 꺼짐).
 
-async def test_local_fallback_token_is_accepted(raw_client, db_conn_and_sessionmaker):
+FALLBACK_SETTING = "LOCAL_JWT_FALLBACK_ENABLED"
+
+
+@pytest.fixture
+def fallback_on(monkeypatch) -> None:
+    """비상구 설정을 켠 상태로 테스트한다. 테스트가 끝나면 monkeypatch 가 원래 값으로 돌린다."""
+    monkeypatch.setattr(settings, FALLBACK_SETTING, True)
+
+
+async def _local_user(db_conn_and_sessionmaker) -> uuid.UUID:
     async with db_conn_and_sessionmaker() as session:
-        user_id = await _insert_user(session, role="CONTENT_MANAGER")
+        return await _insert_user(session, role="CONTENT_MANAGER")
+
+
+# 명세 1: 설정을 따로 주지 않으면(기본값 꺼짐) → 로컬 토큰은 401 Invalid token
+async def test_local_token_rejected_when_fallback_off(raw_client, db_conn_and_sessionmaker):
+    user_id = await _local_user(db_conn_and_sessionmaker)
+    r = await raw_client.get("/auth/me", headers=bearer(local_token(str(user_id))))
+
+    # 다른 잘못된 토큰과 같은 응답이어야 한다 (비상구가 있다는 것을 드러내지 않음)
+    assert r.status_code == 401, r.text
+    assert r.json()["error"]["message"] == "Invalid token"
+
+
+# 명세 2: 설정이 켜져 있으면 → 올바른 로컬 토큰은 통과
+async def test_local_token_accepted_when_fallback_on(raw_client, db_conn_and_sessionmaker, fallback_on):
+    user_id = await _local_user(db_conn_and_sessionmaker)
     r = await raw_client.get("/auth/me", headers=bearer(local_token(str(user_id))))
     assert r.status_code == 200, r.text
     assert r.json()["role"] == "CONTENT_MANAGER"
+
+
+# 명세 3: 설정이 켜져 있어도 → 다른 키로 서명한 로컬 토큰은 401 Invalid token
+async def test_wrong_key_local_token_rejected_when_fallback_on(raw_client, db_conn_and_sessionmaker, fallback_on):
+    user_id = await _local_user(db_conn_and_sessionmaker)
+    forged = jwt.encode(
+        {"sub": str(user_id), "exp": int(time.time()) + 600},
+        "not-the-server-key-not-the-server-key",
+        algorithm="HS256",
+    )
+    r = await raw_client.get("/auth/me", headers=bearer(forged))
+
+    assert r.status_code == 401, r.text
+    assert r.json()["error"]["message"] == "Invalid token"
+
+
+# 명세 4: 비상구가 쓰이면 → WARNING 로그 + Supabase 검증 실패 원인, 토큰·키 정보는 남기지 않음
+async def test_fallback_use_logs_warning_with_reason(raw_client, db_conn_and_sessionmaker, fallback_on, caplog):
+    user_id = await _local_user(db_conn_and_sessionmaker)
+    token = local_token(str(user_id))
+    with caplog.at_level(logging.INFO, logger="auth"):
+        r = await raw_client.get("/auth/me", headers=bearer(token))
+    assert r.status_code == 200, r.text
+
+    warnings = [rec for rec in caplog.records if rec.name == "auth" and rec.levelno == logging.WARNING]
+
+    # 경고가 남고, 그중 하나에 Supabase 검증 실패 원인(reason=)이 있어야 한다
+    assert len(warnings) >= 1
+    assert any("reason=" in w.getMessage() for w in warnings)
+    # caplog.text(이 요청 동안 남은 로그 전체)에 토큰 문자열·키 정보가 없어야 한다
+    assert token not in caplog.text
+    assert "key_len" not in caplog.text
 
 
 # ── 역할 확인 (require_role) ──────────────────────────────────
