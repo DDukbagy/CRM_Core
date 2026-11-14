@@ -4,8 +4,10 @@ from datetime import timedelta
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.auth.security import ACCESS_TOKEN_EXPIRE_MINUTES, create_access_token, verify_password
+from app.core.config import settings
 from app.domains.users.models import User
 
 
@@ -17,7 +19,13 @@ class AuthRepository:
         """아이디/비밀번호 확인 후 백엔드 HS256 토큰 발급 (Supabase 로그인의 폴백)
 
         아이디가 없거나 비밀번호가 틀리면 같은 메시지로 400 (어느 쪽인지 알려주지 않는다).
+        비상구 설정(LOCAL_JWT_FALLBACK_ENABLED)이 꺼져 있으면 비밀번호를 확인하기 전에 404.
         """
+        if not settings.LOCAL_JWT_FALLBACK_ENABLED:
+            # 없는 주소와 같은 응답({"detail": "Not Found"})을 주려고 Starlette 예외를 쓴다.
+            # FastAPI HTTPException 은 앱의 오류 처리기가 {"error": ...} 형태로 바꿔 버린다.
+            raise StarletteHTTPException(status_code=404)
+
         user = (await self.session.execute(select(User).where(User.username == username))).scalar_one_or_none()
         if not user or not verify_password(password, user.password):
             raise HTTPException(status_code=400, detail="아이디 또는 비밀번호가 틀렸습니다.")

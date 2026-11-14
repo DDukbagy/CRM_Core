@@ -14,6 +14,7 @@
 | `SUPABASE_ANON_KEY` | **필수** | Project Settings → API Keys → anon / public |
 | `SUPABASE_JWT_SECRET` | **필수** | Project Settings → JWT Keys (대시보드 버전에 따라 API → JWT Settings) |
 | `SECRET_KEY` | **필수** | 직접 만든 긴 무작위 문자열 (로컬 HS256 폴백 토큰용) |
+| `LOCAL_JWT_FALLBACK_ENABLED` | 선택 | 기본 `false`. Supabase 장애 때만 `true` 로 켠다. 켜면 아이디/비밀번호 로그인(`POST /auth/login`)과 그 로컬 HS256 토큰 검증이 함께 열린다 (복구 후 다시 끈다) |
 | `SUPER_ADMIN_EMAIL` 또는 `SUPER_ADMIN_USER_ID` | 첫 관리자 | 이 계정으로 로그인하면 ADMIN 으로 승격 |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`, `AWS_REGION` | 파일 업로드 | AWS IAM·S3 |
 | `CORS_ALLOW_ORIGINS`, `CORS_ORIGIN_REGEX` | 선택 | 웹·앱 주소 |

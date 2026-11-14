@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import app.domains.auth.router as auth_router
 from app.core.auth.security import ALGORITHM, get_password_hash, verify_password, _require_secret_key
+from app.core.config import settings
 
 PASSWORD = "Correct-horse-9"
 
@@ -22,6 +23,12 @@ def _reset_login_rate_limit():
     auth_router.limiter.reset()
     yield
     auth_router.limiter.reset()
+
+
+@pytest.fixture(autouse=True)
+def _fallback_on(monkeypatch):
+    """아이디/비밀번호 로그인은 비상구 설정이 켜져 있을 때만 열린다. 이 파일의 로그인 테스트는 켠 상태로 돌린다."""
+    monkeypatch.setattr(settings, "LOCAL_JWT_FALLBACK_ENABLED", True)
 
 
 async def _insert_password_user(
@@ -156,6 +163,24 @@ async def test_login_rate_limit(admin_client):
     ]
     assert codes[:5] == [400] * 5
     assert codes[5] == 429
+
+
+# 명세 6: 비상구 설정이 꺼져 있으면 → 아이디·비밀번호와 관계없이 /auth/login 은 404
+# (명세: docs/worklog/hs256-fallback-off.md 2절)
+# 이 파일은 _fallback_on 이 설정을 켜므로 이 테스트만 첫 줄에서 다시 끈다.
+# 맞는 비밀번호·틀린 비밀번호 두 경우 모두 같은 404 여야 비밀번호가 맞는지 드러나지 않는다.
+@pytest.mark.parametrize("login_password", [PASSWORD, "wrong-password"], ids=["right-password", "wrong-password"])
+async def test_login_is_404_when_fallback_off(
+    admin_client, db_conn_and_sessionmaker: async_sessionmaker[AsyncSession], monkeypatch, login_password
+):
+    monkeypatch.setattr(settings, "LOCAL_JWT_FALLBACK_ENABLED", False)
+    async with db_conn_and_sessionmaker() as session:
+        _, username = await _insert_password_user(session, get_password_hash(PASSWORD))
+
+    res = await admin_client.post("/auth/login", data={"username": username, "password": login_password})
+
+    assert res.status_code == 404, res.text
+    assert "access_token" not in res.text, res.text
 
 
 async def test_old_login_path_is_gone(admin_client):

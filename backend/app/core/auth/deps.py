@@ -137,24 +137,25 @@ def _verify_local_hs256_token(token: str) -> dict:
         logger.error("local jwt verify: missing LOCAL_SECRET_KEY")
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    key = LOCAL_SECRET_KEY
-    alg = LOCAL_ALGORITHM
-
-    logger.info("local jwt verify: alg=%s key_len=%s", alg, len(key))
-
     try:
-        payload = jose_jwt.decode(token, LOCAL_SECRET_KEY, algorithms=[LOCAL_ALGORITHM])
-        logger.info("local jwt verify: ok sub=%s", payload.get("sub"))
-        return payload
+        return jose_jwt.decode(token, LOCAL_SECRET_KEY, algorithms=[LOCAL_ALGORITHM])
     except Exception as e:
-        logger.exception("local jwt verify: FAIL (%s)", type(e).__name__)
+        logger.warning("local jwt fallback: rejected (%s)", type(e).__name__)
         raise HTTPException(status_code=401, detail="Invalid token")
+
+
+def _supabase_failure_reason(e: SupabaseJWTError) -> str:
+    """Supabase 검증이 실패한 원인 (형식·키 불일치·JWKS 조회 실패 등). 토큰 내용은 넣지 않는다."""
+    cause = e.__cause__
+    if cause is None:
+        return str(e)
+    return f"{type(cause).__name__}: {cause}"
 
 
 async def verify_any_access_token(token: str) -> dict:
     """
     - Supabase access token 검증 시도
-    - 실패하면 로컬 HS256 검증 시도(옵션)
+    - 실패하면 비상구 설정(LOCAL_JWT_FALLBACK_ENABLED)이 켜져 있을 때만 로컬 HS256 검증
     """
     try:
         return await verify_supabase_access_token(
@@ -166,8 +167,16 @@ async def verify_any_access_token(token: str) -> dict:
         )
     except SupabaseJWTExpired:
         raise HTTPException(status_code=401, detail="Token expired")
-    except SupabaseJWTError:
-        return _verify_local_hs256_token(token)
+    except SupabaseJWTError as e:
+        if not settings.LOCAL_JWT_FALLBACK_ENABLED:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        payload = _verify_local_hs256_token(token)
+        logger.warning(
+            "local jwt fallback used: sub=%s reason=%s",
+            payload.get("sub"),
+            _supabase_failure_reason(e),
+        )
+        return payload
 
 
 # access token 꺼내기
