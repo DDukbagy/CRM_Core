@@ -1,6 +1,7 @@
 // 백엔드 프록시: 브라우저 요청에 Supabase 토큰을 붙여 FastAPI 로 전달
 import { NextResponse, type NextRequest } from "next/server";
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { SESSION_COOKIE_OPTIONS } from "@/lib/supabase/cookies";
 
 type RouteParams = { path?: string[] };
 type RouteContext = { params?: RouteParams | Promise<RouteParams> };
@@ -17,14 +18,22 @@ async function getPathParts(ctx: RouteContext): Promise<string[]> {
   return Array.isArray(parts) ? parts : [];
 }
 
-async function getAccessTokenFromCookies(req: NextRequest): Promise<string | null> {
+type CookieToSet = { name: string; value: string; options: CookieOptions };
+
+/**
+ * 쿠키에서 access token 을 꺼낸다. 만료됐으면 Supabase 가 refresh token 으로 갱신하고,
+ * 갱신된 쿠키는 refreshed 에 모아 응답에 다시 저장한다 (브라우저 JS 는 HttpOnly 쿠키를 못 쓰므로 서버가 저장).
+ */
+async function getAccessTokenFromCookies(req: NextRequest, refreshed: CookieToSet[]): Promise<string | null> {
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      cookieOptions: SESSION_COOKIE_OPTIONS,
       cookies: {
         getAll: () => req.cookies.getAll(),
-        setAll: () => {
+        setAll: (cookies) => {
+          refreshed.push(...cookies);
         },
       },
     }
@@ -35,6 +44,11 @@ async function getAccessTokenFromCookies(req: NextRequest): Promise<string | nul
   } = await supabase.auth.getSession();
 
   return session?.access_token ?? null;
+}
+
+function withRefreshedCookies(res: NextResponse, refreshed: CookieToSet[]) {
+  refreshed.forEach(({ name, value, options }) => res.cookies.set(name, value, options));
+  return res;
 }
 
 async function proxyToUpstream(req: NextRequest, pathParts: string[]) {
@@ -63,7 +77,8 @@ async function proxyToUpstream(req: NextRequest, pathParts: string[]) {
       ? process.env.DEV_BEARER_TOKEN
       : null;
 
-  const accessToken = (await getAccessTokenFromCookies(req)) ?? devBearer ?? null;
+  const refreshed: CookieToSet[] = [];
+  const accessToken = (await getAccessTokenFromCookies(req, refreshed)) ?? devBearer ?? null;
 
   // 헤더 복사
   const headers = new Headers(req.headers);
@@ -99,10 +114,13 @@ async function proxyToUpstream(req: NextRequest, pathParts: string[]) {
     resHeaders.delete("content-length");
     resHeaders.delete("transfer-encoding");
 
-    return new NextResponse(upstreamRes.body, {
-      status: upstreamRes.status,
-      headers: resHeaders,
-    });
+    return withRefreshedCookies(
+      new NextResponse(upstreamRes.body, {
+        status: upstreamRes.status,
+        headers: resHeaders,
+      }),
+      refreshed
+    );
   } catch (e) {
     return NextResponse.json(
       { error: "UPSTREAM_FETCH_FAILED", message: (e as Error).message },
