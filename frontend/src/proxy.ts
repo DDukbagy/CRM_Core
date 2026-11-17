@@ -1,6 +1,7 @@
 // 접근 제어: 로그인 확인, /admin·/instructor 는 역할 확인
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { SESSION_COOKIE_OPTIONS } from "@/lib/supabase/cookies";
 
 type Role = "ADMIN" | "INSTRUCTOR" | "CUSTOMER" | string;
 
@@ -57,6 +58,7 @@ export async function proxy(req: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      cookieOptions: SESSION_COOKIE_OPTIONS,
       cookies: {
         getAll() {
           return req.cookies.getAll();

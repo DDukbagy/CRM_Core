@@ -81,6 +81,10 @@ apiverify: ## One-click local verify: local DB -> server -> tokens -> main flow 
 webcheck: ## Web lint + type check
 	@cd frontend && npm run lint && npx tsc --noEmit
 
+.PHONY: webe2e
+webe2e: ## Web browser tests (Playwright). Needs make web + make api running and E2E_EMAIL, E2E_PASSWORD (instructor). Args: ARGS="-g 명세"
+	@cd frontend && npx playwright test $(ARGS)
+
 .PHONY: ccheck
 ccheck: ## Customer app type check
 	@cd apps/customer && npx tsc --noEmit

@@ -3,8 +3,8 @@
 
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { supabaseBrowser } from "@/lib/supabase/client";
+import { usePathname } from "next/navigation";
+import { logoutAction } from "@/app/login/actions";
 import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
@@ -66,7 +66,6 @@ export default function DashboardLayout({
 }: DashboardLayoutProps) {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const pathname = usePathname();
-  const router = useRouter();
 
   const items = useMemo(() => navItems ?? defaultSidebarItems, [navItems]);
 
@@ -89,16 +88,8 @@ export default function DashboardLayout({
   const userName = userLabel?.name ?? "강사님";
   const userRole = userLabel?.role ?? "Instructor";
 
-  // 로그아웃
-  const onLogout = async () => {
-    try {
-      const supabase = supabaseBrowser();
-      await supabase.auth.signOut({ scope: "local" });
-    } finally {
-      router.replace("/login");
-      router.refresh();
-    }
-  };
+  // 로그아웃: 세션 쿠키는 HttpOnly 라 서버가 지운다
+  const onLogout = () => logoutAction();
 
   return (
     <div className="min-h-screen bg-gray-50 flex">

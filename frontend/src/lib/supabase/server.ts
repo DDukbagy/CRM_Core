@@ -1,6 +1,7 @@
-// 서버용 Supabase 클라이언트 (쿠키 세션)
+// 서버용 Supabase 클라이언트 (HttpOnly 쿠키 세션)
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { SESSION_COOKIE_OPTIONS } from "./cookies";
 
 export async function createSupabaseServerClient() {
   const cookieStore = await cookies();
@@ -9,6 +10,7 @@ export async function createSupabaseServerClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      cookieOptions: SESSION_COOKIE_OPTIONS,
       cookies: {
         getAll() {
           return cookieStore.getAll();

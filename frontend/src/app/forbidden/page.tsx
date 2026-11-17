@@ -3,7 +3,7 @@
 
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { supabaseBrowser } from "@/lib/supabase/client";
+import { logoutAction } from "@/app/login/actions";
 import { api } from "@/lib/axios";
 import { ShieldAlert, LogOut, Home, Loader2 } from "lucide-react";
 
@@ -96,15 +96,8 @@ function ForbiddenInner() {
     router.replace("/login");
   };
 
-  const logout = async () => {
-    try {
-      const supabase = supabaseBrowser();
-      await supabase.auth.signOut({ scope: "local" });
-    } finally {
-      router.replace("/login");
-      router.refresh();
-    }
-  };
+  // 로그아웃: 세션 쿠키는 HttpOnly 라 서버가 지운다
+  const logout = () => logoutAction();
 
   if (loading) return <LoadingScreen />;
 
