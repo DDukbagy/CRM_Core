@@ -115,11 +115,13 @@ HttpOnly 쿠키는 서버의 `Set-Cookie` 로만 만들 수 있다. 그런데 �
 |---|---|---|---|
 | 명세 1~5 브라우저 테스트 | 2 failed, 3 passed | 5 passed | 로컬 웹·백엔드, 개발 Supabase, Playwright Chromium |
 | 세션 쿠키 `httpOnly` | false | true | 같음 |
+| 세션 쿠키 `Secure` | 없음 | 있음 | 데모 웹(Vercel, HTTPS) |
 | `document.cookie` 의 세션 쿠키 | 보임 (토큰 전체) | 안 보임 | 같음 |
 
 ## 8. 남은 것
 
-- `secure` 는 운영(HTTPS)에서만 붙는다. 로컬 테스트로는 확인할 수 없어, merge 후 데모 웹(Vercel)에서 로그인해 쿠키에 Secure 가 붙는지 확인한다
+- `secure` 는 운영(HTTPS)에서만 붙어 로컬 테스트로는 확인할 수 없었다. merge 후 데모 웹(Vercel)에서 로그인해 확인했다: 세션 쿠키 `Set-Cookie: …; Path=/; Secure; HttpOnly; SameSite=lax`
+- 세션 쿠키 유지 기간은 `@supabase/ssr` 기본값(400일)을 그대로 쓴다. 쿠키 안의 refresh token 은 Supabase 가 따로 만료·회전하지만, 쿠키 기간을 줄일지는 나중에 본다
 - XSS 자체를 막은 것은 아니다. HttpOnly 는 XSS 가 생겼을 때 토큰을 밖으로 가져가지 못하게 할 뿐, 페이지가 열려 있는 동안 그 사용자로 요청을 보내는 것은 막지 못한다. CSP·게시물 미디어 주소 검사는 별도 작업
 - 브라우저 테스트는 CI 에서 돌지 않는다. 실제 Supabase 계정이 필요하기 때문이다
 - 테스트가 실패하면 Playwright 화면 기록(`frontend/test-results/`)에 입력한 계정 정보가 남는다. git 에서는 제외돼 있지만 확인 후 지운다
