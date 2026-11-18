@@ -45,7 +45,7 @@ async def update_payment_status(
     payment_id: UUID,
     data: PaymentStatusUpdate,
     session: AsyncSession = Depends(get_session),
-    _: CurrentUser = Depends(require_role({"ADMIN"})),
+    admin: CurrentUser = Depends(require_role({"ADMIN"})),
 ):
     """관리자 전용: 결제 상태 변경 (PG 웹훅 연동 전 수동 처리용)."""
-    return await PaymentRepository(session).update_status(payment_id, data.status)
+    return await PaymentRepository(session).update_status(payment_id, data.status, admin)

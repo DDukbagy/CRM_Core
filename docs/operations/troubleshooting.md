@@ -118,10 +118,10 @@ init 마이그레이션(`91d68413f8d6`)이 *현재* 모델로 `create_all` 하�
 
 ## 14. 데모 로그인이 "권한 정보를 불러오지 못했습니다", 앱은 CORS 오류
 
-데모 웹은 로그인 직후 서버에서 백엔드 `/users/me` 로 역할을 확인한다. 두 앱은 같은 요청이 브라우저에서 CORS 오류로 보인다. 백엔드가 500 을 내면 응답에 CORS 헤더가 붙지 않기 때문이라, 진짜 원인은 CORS 가 아닐 수 있다.
+데모 웹은 로그인 직후 서버에서 백엔드 `/users/me` 로 역할을 확인한다. 두 앱은 같은 요청이 브라우저에서 CORS 오류로 보였다. 예전에는 백엔드가 500 을 내면 응답에 CORS 헤더가 붙지 않았기 때문이라, 진짜 원인은 CORS 가 아닐 수 있다. 로깅 정리 이후로는 500 응답에도 CORS 헤더와 `X-Request-ID` 가 붙어 앱에서도 500 으로 보인다.
 
 1. `https://<데모 API>/health` 는 200 인데 `/health/db` 가 500 이면 데모 백엔드가 DB 에 접속하지 못하는 것이다
-2. Render Logs 에서 `ERROR: Exception in ASGI application` 아래 Traceback 의 마지막 줄을 본다 (`/health` 줄은 Render 의 자동 상태 확인이라 무시)
+2. Render Logs 에서 `"message": "unhandled exception"` 줄의 `exc_info`(Traceback) 마지막 줄을 본다. 응답 헤더의 `X-Request-ID` 를 알면 그 값으로 검색한다 (`/health` 줄은 Render 의 자동 상태 확인이라 무시). 로깅 정리 전 배포라면 `ERROR: Exception in ASGI application` 아래 Traceback
 3. `InvalidPasswordError: password authentication failed` 면 DB 비밀번호가 바뀐 것이다. 데모 Supabase → Connect → **Session pooler** 연결 문자열(비밀번호를 넣은 것)을 Render 의 `DATABASE_URL` 에 다시 넣는다. 데모 값은 Render·Vercel 대시보드에만 있고 `backend/.env` 는 개발 DB 그대로 둔다
 4. 저장하면 Render 가 다시 배포한다. `/health/db` 가 200 이면 해결
 

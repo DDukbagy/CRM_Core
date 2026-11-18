@@ -80,48 +80,26 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):
+        """요청 로그 미들웨어(RequestLoggingMiddleware) 바깥에서 난 예외만 여기로 온다.
+        경로 안의 예외는 미들웨어가 스택을 한 번 남기고 500 응답을 만든다 (middleware.py).
         """
-        - Exception 핸들러는 1개만 둔다 (중복 등록 금지)
-        - HTTPException은 이미 위에서 처리되므로 여기서 다시 건드리지 않는다
-        - 로그에는 request_id를 포함해 추적 가능하게 한다
-        """
-        request_id = getattr(request.state, "request_id", None)
-        path_params = dict(getattr(request, "path_params", {}) or {})
-
-        user_id = None
-        try:
-            user = getattr(request.state, "user", None)
-            if user and getattr(user, "id", None):
-                user_id = str(user.id)
-        except Exception:
-            user_id = None
-
-        # uvicorn.error에도 남기면 ECS/CloudWatch에서 찾기 쉬움
-        uvicorn_logger = logging.getLogger("uvicorn.error")
-        uvicorn_logger.exception(
-            "Unhandled exception request_id=%s method=%s path=%s path_params=%s user_id=%s",
-            request_id,
-            request.method,
-            request.url.path,
-            path_params,
-            user_id,
-        )
-
         logger.exception(
-            "Unhandled exception request_id=%s method=%s path=%s path_params=%s user_id=%s",
-            request_id,
+            "Unhandled exception method=%s path=%s",
             request.method,
             request.url.path,
-            path_params,
-            user_id,
             exc_info=exc,
         )
+        return internal_error_response(getattr(request.state, "request_id", None))
 
-        return JSONResponse(
-            status_code=500,
-            content=_error(
-                code="INTERNAL_SERVER_ERROR",
-                message="Unexpected server error.",
-                request_id=request_id,
-            ),
-        )
+
+def internal_error_response(request_id: str | None) -> JSONResponse:
+    """예상 못 한 오류의 500 응답. 사용자가 알려 준 요청 ID 로 로그를 찾을 수 있게 본문과 헤더에 넣는다"""
+    return JSONResponse(
+        status_code=500,
+        content=_error(
+            code="INTERNAL_SERVER_ERROR",
+            message="Unexpected server error.",
+            request_id=request_id,
+        ),
+        headers={"X-Request-ID": request_id} if request_id else None,
+    )

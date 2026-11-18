@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import List, Union, Any
+from typing import Any, List, Literal, Union
 
 from pydantic import field_validator, Field, AliasChoices, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     SENTRY_DSN: str | None = None
     SENTRY_ENVIRONMENT: str = "development"
     SENTRY_TRACES_SAMPLE_RATE: float = 0.1
+
+    # 로그 형식: json(기본, 배포) / text(로컬에서 읽기 쉽게)
+    LOG_FORMAT: Literal["json", "text"] = "json"
 
     CORS_ORIGIN_REGEX: str | None = Field(
         default=None,

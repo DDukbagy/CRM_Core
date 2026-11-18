@@ -20,6 +20,7 @@
 | `CORS_ALLOW_ORIGINS`, `CORS_ORIGIN_REGEX` | 선택 | 웹·앱 주소 |
 | `SUPABASE_JWT_ISSUER`, `SUPABASE_JWT_AUDIENCE` | 선택 | 발급자·대상이 기본값과 다를 때만 |
 | `SENTRY_DSN`, `SENTRY_ENVIRONMENT` | 선택 | Sentry |
+| `LOG_FORMAT` | 선택 | 기본 `json`(배포: 로그 한 줄 = JSON). 로컬에서 읽기 쉽게 보려면 `text` |
 | `DB_SSL_DISABLE` | 로컬 DB 만 | `1` (원격 Supabase 에는 쓰지 않음) |
 
 테스트(`make apitest`, `make apiverify`)는 이 파일을 쓰지 않는다. `backend/scripts/local_env.sh`(더미 값)와 로컬 Postgres 컨테이너를 쓴다.

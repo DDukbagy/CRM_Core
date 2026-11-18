@@ -169,6 +169,8 @@ async def verify_any_access_token(token: str) -> dict:
         raise HTTPException(status_code=401, detail="Token expired")
     except SupabaseJWTError as e:
         if not settings.LOCAL_JWT_FALLBACK_ENABLED:
+            # 원인(형식·키 불일치·JWKS 조회 실패 등)만 남긴다. 토큰은 남기지 않는다
+            logger.warning("supabase jwt rejected: reason=%s", _supabase_failure_reason(e))
             raise HTTPException(status_code=401, detail="Invalid token")
         payload = _verify_local_hs256_token(token)
         logger.warning(
