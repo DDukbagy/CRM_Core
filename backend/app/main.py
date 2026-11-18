@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 
 import sentry_sdk
 from sentry_sdk.integrations.fastapi import FastApiIntegration
@@ -16,6 +15,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
+from app.core.logging import configure_logging
 from app.core.middleware import RequestLoggingMiddleware
 from app.domains.auth.router import router as auth_router
 from app.domains.booking.router import router as booking_router
@@ -34,12 +34,7 @@ from app.core.health import router as health_router
 
 logger = logging.getLogger(__name__)
 
-logging.basicConfig(
-    level=logging.INFO,
-    stream=sys.stdout,
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-)
-logging.getLogger("app").setLevel(logging.INFO)
+configure_logging(settings.LOG_FORMAT)
 
 # Sentry
 if settings.SENTRY_DSN:

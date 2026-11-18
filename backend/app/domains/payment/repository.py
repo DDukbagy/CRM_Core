@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.core.auth.deps import CurrentUser
+from app.core.logging import log_event
 from app.core.retention import RECORD_RETENTION_YEARS, retention_cutoff
 from app.domains.passes.repository import PassRepository
 from app.domains.payment.models import Payment
@@ -58,6 +59,8 @@ class PaymentRepository:
         self.session.add(payment)
         await self.session.commit()
         await self.session.refresh(payment)
+        log_event("payment.created", payment_id=str(payment.id), actor_id=str(user.id), customer_id=str(payment.customer_id),
+                  customer_pass_id=payment.customer_pass_id, amount=payment.amount, method=payment.method)
         return payment
 
     # 역할별 목록: 고객은 본인 결제, 강사는 담당 고객(manager_id) 결제, 관리자는 전체
@@ -102,7 +105,7 @@ class PaymentRepository:
         )
 
     # 관리자 수동 상태 변경 (PG 웹훅 연동 전)
-    async def update_status(self, payment_id: UUID, status: str) -> Payment:
+    async def update_status(self, payment_id: UUID, status: str, actor: CurrentUser) -> Payment:
         if status not in VALID_STATUSES:
             raise HTTPException(status_code=400, detail=f"Invalid status. Allowed: {VALID_STATUSES}")
 
@@ -110,8 +113,10 @@ class PaymentRepository:
         if not payment:
             raise HTTPException(status_code=404, detail="Payment not found")
 
+        previous = payment.status
         payment.status = status
         self.session.add(payment)
         await self.session.commit()
         await self.session.refresh(payment)
+        log_event("payment.status_changed", payment_id=str(payment.id), actor_id=str(actor.id), previous=previous, status=payment.status)
         return payment

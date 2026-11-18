@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.core.auth.deps import CurrentUser
+from app.core.logging import log_event
 from app.core.retention import retention_cutoff
 from app.domains.passes.models import CustomerPass, LessonPassType
 from app.domains.passes.schemas import CustomerPassAssign, CustomerPassUpdate, PassTypeCreate, PassTypeUpdate
@@ -125,6 +126,8 @@ class PassRepository:
         self.session.add(cp)
         await self.session.commit()
         await self.session.refresh(cp)
+        log_event("pass.assigned", customer_pass_id=cp.id, actor_id=str(user.id), customer_id=str(cp.customer_id),
+                  sessions_total=cp.sessions_total)
         return cp
 
     async def get_own_customer_pass(self, customer_pass_id: int, instructor_id: UUID) -> CustomerPass:
@@ -147,6 +150,9 @@ class PassRepository:
         self.session.add(cp)
         await self.session.commit()
         await self.session.refresh(cp)
+        # 본인 수강권만 수정할 수 있으므로(get_own_customer_pass) 처리한 사람 = 발급한 강사. 메모 내용은 남기지 않는다
+        log_event("pass.updated", customer_pass_id=cp.id, actor_id=str(cp.instructor_id), fields=sorted(patch),
+                  sessions_used=cp.sessions_used, sessions_total=cp.sessions_total, status=cp.status)
         return cp
 
     # 강사 서비스: 횟수 추가. 다 쓴(COMPLETED) 수강권은 다시 ACTIVE
@@ -161,10 +167,12 @@ class PassRepository:
         self.session.add(cp)
         await self.session.commit()
         await self.session.refresh(cp)
+        log_event("pass.sessions_added", customer_pass_id=cp.id, actor_id=str(cp.instructor_id), added=sessions,
+                  sessions_used=cp.sessions_used, sessions_total=cp.sessions_total)
         return cp
 
-    async def deduct_for_lesson(self, customer_id: UUID, instructor_id: UUID) -> None:
-        """레슨 완료·노쇼 시 그 강사의 활성 수강권에서 1회 차감 (commit 은 호출한 쪽에서)
+    async def deduct_for_lesson(self, customer_id: UUID, instructor_id: UUID) -> int:
+        """레슨 완료·노쇼 시 그 강사의 활성 수강권에서 1회 차감하고 그 수강권 id 를 돌려준다 (commit 은 호출한 쪽에서)
 
         조건부 UPDATE 한 문장으로 "잔여가 있으면 +1" 을 한다. Python 에서 읽고 더해 저장하면
         동시에 온 요청이 같은 값을 읽어 차감 1회가 사라진다 (갱신 손실).
@@ -202,8 +210,10 @@ class PassRepository:
             .returning(CustomerPass.id)
             .execution_options(synchronize_session=False)
         )
-        if res.first() is None:
+        row = res.first()
+        if row is None:
             raise HTTPException(status_code=409, detail="사용할 수 있는 수강권이 없습니다.")
+        return row[0]
 
     # 응답 조립용
 
