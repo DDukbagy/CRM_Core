@@ -94,3 +94,35 @@ async def test_today_is_korean_date(actor, db_conn_and_sessionmaker, monkeypatch
     assert created["status"] == "ONGOING"
     shown = (await act("cust").get(f"/promotions/instructor/{people['inst'][0]}")).json()
     assert [p["title"] for p in shown] == ["자정 할인"]
+
+
+# ── 프로모션 기간 경계 (변이 테스트로 찾은 빈틈) ──────────────
+# 명세: docs/worklog/test-mutation-check.md 2절
+# 규칙(worklog 1절 표 R2·R3)을 망가뜨리면 실패한다. 고객에게 보이는 목록은 GET /promotions/instructor/{강사 id}.
+
+# 명세 3: 강사가 올린 프로모션은 → 종료일 당일에도 고객에게 보인다
+async def test_promotion_is_shown_on_its_end_date(actor, db_conn_and_sessionmaker):
+    act, people = actor
+    type_id = await _setup(db_conn_and_sessionmaker, people)
+    body = {"title": "오늘 마감", "pass_type_id": type_id, "discount_type": "PERCENT", "discount_value": 10,
+            "start_date": str(TODAY - timedelta(days=5)), "end_date": str(TODAY)}
+    assert (await act("inst").post("/promotions", json=body)).status_code == 201
+
+    seen = (await act("cust").get(f"/promotions/instructor/{people['inst'][0]}")).json()
+
+    assert "오늘 마감" in [p["title"] for p in seen]
+
+
+# 명세 4: 프로모션을 수정할 때 종료일이 시작일보다 빠르면 → 422, DB 오류 원문은 나가지 않는다
+async def test_update_with_end_before_start_is_422(actor, db_conn_and_sessionmaker):
+    act, people = actor
+    type_id = await _setup(db_conn_and_sessionmaker, people)
+    body = {"title": "기간 수정", "pass_type_id": type_id, "discount_type": "PERCENT", "discount_value": 10,
+            "start_date": str(TODAY), "end_date": str(TODAY + timedelta(days=10))}
+    created = (await act("inst").post("/promotions", json=body)).json()
+
+    r = await act("inst").patch(f"/promotions/{created['id']}", json={"end_date": str(TODAY - timedelta(days=1))})
+
+    assert r.status_code == 422, r.text
+    assert "INTEGRITY_ERROR" not in r.text and "ck_promotions_period" not in r.text
+
