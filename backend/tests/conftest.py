@@ -8,8 +8,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]  # /workspace
 sys.path.insert(0, str(ROOT_DIR))
 
 import uuid
-from datetime import date, timedelta
-from typing import AsyncIterator, Tuple, Optional
+from typing import AsyncIterator, Optional
 
 import pytest
 import pytest_asyncio
@@ -51,52 +50,6 @@ async def _ensure_test_user_id(session: AsyncSession) -> uuid.UUID:
     )
     await session.commit()
     return user_id
-
-
-async def _pick_free_slot_and_date(session: AsyncSession, horizon_days: int = 30) -> Optional[Tuple[int, date]]:
-    """
-    time_slots에서 아무거나 가져와서
-    - 해당 slot이 가능한 요일(weekdays)에 맞는 날짜를 찾고
-    - 그 날짜에 active booking이 없는 slot/date를 고른다.
-    """
-    slots = await session.execute(
-        text("select id, weekdays from public.time_slots order by id limit 50")
-    )
-    rows = slots.fetchall()
-    if not rows:
-        return None
-
-    today = date.today()
-
-    for slot_id, weekdays in rows:
-        # asyncpg는 int[]를 list[int]로 주는 경우가 많음
-        wd_list = weekdays or []
-        if not isinstance(wd_list, list):
-            continue
-
-        for i in range(1, horizon_days + 1):
-            d = today + timedelta(days=i)
-            if d.weekday() not in wd_list:
-                continue
-
-            # 해당 slot/date에 active booking이 있는지 확인
-            exists = await session.execute(
-                text(
-                    """
-                    select 1
-                    from public.bookings
-                    where "when" = :d
-                      and time_slot_id = :slot_id
-                      and status <> 'CANCELLED'
-                    limit 1
-                    """
-                ),
-                {"d": d, "slot_id": int(slot_id)},
-            )
-            if exists.first() is None:
-                return int(slot_id), d
-
-    return None
 
 
 @pytest_asyncio.fixture
@@ -163,94 +116,6 @@ async def client(db_conn_and_sessionmaker: async_sessionmaker[AsyncSession]) -> 
         yield ac
 
     app.dependency_overrides.clear()
-
-
-@pytest_asyncio.fixture
-async def free_slot_and_date(db_conn_and_sessionmaker: async_sessionmaker[AsyncSession]) -> Tuple[int, date]:
-    async with db_conn_and_sessionmaker() as session:
-        picked = await _pick_free_slot_and_date(session)
-        if picked is None:
-            # host 유저 확보 (없으면 하나 생성)
-            res = await session.execute(
-                text("select id from public.users where role in ('INSTRUCTOR','ADMIN') limit 1")
-            )
-            row = res.first()
-            if row and row[0]:
-                host_id = str(row[0])
-            else:
-                host_uuid = uuid.uuid4()
-                host_id = str(host_uuid)
-                await session.execute(
-                    text(
-                        """
-                        insert into public.users (id, username, email, display_name, is_active, status, role, feedback_consent)
-                        values (:id, :username, :email, :display_name, true, 'ACTIVE', 'INSTRUCTOR', true)
-"""
-                    ),
-                    {
-                        "id": host_id,
-                        "username": f"host-{host_uuid.hex[:8]}",
-                        "email": f"host-{host_uuid.hex[:8]}@example.com",
-                        "display_name": f"host-{host_uuid.hex[:8]}",
-                    },
-                )
-
-            # calendar 확보 (없으면 생성) - calendars.host_id는 UNIQUE
-            res = await session.execute(
-                text("select id from public.calendars where host_id = :host_id limit 1"),
-                {"host_id": host_id},
-            )
-            cal = res.first()
-            if cal and cal[0]:
-                calendar_id = int(cal[0])
-            else:
-                ins = await session.execute(
-                    text("""
-                        insert into public.calendars (topics, description, host_id)
-                        values (CAST(:topics AS jsonb), :description, :host_id)
-                        returning id
-                    """),
-                    {               
-                        "topics": '["테스트"]',
-                        "description": "테스트 캘린더",
-                        "host_id": host_id,
-                    },
-                )
-                calendar_id = int(ins.scalar_one())
-
-            # time_slot 이미 있으면 재사용, 없으면 생성
-            res = await session.execute(
-                text("""
-                    select id
-                    from public.time_slots
-                    where calendar_id = :calendar_id
-                      and start_time = '09:00'::time
-                      and end_time = '10:00'::time
-                    limit 1
-                """),
-                {"calendar_id": calendar_id},
-            )
-            slot_row = res.first()
-
-            if not (slot_row and slot_row[0]):
-                await session.execute(
-                    text("""
-                        insert into public.time_slots (start_time, end_time, weekdays, is_active, calendar_id)
-                        values ('09:00'::time, '10:00'::time, '[0,1,2,3,4,5,6]'::jsonb, true, :calendar_id)
-                    """),
-                    {"calendar_id": calendar_id},
-                )
-
-            await session.commit()
-
-            # 다시 pick
-            picked = await _pick_free_slot_and_date(session)
-            if picked is None:
-                raise AssertionError(
-                    "free_slot_and_date: seed 이후에도 30일 내 예약 가능한 slot/date를 찾지 못했습니다."
-                )
-
-        return picked
 
 
 # 수강권 만들기: 진행 중 레슨 예약은 수강권이 고정돼 있어야 한다 (DB 제약 ck_bookings_active_lesson_has_pass)

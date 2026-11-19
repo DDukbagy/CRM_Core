@@ -129,6 +129,12 @@ async def test_put_push_token_stores_value(client, db_conn_and_sessionmaker):
     assert res.status_code == 204, res.text
     assert await _stored_token(db_conn_and_sessionmaker, await _me_id(client)) == "ExpoPushToken[new-format]"
 
+    # null 로 보내면 비운다
+    assert (await client.put("/users/me/push-token", json={"token": None})).status_code == 204
+    assert await _stored_token(db_conn_and_sessionmaker, await _me_id(client)) is None
+
+    # 삭제도 비운다
+    await client.put("/users/me/push-token", json={"token": "ExpoPushToken[new-format]"})
     assert (await client.delete("/users/me/push-token")).status_code == 204
     assert await _stored_token(db_conn_and_sessionmaker, await _me_id(client)) is None
 

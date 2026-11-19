@@ -14,7 +14,7 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from jose import jwt
-from locust import HttpUser, between, task
+from locust import HttpUser, between, task # type: ignore[import]
 
 sys.path.insert(0, os.path.dirname(__file__))
 from people import CUSTOMERS_PER_INSTRUCTOR, N_INSTRUCTORS, SLOT_HOURS, customer_id, instructor_id  # noqa: E402
