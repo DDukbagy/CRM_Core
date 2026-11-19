@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from tests.conftest import _ensure_instructor
+from tests.conftest import _ensure_instructor, insert_customer_pass
 
 pytestmark = pytest.mark.asyncio
 
@@ -33,15 +33,16 @@ async def _booking_for_host(
             {"c": calendar_id},
         )
     ).scalar_one()
+    cp_id = await insert_customer_pass(session, guest_id, host_id)  # 진행 중 예약은 수강권이 고정돼 있어야 한다
     booking_id = (
         await session.execute(
             text(
                 """
-                insert into public.bookings ("when", topic, type, status, time_slot_id, guest_id)
-                values (:d, '레슨', 'LESSON', :st, :s, :g) returning id
+                insert into public.bookings ("when", topic, type, status, time_slot_id, guest_id, customer_pass_id)
+                values (:d, '레슨', 'LESSON', :st, :s, :g, :cp) returning id
                 """
             ),
-            {"d": date.today() + timedelta(days=1), "st": status, "s": slot_id, "g": str(guest_id)},
+            {"d": date.today() + timedelta(days=1), "st": status, "s": slot_id, "g": str(guest_id), "cp": cp_id},
         )
     ).scalar_one()
     await session.commit()

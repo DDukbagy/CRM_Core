@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Optional
 from uuid import UUID
 
 from pydantic import AwareDatetime
-from sqlalchemy import Column, ForeignKey, Index, Integer, Text, text
+from sqlalchemy import CheckConstraint, Column, ForeignKey, Index, Integer, Text, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy_utc import UtcDateTime
 from sqlmodel import Field, Relationship, SQLModel, func
@@ -47,6 +47,14 @@ class Booking(SQLModel, table=True):
     __tablename__ = "bookings"
     __table_args__ = (
         _booking_unique_index("uq_booking_lesson_slot_date", "LESSON"),
+        # 아래 둘은 마이그레이션 a2b3c4d5e6f8 이 만든다. init 마이그레이션의 create_all 이 먼저 만들지 않게 ddl_if(False)
+        # (선언은 alembic check 비교용)
+        Index("ix_bookings_customer_pass_id", "customer_pass_id").ddl_if(callable_=lambda *args, **kwargs: False),
+        # 진행 중인 레슨 예약은 반드시 수강권이 고정돼 있다. 끝난 예약(완료·노쇼·취소)은 예전 기록이라 비어 있을 수 있다
+        CheckConstraint(
+            "type <> 'LESSON' OR status NOT IN ('REQUESTED', 'CONFIRMED', 'CANCEL_REQUESTED') OR customer_pass_id IS NOT NULL",
+            name="ck_bookings_active_lesson_has_pass",
+        ).ddl_if(callable_=lambda *args, **kwargs: False),
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -68,6 +76,12 @@ class Booking(SQLModel, table=True):
 
     guest_id: UUID = Field(sa_column=Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False))
     guest: "User" = Relationship(back_populates="bookings")
+
+    # 이 예약으로 쓸 수강권 (예약할 때 고정, 완료·노쇼 때 여기서 차감).
+    # FK(→ customer_passes, ON DELETE SET NULL)는 마이그레이션 a2b3c4d5e6f8 이 만든다. init 마이그레이션(create_all)에는
+    # customer_passes 가 없어 여기서 선언하면 실패하므로, 비교 명령(alembic check)일 때만 alembic/env.py 가 붙인다 (payments 와 같은 방식).
+    # SET NULL: 보존 기간이 지나 수강권 기록이 지워져도 끝난 예약은 남는다 (진행 중 예약이면 CHECK 제약이 막는다)
+    customer_pass_id: Optional[int] = Field(default=None, sa_column=Column(Integer, nullable=True))
 
     created_at: Optional[AwareDatetime] = Field(
         default=None,

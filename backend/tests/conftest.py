@@ -253,6 +253,33 @@ async def free_slot_and_date(db_conn_and_sessionmaker: async_sessionmaker[AsyncS
         return picked
 
 
+# 수강권 만들기: 진행 중 레슨 예약은 수강권이 고정돼 있어야 한다 (DB 제약 ck_bookings_active_lesson_has_pass)
+
+async def insert_customer_pass(session: AsyncSession, customer_id, instructor_id, total: int = 10) -> int:
+    """고객에게 그 강사의 활성 수강권을 하나 만들고 id 를 돌려준다 (commit 함)"""
+    type_id = (await session.execute(
+        text("insert into public.lesson_pass_types (instructor_id, name, duration_hours, session_count, is_active)"
+             " values (:i, '테스트 수강권', 1, :n, true) returning id"),
+        {"i": str(instructor_id), "n": total},
+    )).scalar_one()
+    cp_id = (await session.execute(
+        text("insert into public.customer_passes (pass_type_id, customer_id, instructor_id, pass_name, duration_hours, sessions_total)"
+             " values (:t, :c, :i, '테스트 수강권', 1, :n) returning id"),
+        {"t": type_id, "c": str(customer_id), "i": str(instructor_id), "n": total},
+    )).scalar_one()
+    await session.commit()
+    return cp_id
+
+
+async def insert_pass_for_slot(session: AsyncSession, customer_id, slot_id: int, total: int = 10) -> int:
+    """그 슬롯의 캘린더 주인(강사) 수강권을 고객에게 만든다"""
+    host = (await session.execute(
+        text("select c.host_id from public.time_slots ts join public.calendars c on c.id = ts.calendar_id where ts.id = :s"),
+        {"s": slot_id},
+    )).scalar_one()
+    return await insert_customer_pass(session, customer_id, host, total)
+
+
 # 강사·고객 만들기
 
 async def _ensure_instructor(session: AsyncSession, tier: str = "NORMAL") -> uuid.UUID:

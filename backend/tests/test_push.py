@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core import push
 from app.domains.users import repository as users_repository
 from app.domains.users.repository import UserRepository
-from tests.conftest import insert_user
+from tests.conftest import insert_customer_pass, insert_user
 
 pytestmark = pytest.mark.asyncio
 
@@ -204,6 +204,7 @@ async def test_booking_transitions_push_with_booking_id(monkeypatch, actor, db_c
             {"c": cal},
         )).scalar_one()
         await s.commit()
+        await insert_customer_pass(s, guest, host)  # 예약하려면 그 강사의 수강권이 있어야 한다
     people.update({"host": (host, "INSTRUCTOR"), "guest": (guest, "CUSTOMER")})
 
     r = await act("guest").post("/bookings", json={"time_slot_id": slot, "when": day.isoformat(), "topic": "레슨"})

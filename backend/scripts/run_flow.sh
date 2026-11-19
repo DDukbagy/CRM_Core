@@ -253,6 +253,19 @@ BOOK_SLOT_ID="$(echo "$pick" | awk '{print $2}')"
 echo "선택된 예약 후보: date=$BOOK_DATE time_slot_id=$BOOK_SLOT_ID"
 echo
 
+echo "8-1) 수강권 발급 (예약하려면 그 강사의 수강권이 있어야 한다)"
+http_json GET "$BASE_URL/users/me" "$GUEST_TOKEN"
+ok_or_die "게스트 ID 조회"
+GUEST_ID="$(py_get_id "$BODY_FILE")"
+http_json POST "$BASE_URL/instructors/customers/$GUEST_ID/assign" "$HOST_TOKEN"
+ok_or_die "담당 고객 등록"
+http_json POST "$BASE_URL/passes/types" "$HOST_TOKEN" '{"name": "[TEST] 10회권", "duration_hours": 1, "session_count": 10}'
+ok_or_die "수강권 상품 생성"
+PASS_TYPE_ID="$(py_get_id "$BODY_FILE")"
+http_json POST "$BASE_URL/passes/assign" "$HOST_TOKEN" "{\"customer_id\": \"$GUEST_ID\", \"pass_type_id\": $PASS_TYPE_ID}"
+ok_or_die "수강권 발급"
+echo
+
 echo "9) POST /bookings (guest)"
 BOOK_PAYLOAD="$(cat <<JSON
 {

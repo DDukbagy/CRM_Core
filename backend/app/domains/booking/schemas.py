@@ -25,6 +25,9 @@ class BookingCreate(BaseModel):
     # 예약은 레슨만 (휴무·영업일 전환은 /calendars/me/blocks)
     type: BookingType = BookingType.LESSON
 
+    # 이 예약에 쓸 수강권. 안 보내면 서버가 그 강사의 가장 오래된 쓸 수 있는 수강권을 고른다
+    customer_pass_id: int | None = None
+
     model_config = {"extra": "forbid"}
 
 
@@ -41,6 +44,7 @@ class BookingRead(BaseModel):
     cancel_reason: str | None = None
     time_slot_id: int
     guest_id: UUID
+    customer_pass_id: int | None = None  # 예약에 고정된 수강권 (이 기능 이전에 끝난 예약은 비어 있음)
     created_at: datetime
     updated_at: datetime
 

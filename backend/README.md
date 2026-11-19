@@ -118,6 +118,7 @@ poetry run alembic history --verbose
 | `test_lesson_notes.py` · `test_posts.py` · `test_consent_policy.py` | 레슨노트, 게시물·댓글·좋아요, 피드백 공개 동의 |
 | `test_chat.py` · `test_inquiry.py` · `test_match_request.py` | 채팅, 문의하기 → 담당 강사 지정, 매칭 요청 |
 | `test_promotions_dashboard.py` | 프로모션, 매출 대시보드, 한국 날짜 기준 |
+| `test_booking_pass.py` | 예약 시 수강권 확인(없으면 409, 남의 수강권 400, 남은 횟수를 예약으로 다 쓰면 409)·고정된 수강권에서 차감 |
 | `test_logging.py` | 요청 로그·요청 ID, 500 오류 로그, 인증 실패 원인, 예약 완료 사용 로그, 로그 형식 |
 
 ```bash

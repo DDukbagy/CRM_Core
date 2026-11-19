@@ -61,6 +61,7 @@ export interface BookingRead {
   cancel_reason: string | null;
   time_slot_id: number;
   guest_id: string;
+  customer_pass_id: number | null; // 예약에 고정된 수강권 (완료·노쇼 때 여기서 차감)
   created_at: string;
   updated_at: string;
 }
@@ -71,6 +72,7 @@ export interface BookingCreate {
   topic?: string;
   description?: string;
   type?: BookingType;
+  customer_pass_id?: number; // 쓸 수강권. 안 보내면 서버가 그 강사의 가장 오래된 쓸 수 있는 수강권을 고른다
 }
 
 export interface AvailabilitySlot {

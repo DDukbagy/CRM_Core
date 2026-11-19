@@ -4,6 +4,7 @@ set -euo pipefail
 # Smoke test: Booking flow (create -> confirm -> cancel) + decline flow
 # - 로컬: interactive
 # - CI: CUSTOMER_EMAIL / CUSTOMER_PASSWORD / INSTRUCTOR_EMAIL / INSTRUCTOR_PASSWORD env로 non-interactive 실행 가능
+# - 전제: 고객 계정에 그 강사(TIME_SLOT_ID 캘린더 주인)의 쓸 수 있는 수강권이 있어야 한다. 없으면 예약이 409(사용할 수 있는 수강권이 없습니다)
 
 : "${API_URL:?API_URL is required (e.g. https://xxx.onrender.com/api)}"
 : "${SUPABASE_URL:?SUPABASE_URL is required}"

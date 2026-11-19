@@ -47,6 +47,14 @@ try:
                 ["customer_pass_id"], ["customer_passes.id"], name="payments_customer_pass_id_fkey", ondelete="SET NULL"
             )
         )
+        # bookings.customer_pass_id → customer_passes FK 도 같은 이유 (마이그레이션 a2b3c4d5e6f8 이 만듦)
+        from app.domains.booking.models import Booking
+
+        Booking.__table__.append_constraint(
+            ForeignKeyConstraint(
+                ["customer_pass_id"], ["customer_passes.id"], name="bookings_customer_pass_id_fkey", ondelete="SET NULL"
+            )
+        )
 
     else:
         # init 마이그레이션(create_all)은 "현재" 모델로 테이블을 만든다. 나중 마이그레이션이 지운 컬럼을

@@ -36,6 +36,7 @@ export interface BookingRead {
   type: BookingType;
   guest_id: string;
   time_slot_id: number;
+  customer_pass_id: number | null; // 예약에 고정된 수강권 (완료·노쇼 때 여기서 차감)
   cancel_reason: string | null;
   created_at: string;
   updated_at: string;

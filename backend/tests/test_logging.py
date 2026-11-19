@@ -17,6 +17,7 @@ from typing import AsyncIterator
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 
 from app.core.logging import build_formatter
 from app.main import app
@@ -162,12 +163,17 @@ async def test_complete_writes_event_log(world, db_conn_and_sessionmaker, caplog
 
 
 # 명세 6: 예약 완료 거부(409) → 사용 로그가 남는다 (실제 완료와 구분되는 이름으로)
-async def test_rejected_complete_writes_event_log(world, caplog):
+async def test_rejected_complete_writes_event_log(world, db_conn_and_sessionmaker, caplog):
     act, ids = world
+    async with db_conn_and_sessionmaker() as session:
+        cp_id = await _customer_pass(session, ids["guest"], ids["host"], total=1)
     bid = (await _book(act, ids))["id"]
     assert (await act("host").patch(f"/calendars/me/bookings/{bid}/confirm")).status_code == 200
 
-    # 수강권을 만들지 않았으므로 완료가 거부된다
+    # 예약에 고정된 수강권을 그사이 다 쓴 것으로 만들면 완료가 거부된다 (예약할 때는 수강권이 있어야 하므로)
+    async with db_conn_and_sessionmaker() as session:
+        await session.execute(text("update public.customer_passes set sessions_used = sessions_total where id = :i"), {"i": cp_id})
+        await session.commit()
     with caplog.at_level(logging.INFO):
         r = await act("host").patch(f"/calendars/me/bookings/{bid}/complete")
     assert r.status_code == 409, r.text

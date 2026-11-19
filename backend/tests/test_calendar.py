@@ -12,7 +12,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from tests.conftest import _ensure_instructor
+from tests.conftest import _ensure_instructor, insert_pass_for_slot
 
 ALL_WEEKDAYS = "[0,1,2,3,4,5,6]"
 DAY = date.today() + timedelta(days=7)        # 막을 날짜
@@ -147,14 +147,15 @@ async def test_cannot_block_time_with_lesson_booking(
     _, slot_a, slot_b = my_calendar
     async with db_conn_and_sessionmaker() as session:
         guest = (await session.execute(text("select id from public.users where role = 'INSTRUCTOR' limit 1"))).scalar_one()
+        cp_id = await insert_pass_for_slot(session, guest, slot_a)
         await session.execute(
             text(
                 """
-                insert into public.bookings ("when", topic, type, status, time_slot_id, guest_id)
-                values (:d, '레슨', 'LESSON', 'CONFIRMED', :slot, :guest)
+                insert into public.bookings ("when", topic, type, status, time_slot_id, guest_id, customer_pass_id)
+                values (:d, '레슨', 'LESSON', 'CONFIRMED', :slot, :guest, :cp)
                 """
             ),
-            {"d": DAY, "slot": slot_a, "guest": guest},
+            {"d": DAY, "slot": slot_a, "guest": guest, "cp": cp_id},
         )
         await session.commit()
 
@@ -205,6 +206,8 @@ async def test_customer_cannot_book_blocked_time(client, other_calendar, db_conn
             {"c": calendar_id, "d": DAY, "s": slot_a},
         )
         await session.commit()
+        me = (await client.get("/users/me")).json()["id"]
+        await insert_pass_for_slot(session, me, slot_a)  # 예약하려면 그 강사의 수강권이 있어야 한다
 
     blocked = await client.post("/bookings", json={"time_slot_id": slot_a, "when": DAY.isoformat(), "topic": "레슨"})
     assert blocked.status_code == 400, blocked.text

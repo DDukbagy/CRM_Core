@@ -693,7 +693,10 @@ export default function ScheduleScreen() {
       setManagerId(me.manager_id ?? null);
       managerIdRef.current = me.manager_id ?? null;
       setMyBookings(Array.isArray(bookings) ? bookings : []);
-      const p = Array.isArray(passes) ? passes.find(p => p.status === "ACTIVE") ?? null : null;
+      // 예약은 담당 강사의 수강권으로만 할 수 있다 (다른 강사의 수강권은 이 강사 예약에 쓸 수 없음)
+      const p = Array.isArray(passes)
+        ? passes.find(p => p.status === "ACTIVE" && p.instructor_id === me.manager_id) ?? null
+        : null;
       setActivePass(p);
 
       if (me.manager_id) {
@@ -829,6 +832,7 @@ export default function ScheduleScreen() {
           when: selectedDate,
           description: descText.trim() || undefined,
           type: "LESSON",
+          customer_pass_id: activePass?.id,
         };
         return apiFetch("/bookings", { method: "POST", body });
       }));

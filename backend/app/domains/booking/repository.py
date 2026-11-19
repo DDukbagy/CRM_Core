@@ -5,13 +5,13 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 from icalendar import Calendar as ICal, Event as ICalEvent
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth.deps import CurrentUser
 from app.core.logging import log_event
-from app.domains.booking.models import Booking, BookingType
+from app.domains.booking.models import ACTIVE_LESSON_STATUSES, Booking, BookingType
 from app.domains.booking.schemas import BookingCreate
 from app.domains.calendar.models import Calendar, TimeSlot
 from app.domains.calendar.repository import CalendarBlockRepository
@@ -140,6 +140,9 @@ class BookingRepository:
             raise HTTPException(status_code=400, detail=detail)
         initial_status = "REQUESTED"
 
+        # 이 예약에 쓸 수강권을 고정한다 (지정한 것, 안 했으면 그 강사의 가장 오래된 쓸 수 있는 수강권)
+        customer_pass_id = await self._pin_pass(guest_id, UUID(str(calendar.host_id)), data.customer_pass_id)
+
         # 같은 날짜·슬롯의 (취소 아닌) 예약은 하나만
         if await self._active_exists(data.time_slot_id, data.when, data.type):
             raise _conflict("SLOT_ALREADY_BOOKED", data.time_slot_id, data.when)
@@ -152,6 +155,7 @@ class BookingRepository:
             guest_id=guest_id,
             status=initial_status,
             type=data.type,
+            customer_pass_id=customer_pass_id,
         )
         self.session.add(booking)
         try:
@@ -163,8 +167,27 @@ class BookingRepository:
                 raise _conflict("SLOT_ALREADY_BOOKED", data.time_slot_id, data.when)
             raise _conflict("BOOKING_CONFLICT", data.time_slot_id, data.when)
         await self.session.refresh(booking)
-        _log("booking.created", booking, user, time_slot_id=booking.time_slot_id, when=booking.when)
+        _log("booking.created", booking, user, time_slot_id=booking.time_slot_id, when=booking.when, customer_pass_id=customer_pass_id)
         return booking
+
+    async def _pin_pass(self, guest_id: UUID, instructor_id: UUID, requested_id: Optional[int]) -> int:
+        """예약에 고정할 수강권 id. 남은 횟수 = 총 횟수 − 사용 − 이 수강권에 걸린 진행 중 예약 수 가 1 이상이어야 한다
+
+        지정한 수강권이 남의 것·다른 강사의 것이면 400 (PassRepository), 쓸 수 있는 수강권이 없으면 409.
+        후보 수강권 행을 잠근 상태에서 세므로, 같은 수강권으로 동시에 예약해도 남은 횟수를 넘지 않는다 (잠금은 commit 까지).
+        """
+        candidates = await PassRepository(self.session).lock_passes_for_booking(guest_id, instructor_id, requested_id)
+        for cp in candidates:
+            if cp.status != "ACTIVE":
+                continue
+            reserved = (await self.session.execute(
+                select(func.count()).select_from(Booking).where(
+                    Booking.customer_pass_id == cp.id, Booking.status.in_(ACTIVE_LESSON_STATUSES)
+                )
+            )).scalar_one()
+            if cp.sessions_total - cp.sessions_used - reserved > 0:
+                return cp.id
+        raise _reject("사용할 수 있는 수강권이 없습니다.")
 
     async def _active_exists(self, time_slot_id: int, when: date, booking_type: BookingType) -> bool:
         res = await self.session.execute(
@@ -363,12 +386,14 @@ class BookingRepository:
                 log_event(rejected_event, booking_id=booking_id, actor_id=str(host.id), reason=str(e.detail))
             raise
 
-    # 완료·노쇼 시 수강권 1회 차감
+    # 완료·노쇼 시 예약에 고정된 수강권에서 1회 차감
     async def _deduct_pass(self, booking: Booking) -> int:
         instructor_id = await self.host_id_of(booking)
-        if not instructor_id:
+        if not instructor_id or booking.customer_pass_id is None:
             raise _reject("사용할 수 있는 수강권이 없습니다.")
-        return await PassRepository(self.session).deduct_for_lesson(UUID(str(booking.guest_id)), instructor_id)
+        return await PassRepository(self.session).deduct_for_lesson(
+            booking.customer_pass_id, UUID(str(booking.guest_id)), instructor_id
+        )
 
     # 고객에게 푸시 알림 (알림을 누르면 앱이 booking_id 로 예약 상세를 연다)
     async def _push_guest(self, booking: Booking, title: str, body: str) -> None:

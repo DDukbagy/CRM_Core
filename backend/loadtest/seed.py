@@ -52,6 +52,7 @@ def build(today: date) -> dict[str, list[dict]]:
         return datetime.combine(d, time(9), tzinfo=KST)
 
     slot_id = 0
+    pass_id = 0
     for i in range(N_INSTRUCTORS):
         host = instructor_id(i)
         rows["users"].append(dict(
@@ -100,6 +101,7 @@ def build(today: date) -> dict[str, list[dict]]:
             ))
 
         used: dict[int, int] = defaultdict(int)  # 고객별 차감된 횟수 (완료 + 노쇼)
+        active: dict[int, list[dict]] = defaultdict(list)  # 고객별 진행 중 예약 (수강권을 고정해야 함)
         for offset in range(-PAST_DAYS, FUTURE_DAYS + 1):
             d = today + timedelta(days=offset)
             if d in closed or d.weekday() == 6:
@@ -116,13 +118,18 @@ def build(today: date) -> dict[str, list[dict]]:
                 if status in ("COMPLETED", "NO_SHOW"):
                     used[c] += 1
                 created = ts(d - timedelta(days=rnd.randint(1, 14)))
-                rows["bookings"].append(dict(
+                row = dict(
                     when=d, topic="레슨", type="LESSON", status=status,
                     cancel_reason="일정 변경" if status == "CANCELLED" else None,
                     time_slot_id=sid, guest_id=customer_id(c), created_at=created, updated_at=created,
-                ))
+                )
+                rows["bookings"].append(row)
+                if status in ("REQUESTED", "CONFIRMED", "CANCEL_REQUESTED"):
+                    active[c].append(row)
 
-        # 수강권: 차감된 횟수를 앞 수강권부터 채운다. 다 쓴 것은 COMPLETED, 마지막 것은 남은 횟수가 있는 ACTIVE
+        # 수강권: 차감된 횟수를 앞 수강권부터 채운다. 다 쓴 것은 COMPLETED, 마지막 것은 남은 횟수가 있는 ACTIVE.
+        # 진행 중 예약은 마지막(ACTIVE) 수강권에 고정하고, 그 수강권의 남은 횟수가 진행 중 예약 수 이상이 되게 한다
+        # (예약할 때 "남은 횟수 − 진행 중 예약 수 > 0" 을 확인하므로)
         for c in customers:
             left = used[c]
             k = 0
@@ -132,8 +139,14 @@ def build(today: date) -> dict[str, list[dict]]:
                 take = min(left, count)
                 left -= take
                 done = take == count
+                if left == 0 and not done:
+                    count = max(count, take + len(active[c]))  # 마지막 수강권: 진행 중 예약을 모두 받을 만큼
+                pass_id += 1
+                if left == 0 and not done:
+                    for row in active[c]:
+                        row["customer_pass_id"] = pass_id
                 rows["customer_passes"].append(dict(
-                    pass_type_id=i * 2 + p + 1, customer_id=customer_id(c), instructor_id=host,
+                    id=pass_id, pass_type_id=i * 2 + p + 1, customer_id=customer_id(c), instructor_id=host,
                     pass_name=("10회권", "20회권")[p], duration_hours=1, sessions_total=count,
                     sessions_used=take, price_paid=(500_000, 900_000)[p],
                     status="COMPLETED" if done else "ACTIVE",
@@ -144,8 +157,9 @@ def build(today: date) -> dict[str, list[dict]]:
                     break
             # 고객 10명 중 1명은 예전에 기간이 끝난 수강권이 하나 더 있다
             if rnd.random() < 0.1:
+                pass_id += 1
                 rows["customer_passes"].append(dict(
-                    pass_type_id=i * 2 + 1, customer_id=customer_id(c), instructor_id=host,
+                    id=pass_id, pass_type_id=i * 2 + 1, customer_id=customer_id(c), instructor_id=host,
                     pass_name="10회권", duration_hours=1, sessions_total=10, sessions_used=rnd.randint(3, 8),
                     price_paid=500_000, status="EXPIRED", created_at=ts(today - timedelta(days=200)), updated_at=now,
                 ))
@@ -171,7 +185,7 @@ async def main() -> None:
             for start in range(0, len(data), 2000):
                 await conn.execute(insert(model.__table__), data[start:start + 2000])
         # id 를 직접 넣은 표는 다음 번호를 맞춘다 (부하 테스트 중 새 행이 겹치지 않게)
-        for table in ("calendars", "time_slots", "lesson_pass_types"):
+        for table in ("calendars", "time_slots", "lesson_pass_types", "customer_passes"):
             await conn.execute(text(
                 f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), (SELECT max(id) FROM {table}))"
             ))
