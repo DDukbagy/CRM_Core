@@ -67,11 +67,13 @@ def make_engine():
     # 연결을 재사용한다. 요청마다 새로 연결하면(NullPool) 원격 DB 기준 요청당 약 1초가 더 든다
     # pool_recycle: 오래된 연결은 pooler 가 끊을 수 있어 5분마다 새로 맺는다
     # pool_pre_ping 은 끈다: 요청마다 확인 왕복이 늘고, 끊긴 연결은 그 요청만 실패한 뒤 다음부터 새로 연결된다
+    # 풀 크기 10+10: 5+5 는 DB 왕복 77ms 에서 초당 약 20 요청이 상한이었다 (docs/worklog/load-test.md).
+    # 최대 20개라 Supabase Session pooler 의 Pool Size(기본 15)를 그보다 크게(30) 둬야 한다
     return create_async_engine(
         db_url,
         echo=settings.DB_ECHO,
-        pool_size=5,
-        max_overflow=5,
+        pool_size=10,
+        max_overflow=10,
         pool_pre_ping=False,
         pool_recycle=300,
         pool_timeout=10,

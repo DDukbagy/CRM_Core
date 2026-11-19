@@ -55,6 +55,21 @@ make apiverify
 
 * 동작: 로컬 DB(`crm_verify`) 준비 → 서버 실행 → 관리자·강사·고객 토큰 발급(로컬 더미 서명) → 강사 승인 → `run_flow.sh`(캘린더·슬롯·예약·철회 14단계) → 서버 종료
 
+### 부하 테스트 (로컬 DB 전용)
+
+```bash
+# 처음 한 번: Locust 를 앱 의존성과 따로 설치
+python3 -m venv backend/loadtest/.venv && backend/loadtest/.venv/bin/pip install -r backend/loadtest/requirements.txt
+
+make loadseed    # 로컬 crm_load DB 를 새로 만들고 더미 데이터 넣기 (강사 20·고객 500·예약 약 1만 건)
+make apiload     # 전체 측정 (약 30분): 지연 없음/DB 왕복 77ms × 커넥션 풀/NullPool × 사용자 10·50·100명 × 2분
+make apiload NET=latency POOLS=pool STAGES="10" DURATION=30s   # 일부만
+```
+
+* 원격 DB(개발·데모 Supabase)에는 부하를 걸지 않는다. `backend/scripts/local_env.sh` 의 로컬 DB 만 쓴다
+* 지연 조건은 toxiproxy 컨테이너(`crm-load-proxy`)로 만든다. 측정 서버에서만 요청 제한을 끈다 (가상 사용자 전원이 같은 IP)
+* 결과: `backend/.tmp/loadtest/` (Locust CSV), 끝나면 엔드포인트별 p50·p95·p99·실패율 표를 출력한다. 기록: `docs/worklog/load-test.md`
+
 ## 3. 실행 중인 서버 점검 (실제 Supabase)
 
 * 실제 Supabase 로그인·S3 검증은 실제 계정·자격 증명이 필요하다 (`make apitoken` 으로 토큰 발급)

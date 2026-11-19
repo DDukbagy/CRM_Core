@@ -26,6 +26,7 @@ make apiverify   # 로컬 DB → 서버 → 토큰 → 플로우까지 원클릭
 | `make apiverify` | 원클릭 로컬 검증 (로컬 DB + 서버 + 토큰 + 플로우) |
 | `make apitoken` | 실제 Supabase 토큰 발급 |
 | `make apiflow` | 실행 중인 서버에 플로우 실행 |
+| `make loadseed` / `make apiload` | 부하 테스트용 더미 데이터 / 부하 테스트 (로컬 DB 전용, `loadtest/`) |
 | `make gitrelease` | main 버전 태그 생성 (롤백 기준점 · 대화형) |
 | `make gitrollback` / `make gitrollbackdry` | 롤백 실행 / 롤백 시뮬레이션 |
 | `make gitbranch` | 브랜치 리셋 |
