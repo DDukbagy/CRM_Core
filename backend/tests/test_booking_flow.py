@@ -92,6 +92,14 @@ async def world(db_conn_and_sessionmaker: async_sessionmaker[AsyncSession]) -> A
     app.dependency_overrides.clear()
 
 
+@pytest_asyncio.fixture
+async def guest_pass(world, db_conn_and_sessionmaker) -> int:
+    """담당 고객(guest)의 host 수강권 10회. 예약하려면 그 강사의 쓸 수 있는 수강권이 있어야 한다"""
+    _, ids = world
+    async with db_conn_and_sessionmaker() as session:
+        return await _customer_pass(session, ids["guest"], ids["host"], total=10)
+
+
 async def _book(act, ids, slot="slot_a", day=DAY, **extra) -> dict:
     r = await act("guest").post("/bookings", json={"time_slot_id": ids[slot], "when": day.isoformat(), "topic": "레슨 신청", **extra})
     assert r.status_code == 201, r.text
@@ -143,7 +151,7 @@ async def test_full_lesson_lifecycle(world, db_conn_and_sessionmaker):
     assert (await act("host").patch(f"/calendars/me/bookings/{bid}/cancel")).status_code == 409
 
 
-async def test_cancel_request_approved(world):
+async def test_cancel_request_approved(world, guest_pass):
     act, ids = world
     bid = (await _book(act, ids))["id"]
     await act("host").patch(f"/calendars/me/bookings/{bid}/confirm")
@@ -155,7 +163,7 @@ async def test_cancel_request_approved(world):
     assert ids["slot_a"] in [s["time_slot_id"] for s in (await _available(act, ids))["slots"]]
 
 
-async def test_decline_and_withdraw_reopen_slot(world):
+async def test_decline_and_withdraw_reopen_slot(world, guest_pass):
     act, ids = world
     first = (await _book(act, ids))["id"]
     r = await act("host").patch(f"/calendars/me/bookings/{first}/decline", json={"reason": "개인 사정"})
@@ -188,7 +196,7 @@ async def test_host_cancel_and_no_show(world, db_conn_and_sessionmaker):
     assert (await act("host").patch(f"/calendars/me/bookings/{b}/complete")).status_code == 409
 
 
-async def test_duplicate_request_is_409(world):
+async def test_duplicate_request_is_409(world, guest_pass):
     act, ids = world
     await _book(act, ids)
     r = await act("guest").post("/bookings", json={"time_slot_id": ids["slot_a"], "when": DAY.isoformat(), "topic": "x"})
@@ -197,7 +205,7 @@ async def test_duplicate_request_is_409(world):
 
 # 권한
 
-async def test_only_owner_can_change_booking(world):
+async def test_only_owner_can_change_booking(world, guest_pass):
     act, ids = world
     bid = (await _book(act, ids))["id"]
 
@@ -221,7 +229,7 @@ async def test_booking_type_permissions(world):
         assert (await act("host").post("/bookings", json={**body, "type": t})).status_code == 400
 
 
-async def test_ics_download_only_for_participants(world):
+async def test_ics_download_only_for_participants(world, guest_pass):
     act, ids = world
     bid = (await _book(act, ids))["id"]
     r = await act("guest").get(f"/bookings/{bid}/download")
@@ -274,7 +282,7 @@ async def test_temporary_off_day(world):
     assert day["off_type"] is None and len(day["slots"]) == 2
 
 
-async def test_open_recurring_off_day(world, db_conn_and_sessionmaker):
+async def test_open_recurring_off_day(world, db_conn_and_sessionmaker, guest_pass):
     act, ids = world
     # 정기 휴무일이 아닌 날은 '열기'를 할 수 없다
     assert (await act("host").post("/calendars/me/blocks", json={"date": DAY.isoformat(), "kind": "OPEN"})).status_code == 400
@@ -359,7 +367,7 @@ async def test_booking_no_longer_takes_membership(world):
 
 # 캘린더·슬롯 관리
 
-async def test_calendar_and_time_slot_management(world):
+async def test_calendar_and_time_slot_management(world, guest_pass):
     act, ids = world
     host = act("host")
     assert (await host.post("/calendars/me", json={"topics": ["x"], "description": "x"})).status_code == 409
@@ -387,7 +395,7 @@ async def test_calendar_and_time_slot_management(world):
     assert {s["id"] for s in listed} == {ids["slot_a"], ids["slot_b"]}
 
 
-async def test_host_booking_list_range(world):
+async def test_host_booking_list_range(world, guest_pass):
     act, ids = world
     bid = (await _book(act, ids))["id"]
     r = await act("host").get("/calendars/me/bookings", params={"start": DAY.isoformat(), "end": DAY.isoformat()})

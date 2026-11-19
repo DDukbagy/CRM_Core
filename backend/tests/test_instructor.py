@@ -7,7 +7,7 @@ from datetime import date, timedelta
 import pytest
 from sqlalchemy import text
 
-from tests.conftest import insert_user
+from tests.conftest import insert_customer_pass, insert_user
 
 pytestmark = pytest.mark.asyncio
 
@@ -113,9 +113,10 @@ async def test_stats(actor, db_conn_and_sessionmaker):
         other = await insert_user(s, "CUSTOMER")
         cal = (await s.execute(text("insert into public.calendars (topics, description, host_id) values ('[]'::jsonb, 'c', :h) returning id"), {"h": str(inst)})).scalar_one()
         slot = (await s.execute(text("insert into public.time_slots (start_time, end_time, weekdays, is_active, calendar_id) values ('09:00','10:00','[0,1,2,3,4,5,6]'::jsonb, true, :c) returning id"), {"c": cal})).scalar_one()
+        c2_pass = await insert_customer_pass(s, c2, inst)  # 진행 중(확정) 예약은 수강권이 고정돼 있어야 한다
         for i, (guest, st) in enumerate([(c1, "COMPLETED"), (c1, "COMPLETED"), (c1, "NO_SHOW"), (c2, "CONFIRMED"), (other, "COMPLETED")]):
-            await s.execute(text("""insert into public.bookings ("when", topic, type, status, time_slot_id, guest_id) values (:d, 't', 'LESSON', :st, :s, :g)"""),
-                            {"d": date.today() + timedelta(days=i), "st": st, "s": slot, "g": str(guest)})
+            await s.execute(text("""insert into public.bookings ("when", topic, type, status, time_slot_id, guest_id, customer_pass_id) values (:d, 't', 'LESSON', :st, :s, :g, :cp)"""),
+                            {"d": date.today() + timedelta(days=i), "st": st, "s": slot, "g": str(guest), "cp": c2_pass if st == "CONFIRMED" else None})
         await s.commit()
     people["inst"] = (inst, "INSTRUCTOR")
 

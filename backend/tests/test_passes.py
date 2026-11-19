@@ -209,11 +209,11 @@ async def test_completing_lesson_deducts_one_session(
             await session.execute(
                 text(
                     """
-                    insert into public.bookings ("when", topic, type, status, time_slot_id, guest_id)
-                    values (:d, '레슨', 'LESSON', 'CONFIRMED', :s, :g) returning id
+                    insert into public.bookings ("when", topic, type, status, time_slot_id, guest_id, customer_pass_id)
+                    values (:d, '레슨', 'LESSON', 'CONFIRMED', :s, :g, :cp) returning id
                     """
                 ),
-                {"d": lesson_day, "s": slot_id, "g": str(managed_customer_id)},
+                {"d": lesson_day, "s": slot_id, "g": str(managed_customer_id), "cp": cp["id"]},
             )
         ).scalar_one()
         await session.commit()
@@ -233,7 +233,8 @@ async def test_completing_lesson_deducts_one_session(
 # 명세: docs/worklog/test-mutation-check.md 2절
 # 규칙(worklog 1절 표 B7·P4)을 망가뜨리면 실패한다. 응답과 함께 요청 뒤 DB 의 예약 상태·수강권 사용 횟수를 확인한다.
 
-async def _confirmed_booking(session: AsyncSession, host_id: uuid.UUID, guest_id: uuid.UUID) -> int:
+async def _confirmed_booking(session: AsyncSession, host_id: uuid.UUID, guest_id: uuid.UUID, customer_pass_id: int) -> int:
+    """host 캘린더에 확정 예약 하나 (예약에 고정할 수강권 customer_pass_id)"""
     calendar_id = (
         await session.execute(
             text("insert into public.calendars (topics, description, host_id) values ('[]'::jsonb, 'c', :h) returning id"),
@@ -252,10 +253,10 @@ async def _confirmed_booking(session: AsyncSession, host_id: uuid.UUID, guest_id
     booking_id = (
         await session.execute(
             text(
-                'insert into public.bookings ("when", topic, type, status, time_slot_id, guest_id)'
-                " values (:d, '레슨', 'LESSON', 'CONFIRMED', :s, :g) returning id"
+                'insert into public.bookings ("when", topic, type, status, time_slot_id, guest_id, customer_pass_id)'
+                " values (:d, '레슨', 'LESSON', 'CONFIRMED', :s, :g, :cp) returning id"
             ),
-            {"d": date.today() + timedelta(days=3), "s": slot_id, "g": str(guest_id)},
+            {"d": date.today() + timedelta(days=3), "s": slot_id, "g": str(guest_id), "cp": customer_pass_id},
         )
     ).scalar_one()
     await session.commit()
@@ -294,7 +295,7 @@ async def test_other_instructor_cannot_complete_booking(actor, db_conn_and_sessi
         people["other"] = (await insert_user(s, "INSTRUCTOR"), "INSTRUCTOR")   # 캘린더도 다르고 수강권도 발급하지 않은 강사
         people["cust"] = (await insert_user(s, "CUSTOMER", manager_id=people["owner"][0]), "CUSTOMER")
         cp_id = await _issue_pass(s, people["owner"][0], people["cust"][0])
-        booking_id = await _confirmed_booking(s, people["owner"][0], people["cust"][0])
+        booking_id = await _confirmed_booking(s, people["owner"][0], people["cust"][0], cp_id)
 
     r = await act("other").patch(f"/calendars/me/bookings/{booking_id}/complete")
 
@@ -317,7 +318,7 @@ async def test_completion_deducts_only_that_instructors_pass(actor, db_conn_and_
         # 순서가 중요하다: A 를 먼저 발급해야, 강사 조건이 빠졌을 때 "먼저 발급된 것" 인 A 가 차감되어 빈틈이 드러난다
         a_pass = await _issue_pass(s, people["a"][0], people["cust"][0])
         b_pass = await _issue_pass(s, people["b"][0], people["cust"][0])
-        booking_id = await _confirmed_booking(s, people["b"][0], people["cust"][0])
+        booking_id = await _confirmed_booking(s, people["b"][0], people["cust"][0], b_pass)
 
     r = await act("b").patch(f"/calendars/me/bookings/{booking_id}/complete")
     assert r.status_code == 200, r.text

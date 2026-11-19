@@ -4,13 +4,26 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import text
+
+from tests.conftest import insert_pass_for_slot
 
 pytestmark = pytest.mark.asyncio
 
 
-async def test_create_booking_success(client, free_slot_and_date):
+@pytest_asyncio.fixture
+async def bookable_slot(free_slot_and_date, client, db_conn_and_sessionmaker):
+    """conftest 의 빈 슬롯·날짜 + 로그인한 고객(client)에게 그 슬롯 강사의 수강권 (예약하려면 필요)"""
     slot_id, d = free_slot_and_date
+    me = (await client.get("/users/me")).json()["id"]
+    async with db_conn_and_sessionmaker() as s:
+        await insert_pass_for_slot(s, me, slot_id)
+    return slot_id, d
+
+
+async def test_create_booking_success(client, bookable_slot):
+    slot_id, d = bookable_slot
 
     payload = {
         "time_slot_id": slot_id,
@@ -27,8 +40,8 @@ async def test_create_booking_success(client, free_slot_and_date):
     assert body["when"] in (d.isoformat(), str(d))  # 모델 직렬화 형태 차이 대비
 
 
-async def test_create_booking_duplicate_conflict(client, free_slot_and_date):
-    slot_id, d = free_slot_and_date
+async def test_create_booking_duplicate_conflict(client, bookable_slot):
+    slot_id, d = bookable_slot
 
     payload = {
         "time_slot_id": slot_id,
@@ -44,8 +57,8 @@ async def test_create_booking_duplicate_conflict(client, free_slot_and_date):
     assert second.status_code == 409, second.text  # 너 코드에서 409를 의도함
 
 
-async def test_cancel_then_rebook_allowed(client, free_slot_and_date, db_conn_and_sessionmaker):
-    slot_id, d = free_slot_and_date
+async def test_cancel_then_rebook_allowed(client, bookable_slot, db_conn_and_sessionmaker):
+    slot_id, d = bookable_slot
 
     payload = {
         "time_slot_id": slot_id,
@@ -69,9 +82,9 @@ async def test_cancel_then_rebook_allowed(client, free_slot_and_date, db_conn_an
     rebook = await client.post("/bookings", json=payload)
     assert rebook.status_code == 201, rebook.text
 
-async def test_withdraw_requested_booking_success(client, free_slot_and_date):
+async def test_withdraw_requested_booking_success(client, bookable_slot):
     """REQUESTED 상태의 예약은 withdraw로 철회할 수 있어야 한다."""
-    slot_id, d = free_slot_and_date
+    slot_id, d = bookable_slot
 
     payload = {
         "time_slot_id": slot_id,
@@ -90,9 +103,9 @@ async def test_withdraw_requested_booking_success(client, free_slot_and_date):
     assert body["status"] == "CANCELLED"
 
 
-async def test_cancel_requested_booking_should_fail(client, free_slot_and_date):
+async def test_cancel_requested_booking_should_fail(client, bookable_slot):
     """REQUESTED 상태의 예약은 cancel이 아니라 withdraw로만 처리되어야 한다."""
-    slot_id, d = free_slot_and_date
+    slot_id, d = bookable_slot
 
     payload = {
         "time_slot_id": slot_id,
@@ -111,9 +124,9 @@ async def test_cancel_requested_booking_should_fail(client, free_slot_and_date):
 
 # 취소 신청(CANCEL_REQUESTED) 흐름
 
-async def test_cancel_as_guest_sets_cancel_requested(client, free_slot_and_date, db_conn_and_sessionmaker):
+async def test_cancel_as_guest_sets_cancel_requested(client, bookable_slot, db_conn_and_sessionmaker):
     """CONFIRMED 예약에 대해 고객이 취소 신청 → CANCEL_REQUESTED."""
-    slot_id, d = free_slot_and_date
+    slot_id, d = bookable_slot
 
     created = await client.post("/bookings", json={
         "time_slot_id": slot_id, "when": d.isoformat(), "topic": "취소신청 테스트",
@@ -133,9 +146,9 @@ async def test_cancel_as_guest_sets_cancel_requested(client, free_slot_and_date,
     assert res.json()["status"] == "CANCEL_REQUESTED"
 
 
-async def test_withdraw_cancel_request_returns_confirmed(client, free_slot_and_date, db_conn_and_sessionmaker):
+async def test_withdraw_cancel_request_returns_confirmed(client, bookable_slot, db_conn_and_sessionmaker):
     """CANCEL_REQUESTED 상태에서 고객이 취소 신청 철회 → CONFIRMED."""
-    slot_id, d = free_slot_and_date
+    slot_id, d = bookable_slot
 
     created = await client.post("/bookings", json={
         "time_slot_id": slot_id, "when": d.isoformat(), "topic": "취소철회 테스트",
@@ -171,12 +184,13 @@ async def test_admin_approve_cancel(admin_client, free_slot_and_date, db_conn_an
         )
         await session.commit()
         guest_id = str(cid)
+        cp_id = await insert_pass_for_slot(session, guest_id, slot_id)
         ins = await session.execute(
             text(
-                "INSERT INTO public.bookings (\"when\", topic, type, status, time_slot_id, guest_id) "
-                "VALUES (:when, '취소승인 테스트', 'LESSON', 'CANCEL_REQUESTED', :slot_id, :guest_id) RETURNING id"
+                "INSERT INTO public.bookings (\"when\", topic, type, status, time_slot_id, guest_id, customer_pass_id) "
+                "VALUES (:when, '취소승인 테스트', 'LESSON', 'CANCEL_REQUESTED', :slot_id, :guest_id, :cp) RETURNING id"
             ),
-            {"when": d, "slot_id": slot_id, "guest_id": guest_id},
+            {"when": d, "slot_id": slot_id, "guest_id": guest_id, "cp": cp_id},
         )
         booking_id = ins.scalar_one()
         await session.commit()
@@ -202,12 +216,13 @@ async def test_admin_reject_cancel(admin_client, free_slot_and_date, db_conn_and
         )
         await session.commit()
         guest_id = str(cid)
+        cp_id = await insert_pass_for_slot(session, guest_id, slot_id)
         ins = await session.execute(
             text(
-                "INSERT INTO public.bookings (\"when\", topic, type, status, time_slot_id, guest_id) "
-                "VALUES (:when, '취소거절 테스트', 'LESSON', 'CANCEL_REQUESTED', :slot_id, :guest_id) RETURNING id"
+                "INSERT INTO public.bookings (\"when\", topic, type, status, time_slot_id, guest_id, customer_pass_id) "
+                "VALUES (:when, '취소거절 테스트', 'LESSON', 'CANCEL_REQUESTED', :slot_id, :guest_id, :cp) RETURNING id"
             ),
-            {"when": d, "slot_id": slot_id, "guest_id": guest_id},
+            {"when": d, "slot_id": slot_id, "guest_id": guest_id, "cp": cp_id},
         )
         booking_id = ins.scalar_one()
         await session.commit()

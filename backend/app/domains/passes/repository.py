@@ -171,31 +171,44 @@ class PassRepository:
                   sessions_used=cp.sessions_used, sessions_total=cp.sessions_total)
         return cp
 
-    async def deduct_for_lesson(self, customer_id: UUID, instructor_id: UUID) -> int:
-        """레슨 완료·노쇼 시 그 강사의 활성 수강권에서 1회 차감하고 그 수강권 id 를 돌려준다 (commit 은 호출한 쪽에서)
+    async def lock_passes_for_booking(
+        self, customer_id: UUID, instructor_id: UUID, customer_pass_id: Optional[int]
+    ) -> list[CustomerPass]:
+        """예약에 쓸 후보 수강권을 잠그고 돌려준다 (먼저 발급된 순, commit 은 호출한 쪽에서)
+
+        - customer_pass_id 를 주면 그 하나만. 그 고객의 그 강사 수강권이 아니면(없는 번호 포함) 400.
+          없는 번호와 남의 번호를 같은 응답으로 묶어, 남의 수강권 번호가 있는지 드러나지 않게 한다
+        - 안 주면 그 고객의 그 강사 활성 수강권 전부
+        행을 잠그므로(SELECT ... FOR UPDATE) 같은 수강권으로 동시에 예약해도 한 번에 하나씩 잔여를 센다.
+        """
+        stmt = (
+            select(CustomerPass)
+            .where(CustomerPass.customer_id == customer_id, CustomerPass.instructor_id == instructor_id)
+            .order_by(CustomerPass.id)
+            .with_for_update()
+        )
+        if customer_pass_id is not None:
+            cp = (await self.session.execute(stmt.where(CustomerPass.id == customer_pass_id))).scalars().first()
+            if cp is None:
+                raise HTTPException(status_code=400, detail="쓸 수 없는 수강권입니다.")
+            return [cp]
+        return list((await self.session.execute(stmt.where(CustomerPass.status == "ACTIVE"))).scalars().all())
+
+    async def deduct_for_lesson(self, customer_pass_id: int, customer_id: UUID, instructor_id: UUID) -> int:
+        """레슨 완료·노쇼 시 예약에 고정된 수강권에서 1회 차감하고 그 수강권 id 를 돌려준다 (commit 은 호출한 쪽에서)
 
         조건부 UPDATE 한 문장으로 "잔여가 있으면 +1" 을 한다. Python 에서 읽고 더해 저장하면
         동시에 온 요청이 같은 값을 읽어 차감 1회가 사라진다 (갱신 손실).
         나중 요청의 UPDATE 는 앞 트랜잭션의 커밋을 기다린 뒤 WHERE 를 다시 확인하므로 잔여를 넘겨 차감하지 않는다.
-        쓸 수 있는 수강권이 없으면 409 — 호출한 쪽의 예약 상태 변경도 커밋되지 않는다.
-        수강권이 여러 개면 먼저 발급된 것부터 (예약 시 수강권 고정은 별도 작업).
+        고정된 수강권을 다 썼거나 활성이 아니면 409 — 호출한 쪽의 예약 상태 변경도 커밋되지 않는다.
+        고객·강사 조건은 예약할 때 이미 확인했지만, 다른 사람의 수강권에서 차감되는 일이 없도록 한 번 더 건다.
         """
-        target = (
-            select(CustomerPass.id)
-            .where(
-                CustomerPass.customer_id == customer_id,
-                CustomerPass.instructor_id == instructor_id,
-                CustomerPass.status == "ACTIVE",
-                CustomerPass.sessions_used < CustomerPass.sessions_total,
-            )
-            .order_by(CustomerPass.id)
-            .limit(1)
-            .scalar_subquery()
-        )
         res = await self.session.execute(
             update(CustomerPass)
             .where(
-                CustomerPass.id == target,
+                CustomerPass.id == customer_pass_id,
+                CustomerPass.customer_id == customer_id,
+                CustomerPass.instructor_id == instructor_id,
                 CustomerPass.status == "ACTIVE",
                 CustomerPass.sessions_used < CustomerPass.sessions_total,
             )

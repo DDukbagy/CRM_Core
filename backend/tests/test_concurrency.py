@@ -102,8 +102,10 @@ async def world(real_db: async_sessionmaker[AsyncSession]) -> AsyncIterator[dict
     finally:
         app.dependency_overrides.clear()
         async with real_db() as s:
-            # 수강권은 회원 삭제를 막으므로(RESTRICT) 먼저 지운다. 회원을 지우면 캘린더·시간·예약은 함께 지워진다
+            # 예약 → 수강권 → 회원 순서로 지운다. 진행 중 예약이 남은 채 수강권을 지우면 예약의 수강권 칸이 비어
+            # DB 제약(진행 중 예약은 수강권 필수)에 걸린다. 수강권은 회원 삭제를 막는다(RESTRICT)
             p = {"h": str(ids["host"])}
+            await s.execute(text("delete from public.bookings where guest_id = :g"), {"g": str(ids["guest"])})
             await s.execute(text("delete from public.customer_passes where instructor_id = :h"), p)
             await s.execute(text("delete from public.lesson_pass_types where instructor_id = :h"), p)
             await s.execute(text("delete from public.users where id in (:h, :g)"), {**p, "g": str(ids["guest"])})
@@ -240,10 +242,15 @@ async def test_spec2_서로_다른_예약_완료와_노쇼_동시_2회_차감(re
 async def test_spec3_잔여_1회에_서로_다른_예약_2건_동시_1건만(real_db, world, gate):
     """명세 3: 잔여 1회 수강권으로 서로 다른 예약 2건(노쇼 포함)의 완료가 동시에 오면 → 1건만 완료·차감, 나머지 409"""
     w, c = world, world["client"]
-    # 잔여 1회인 수강권을 발급한다
-    cp_id = await give_pass(real_db, w, total=1)
+    # 잔여 1회인 수강권에 확정 예약 2건이 걸린 상태를 만든다.
+    # 예약할 때 잔여를 확인하므로(booking-pass-pinning) 잔여 1회로는 예약 2건을 만들 수 없다.
+    # 그래서 2회권으로 2건을 예약한 뒤 총 횟수를 1로 줄인다 (강사가 수강권을 수동으로 고친 경우)
+    cp_id = await give_pass(real_db, w, total=2)
     b1 = await book(w, 0, confirm=True)
     b2 = await book(w, 1, confirm=True)
+    async with real_db() as s:
+        await s.execute(text("update public.customer_passes set sessions_total = 1 where id = :i"), {"i": cp_id})
+        await s.commit()
 
     gate.arm(2)
     # b1 완료, b2 노쇼를 동시에 보낸다
@@ -269,6 +276,7 @@ async def test_spec1_확정과_신청_철회_동시_하나만_성공(real_db, wo
     어느 쪽이 먼저 처리될지는 정할 수 없다. 그래서 "하나만 성공했는가"와 "최종 상태가 성공한 쪽 결과와 같은가"를 본다.
     """
     w, c = world, world["client"]
+    await give_pass(real_db, w, total=5)  # 예약하려면 그 강사의 수강권이 있어야 한다
     bid = await book(w, 0, confirm=False)  # 신청 중(REQUESTED)
 
     gate.arm(2)
