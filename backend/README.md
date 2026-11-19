@@ -111,9 +111,9 @@ poetry run alembic history --verbose
 | 테스트 | 검증 내용 |
 |--------|-----------|
 | `test_auth.py` · `test_password_login.py` | 토큰 검증·폴백, 최초 로그인 생성, 역할 확인, 비밀번호 로그인 |
-| `test_users.py` · `test_users_api.py` | 내 정보, 역할별 목록, 계정 관리, 결제·계약 기록 보존, 탈퇴 |
+| `test_users_api.py` | 내 정보, 역할별 목록, 계정 관리, 결제·계약 기록 보존, 탈퇴 |
 | `test_instructor.py` | 스태프, 강사 신청·승인, 공개 목록, 담당 고객 등록 |
-| `test_calendar.py` · `test_booking_flow.py` · `test_bookings.py` | 슬롯, 휴무, 예약 상태 전환, 중복 방지, 수강권 차감 |
+| `test_calendar.py` · `test_booking_flow.py` | 슬롯, 휴무, 예약 상태 전환, 중복 방지, 수강권 차감 |
 | `test_passes.py` · `test_payment.py` | 수강권 발급·사용, 결제 등록 권한·수강권 연결 |
 | `test_lesson_notes.py` · `test_posts.py` · `test_consent_policy.py` | 레슨노트, 게시물·댓글·좋아요, 피드백 공개 동의 |
 | `test_chat.py` · `test_inquiry.py` · `test_match_request.py` | 채팅, 문의하기 → 담당 강사 지정, 매칭 요청 |

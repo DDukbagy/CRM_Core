@@ -220,6 +220,19 @@ async def test_only_owner_can_change_booking(world, guest_pass):
     assert (await act("guest").patch("/bookings/99999999/cancel")).status_code == 404
 
 
+
+async def test_admin_handles_cancel_requests_on_any_calendar(world, guest_pass):
+    """관리자는 남의 캘린더 예약의 취소 신청도 승인(→ CANCELLED)·거절(→ CONFIRMED)할 수 있다"""
+    act, ids = world
+    approve = (await _book(act, ids, slot="slot_a"))["id"]
+    reject = (await _book(act, ids, slot="slot_b"))["id"]
+    for bid in (approve, reject):
+        await act("host").patch(f"/calendars/me/bookings/{bid}/confirm")
+        assert (await act("guest").patch(f"/bookings/{bid}/cancel")).json()["status"] == "CANCEL_REQUESTED"
+
+    assert (await act("admin").patch(f"/calendars/me/bookings/{approve}/approve-cancel")).json()["status"] == "CANCELLED"
+    assert (await act("admin").patch(f"/calendars/me/bookings/{reject}/reject-cancel")).json()["status"] == "CONFIRMED"
+
 async def test_booking_type_permissions(world):
     act, ids = world
     body = {"time_slot_id": ids["slot_a"], "when": DAY.isoformat(), "topic": "x"}

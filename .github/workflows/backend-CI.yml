@@ -84,7 +84,7 @@ jobs:
           AWS_ACCESS_KEY_ID: testing
           AWS_SECRET_ACCESS_KEY: testing
           AWS_DEFAULT_REGION: ap-northeast-2
-        run: poetry run pytest -q tests/test_bookings.py
+        run: poetry run pytest -q tests/test_booking_flow.py
 
       - name: Run tests
         env:
