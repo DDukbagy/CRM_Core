@@ -77,6 +77,14 @@ apitest: ## Backend tests on local DB (fresh DB + alembic check + pytest). Args:
 apiverify: ## One-click local verify: local DB -> server -> tokens -> main flow (run_flow.sh)
 	@cd backend && bash scripts/verify.sh
 
+.PHONY: loadseed
+loadseed: ## Load test: fresh LOCAL crm_load DB + dummy data (20 instructors, 500 customers, ~10k bookings)
+	@cd backend && bash -c 'export LOCAL_DB_NAME=crm_load && source scripts/local_env.sh && bash scripts/local_db.sh recreate crm_load >/dev/null && poetry run python loadtest/seed.py'
+
+.PHONY: apiload
+apiload: ## Load test on LOCAL DB (pool vs NullPool, direct vs latency). Args: NET=latency POOLS=pool STAGES="10 50" DURATION=30s
+	@cd backend && NET="$(NET)" POOLS="$(POOLS)" STAGES="$(STAGES)" DURATION="$(DURATION)" bash loadtest/run.sh && python3 loadtest/report.py
+
 .PHONY: webcheck
 webcheck: ## Web lint + type check
 	@cd frontend && npm run lint && npx tsc --noEmit
