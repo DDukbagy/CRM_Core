@@ -11,7 +11,6 @@ from sqlalchemy_utc import UtcDateTime
 from sqlmodel import Field, Relationship, SQLModel, func
 
 if TYPE_CHECKING:
-    from app.domains.booking.models import Booking
     from app.domains.users.models import User
 
 class Calendar(SQLModel, table=True):
@@ -70,8 +69,6 @@ class TimeSlot(SQLModel, table=True):
 
     calendar_id: int = Field(sa_column=Column(BigInteger, ForeignKey("calendars.id", ondelete="CASCADE"), nullable=False))
     calendar: Calendar = Relationship(back_populates="time_slots")
-
-    bookings: List["Booking"] = Relationship(back_populates="time_slot")
 
     created_at: Optional[AwareDatetime] = Field(
         default=None,

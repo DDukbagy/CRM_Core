@@ -25,7 +25,7 @@ async def _used(db, cp_id: int) -> int:
 
 
 def _body(ids, slot="slot_a", day=DAY, **extra) -> dict:
-    return {"time_slot_id": ids[slot], "when": day.isoformat(), "topic": "레슨 신청", **extra}
+    return {"time_slot_ids": [ids[slot]], "when": day.isoformat(), "topic": "레슨 신청", **extra}
 
 
 # 명세 1. 그 강사의 활성 수강권이 없는 고객이 예약하면 → 409 를 반환하고 예약은 생기지 않는다

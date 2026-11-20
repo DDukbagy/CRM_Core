@@ -48,7 +48,6 @@ function MonthGrid({
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const today = toLocalDateStr();
-  const slotMap = Object.fromEntries(slots.map(s => [s.id, s])) as Record<number, { start_time: string; end_time: string }>;
   const cells: (number | null)[] = [
     ...Array(firstDay).fill(null),
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
@@ -78,7 +77,7 @@ function MonthGrid({
             const isHoliday = !isRecurringOff && blocks.some(b => b.kind === "CLOSE" && b.time_slot_id === null && coversDate(b, ds));
             const hasWorkOverride = isRecurringOff && blocks.some(b => b.kind === "OPEN" && coversDate(b, ds));
             const regularBk = bk;
-            const sessionGroups = makeBookingGroups(regularBk, slotMap);
+            const sessionGroups = makeBookingGroups(regularBk);
             const isToday = ds === today;
             const isSelected = ds === selectedDate;
             return (
@@ -237,12 +236,10 @@ function DayPanel({
     setActivateMode(false);
   }
 
-  // Session grouping
-  const slotMapInst = Object.fromEntries(slots.map(s => [s.id, s])) as Record<number, { start_time: string; end_time: string }>;
   const activeBookings = bookings.filter(b => b.status !== "CANCELLED");
   const cancelledBookings = bookings.filter(b => b.status === "CANCELLED");
-  const activeGroups = makeBookingGroups(activeBookings, slotMapInst);
-  const cancelledGroups = makeBookingGroups(cancelledBookings, slotMapInst);
+  const activeGroups = makeBookingGroups(activeBookings);
+  const cancelledGroups = makeBookingGroups(cancelledBookings);
 
   const [bookingPage, setBookingPage] = useState(0);
   const bookScrollRef = useRef<ScrollView>(null);
@@ -269,7 +266,7 @@ function DayPanel({
 
   // 확정/신청 예약이 있는 슬롯 ID (그날 휴무 처리 전 확인용)
   const activeBookingSlotIds = new Set(
-    bookings.filter(b => b.status === "REQUESTED" || b.status === "CONFIRMED").map(b => b.time_slot_id)
+    bookings.filter(b => b.status === "REQUESTED" || b.status === "CONFIRMED").flatMap(b => b.time_slot_ids)
   );
   const hasActiveBookingsOnDay = activeBookingSlotIds.size > 0;
 
@@ -325,7 +322,7 @@ function DayPanel({
             contentContainerStyle={{ paddingHorizontal: PEEK }}
           >
             {TABS.map((tab, ti) => {
-              const groups = makeBookingGroups(tab.data, slotMapInst);
+              const groups = makeBookingGroups(tab.data);
               return (
                 <View key={ti} style={{ width: PAGE_W, minHeight: 80 }}>
                   {groups.length === 0 ? (
@@ -653,7 +650,7 @@ function TimelineView({
   const events: TlEvent[] = [];
 
   dayBookings.forEach(b => {
-    const slot = daySlots.find(s => s.id === b.time_slot_id);
+    const slot = b.start_time && b.end_time ? { start_time: b.start_time, end_time: b.end_time } : null;
     if (slot) {
       events.push({
         id: `b-${b.id}`,
@@ -667,7 +664,7 @@ function TimelineView({
   });
 
   daySlots.forEach(slot => {
-    const hasBk = dayBookings.some(b => b.time_slot_id === slot.id);
+    const hasBk = dayBookings.some(b => b.time_slot_ids.includes(slot.id));
     if (!hasBk) {
       events.push({
         id: `s-${slot.id}`,
@@ -696,7 +693,7 @@ function TimelineView({
           <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
             <Text style={tl.sectionTitle}>예약 목록</Text>
             {dayBookings.map(b => {
-              const slot = daySlots.find(s => s.id === b.time_slot_id);
+              const slot = b.start_time && b.end_time ? { start_time: b.start_time, end_time: b.end_time } : null;
               return (
                 <View key={b.id} style={[tl.bkCard, { borderLeftColor: STATUS_COLOR[b.status] ?? "#9ca3af" }]}>
                   <View style={tl.bkTop}>
@@ -1195,9 +1192,7 @@ function BookingDetailModal({ visible, booking, slots, customerMap, onClose, onA
 }) {
   if (!booking) return null;
   const today = toLocalDateStr();
-  const jsDay = new Date(booking.when + "T00:00:00").getDay();
-  const pyDay = jsWeekdayToPy(jsDay);
-  const slot = slots.find(s => s.id === booking.time_slot_id && s.weekdays.includes(pyDay));
+  const slot = booking.start_time && booking.end_time ? { start_time: booking.start_time, end_time: booking.end_time } : null;
   const customerName = customerMap[booking.guest_id] ?? booking.guest_id.slice(0, 8);
   const sc = STATUS_COLOR[booking.status] ?? "#9ca3af";
 

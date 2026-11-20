@@ -67,6 +67,16 @@ try:
         if "membership_id" not in Payment.__table__.c:
             Payment.__table__.append_column(Column("membership_id", PGUUID(as_uuid=True), nullable=True))
 
+        # - bookings.time_slot_id: 옛 마이그레이션(d4e5f6a7b8c9, h2i3j4k5l6m7, u6v7w8x9y0z1, a2b3c4d5e6f8)이 참조하고,
+        #   b3c4d5e6f8a9 가 booking_slots 로 옮긴 뒤 지움
+        from sqlalchemy import ForeignKey, Integer
+        from app.domains.booking.models import Booking
+
+        if "time_slot_id" not in Booking.__table__.c:
+            Booking.__table__.append_column(
+                Column("time_slot_id", Integer, ForeignKey("time_slots.id", ondelete="CASCADE"), nullable=False)
+            )
+
     # 메타데이터 통합
     if hasattr(Base, "metadata") and hasattr(SQLModel, "metadata"):
         for name, table in Base.metadata.tables.items():

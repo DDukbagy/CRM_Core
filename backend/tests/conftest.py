@@ -145,6 +145,25 @@ async def insert_pass_for_slot(session: AsyncSession, customer_id, slot_id: int,
     return await insert_customer_pass(session, customer_id, host, total)
 
 
+async def insert_booking(session: AsyncSession, *, when, status: str, slot_id: int, guest_id, customer_pass_id=None) -> int:
+    """API 를 거치지 않고 예약 1건(슬롯 1개)을 바로 넣고 id 를 돌려준다 (commit 은 호출한 쪽에서)
+
+    예약은 bookings 한 행 + 그 예약이 차지하는 시간 booking_slots 한 행이다. 취소된 예약은 시간을 차지하지 않는다.
+    """
+    booking_id = (await session.execute(
+        text(
+            'insert into public.bookings ("when", topic, type, status, calendar_id, guest_id, customer_pass_id)'
+            " select :d, '레슨', 'LESSON', :st, ts.calendar_id, :g, :cp from public.time_slots ts where ts.id = :s returning id"
+        ),
+        {"d": when, "st": status, "s": slot_id, "g": str(guest_id), "cp": customer_pass_id},
+    )).scalar_one()
+    await session.execute(
+        text('insert into public.booking_slots (booking_id, time_slot_id, "when", holds_slot) values (:b, :s, :d, :h)'),
+        {"b": booking_id, "s": slot_id, "d": when, "h": status != "CANCELLED"},
+    )
+    return booking_id
+
+
 # 강사·고객 만들기
 
 async def _ensure_instructor(session: AsyncSession, tier: str = "NORMAL") -> uuid.UUID:

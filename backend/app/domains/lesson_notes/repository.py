@@ -10,7 +10,7 @@ from sqlmodel import select
 from app.core.auth.deps import CurrentUser
 from app.core.s3 import create_presigned_upload_url, create_presigned_url, delete_file_from_s3
 from app.domains.booking.models import Booking
-from app.domains.calendar.models import Calendar, TimeSlot
+from app.domains.calendar.models import Calendar
 from app.domains.lesson_notes.models import LessonNote
 from app.domains.lesson_notes.schemas import LessonNoteCreate, LessonNoteRead, LessonNoteUpdate
 from app.domains.users.models import User
@@ -81,7 +81,7 @@ class LessonNoteRepository:
     async def _host_of_booking(self, booking: Booking) -> Optional[UUID]:
         return (
             await self.session.execute(
-                select(Calendar.host_id).join(TimeSlot, TimeSlot.calendar_id == Calendar.id).where(TimeSlot.id == booking.time_slot_id)
+                select(Calendar.host_id).where(Calendar.id == booking.calendar_id)
             )
         ).scalar_one_or_none()
 

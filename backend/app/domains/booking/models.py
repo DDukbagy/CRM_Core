@@ -1,16 +1,14 @@
-# 예약 모델: 레슨 예약과 상태
+# 예약 모델: 레슨 예약(1건 = 레슨 1회)과 그 예약이 차지하는 시간
 from datetime import date, datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional
 from uuid import UUID
 
 from pydantic import AwareDatetime
-from sqlalchemy import CheckConstraint, Column, ForeignKey, Index, Integer, Text, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, ForeignKey, Index, Integer, Text, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy_utc import UtcDateTime
 from sqlmodel import Field, Relationship, SQLModel, func
-
-from app.domains.calendar.models import TimeSlot
 
 if TYPE_CHECKING:
     from app.domains.users.models import User
@@ -27,26 +25,9 @@ class BookingType(str, Enum):
 ACTIVE_LESSON_STATUSES = ("REQUESTED", "CONFIRMED", "CANCEL_REQUESTED")
 
 
-def _booking_unique_index(name: str, booking_type: str) -> Index:
-    """같은 날짜·슬롯에 같은 종류의 (취소 아닌) 예약은 하나만 (마이그레이션 h2i3j4k5l6m7 이 만든 인덱스)
-
-    ddl_if(...False): init 마이그레이션의 create_all 이 이 인덱스를 먼저 만들지 않게 한다.
-    만들면 h2i3j4k5l6m7 의 CREATE INDEX 가 '이미 있음'으로 실패한다.
-    선언은 alembic check / autogenerate 비교용으로만 쓰인다.
-    """
-    return Index(
-        name,
-        "when",
-        "time_slot_id",
-        unique=True,
-        postgresql_where=text(f"status <> 'CANCELLED' AND type = '{booking_type}'"),
-    ).ddl_if(callable_=lambda *args, **kwargs: False)
-
-
 class Booking(SQLModel, table=True):
     __tablename__ = "bookings"
     __table_args__ = (
-        _booking_unique_index("uq_booking_lesson_slot_date", "LESSON"),
         # 아래 둘은 마이그레이션 a2b3c4d5e6f8 이 만든다. init 마이그레이션의 create_all 이 먼저 만들지 않게 ddl_if(False)
         # (선언은 alembic check 비교용)
         Index("ix_bookings_customer_pass_id", "customer_pass_id").ddl_if(callable_=lambda *args, **kwargs: False),
@@ -71,8 +52,10 @@ class Booking(SQLModel, table=True):
     # 취소 사유
     cancel_reason: Optional[str] = Field(default=None, sa_type=Text, description="취소/거절 사유")
 
-    time_slot_id: int = Field(sa_column=Column(Integer, ForeignKey("time_slots.id", ondelete="CASCADE"), nullable=False))
-    time_slot: TimeSlot = Relationship(back_populates="bookings")
+    # 이 예약이 속한 강사 캘린더. 예약이 차지하는 시간은 BookingSlot 에 있다 (레슨 1회 = 슬롯 1개 이상)
+    calendar_id: int = Field(
+        sa_column=Column(BigInteger, ForeignKey("calendars.id", ondelete="CASCADE"), nullable=False, index=True)
+    )
 
     guest_id: UUID = Field(sa_column=Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False))
     guest: "User" = Relationship(back_populates="bookings")
@@ -97,4 +80,33 @@ class Booking(SQLModel, table=True):
             "server_default": func.now(),
             "onupdate": lambda: datetime.now(timezone.utc),
         },
+    )
+
+
+class BookingSlot(SQLModel, table=True):
+    """예약이 차지하는 시간 한 칸. 2시간 레슨이면 예약 1건에 행 2개
+
+    holds_slot: 이 예약이 그 시간을 차지하고 있는지. 예약이 취소되면 같은 트랜잭션에서 false 로 바꿔 시간을 다시 연다
+    (BookingRepository._transition). 유니크 인덱스가 "같은 날짜·슬롯을 차지하는 예약은 하나"를 지킨다.
+    예약 상태는 bookings 에 있어 인덱스 조건으로 쓸 수 없으므로 이 칸을 둔다. 취소된 예약의 시간 기록은 남는다.
+    """
+    __tablename__ = "booking_slots"
+    __table_args__ = (
+        Index(
+            "uq_booking_slots_slot_date",
+            "when",
+            "time_slot_id",
+            unique=True,
+            postgresql_where=text("holds_slot"),
+        ),
+        Index("ix_booking_slots_booking_id", "booking_id"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    booking_id: int = Field(sa_column=Column(Integer, ForeignKey("bookings.id", ondelete="CASCADE"), nullable=False))
+    time_slot_id: int = Field(sa_column=Column(BigInteger, ForeignKey("time_slots.id", ondelete="CASCADE"), nullable=False))
+    # 예약 날짜 (bookings.when 과 같다. 유니크 인덱스에 필요해서 함께 둔다. 예약 날짜는 만든 뒤 바뀌지 않는다)
+    when: date
+    holds_slot: bool = Field(
+        default=True, nullable=False, sa_type=Boolean, sa_column_kwargs={"server_default": text("true")}
     )

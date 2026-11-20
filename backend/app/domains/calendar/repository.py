@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import today_kst
-from app.domains.booking.models import ACTIVE_LESSON_STATUSES, Booking, BookingType
+from app.domains.booking.models import ACTIVE_LESSON_STATUSES, Booking, BookingSlot, BookingType
 from app.domains.calendar.models import BlockKind, Calendar, CalendarBlock, TimeSlot
 from app.domains.calendar.schemas import (
     AvailabilityDay,
@@ -196,7 +196,7 @@ class CalendarRepository:
 
     # 예약이 한 건이라도 있으면 삭제하지 않는다 (FK 오류 대신 409)
     async def delete_slot(self, ts: TimeSlot) -> None:
-        booked = await self.session.execute(select(Booking.id).where(Booking.time_slot_id == ts.id).limit(1))
+        booked = await self.session.execute(select(BookingSlot.id).where(BookingSlot.time_slot_id == ts.id).limit(1))
         if booked.first():
             raise HTTPException(status_code=409, detail="TimeSlot has bookings and cannot be deleted")
         await self.session.delete(ts)
@@ -226,13 +226,14 @@ class CalendarRepository:
         blocks = await CalendarBlockRepository(self.session).list_overlapping(calendar_id, start, end)
         booked = (
             await self.session.execute(
-                select(Booking.time_slot_id, Booking.when, TimeSlot.start_time, TimeSlot.end_time)
-                .join(TimeSlot, TimeSlot.id == Booking.time_slot_id)
+                # 예약이 차지하고 있는 시간 (취소된 예약은 holds_slot 이 꺼져 있다)
+                select(BookingSlot.time_slot_id, BookingSlot.when, TimeSlot.start_time, TimeSlot.end_time)
+                .join(TimeSlot, TimeSlot.id == BookingSlot.time_slot_id)
                 .where(
                     TimeSlot.calendar_id == calendar_id,
-                    Booking.when >= start,
-                    Booking.when <= end,
-                    Booking.status != "CANCELLED",
+                    BookingSlot.when >= start,
+                    BookingSlot.when <= end,
+                    BookingSlot.holds_slot,
                 )
             )
         ).all()
@@ -311,16 +312,16 @@ class CalendarBlockRepository:
     async def _has_active_lesson(self, calendar_id: int, day: date, slot_ids: Optional[list[int]]) -> bool:
         q = (
             select(Booking.id)
-            .join(TimeSlot, TimeSlot.id == Booking.time_slot_id)
+            .join(BookingSlot, BookingSlot.booking_id == Booking.id)
             .where(
-                TimeSlot.calendar_id == calendar_id,
+                Booking.calendar_id == calendar_id,
                 Booking.when == day,
                 Booking.type == BookingType.LESSON,
                 Booking.status.in_(ACTIVE_LESSON_STATUSES),
             )
         )
         if slot_ids:
-            q = q.where(Booking.time_slot_id.in_(slot_ids))
+            q = q.where(BookingSlot.time_slot_id.in_(slot_ids))
         return (await self.session.execute(q.limit(1))).first() is not None
 
     # 생성·삭제
@@ -388,10 +389,10 @@ class CalendarBlockRepository:
             st = await self.day_status_for(calendar, block.start_date)
             lesson_slots = set(
                 (await self.session.execute(
-                    select(Booking.time_slot_id)
-                    .join(TimeSlot, TimeSlot.id == Booking.time_slot_id)
+                    select(BookingSlot.time_slot_id)
+                    .join(Booking, Booking.id == BookingSlot.booking_id)
                     .where(
-                        TimeSlot.calendar_id == calendar_id,
+                        Booking.calendar_id == calendar_id,
                         Booking.when == block.start_date,
                         Booking.status.in_(ACTIVE_LESSON_STATUSES),
                     )

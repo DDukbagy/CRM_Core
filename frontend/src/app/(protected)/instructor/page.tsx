@@ -32,11 +32,12 @@ type Booking = {
   status: string;
   description: string | null;
   cancel_reason: string | null;
-  time_slot_id: number;
+  time_slot_ids: number[];    // 이 레슨이 차지하는 슬롯 (예약 1건 = 레슨 1회)
+  start_time: string | null;  // 첫 슬롯의 시작 ~ 마지막 슬롯의 끝
+  end_time: string | null;
   guest_id: string;
 };
 
-type SlotTime = { start_time: string; end_time: string };
 
 const LESSON_TYPES = ["드라이버", "아이언샷", "어프로치", "퍼팅", "벙커샷", "코스레슨", "체력훈련", "기타"];
 const DECLINE_REASONS = ["일정 불가", "해당 시간 마감", "레슨 종류 불일치", "기타"];
@@ -59,7 +60,6 @@ export default function InstructorDashboard() {
   const [manageBookings, setManageBookings] = useState<Booking[]>([]);
   const [todayBookings, setTodayBookings] = useState<Booking[]>([]);
   const [customerMap, setCustomerMap] = useState<Record<string, string>>({});
-  const [slotMap, setSlotMap] = useState<Record<number, SlotTime>>({});
   const [loading, setLoading] = useState(true);
   const [me, setMe] = useState<{ display_name: string } | null>(null);
 
@@ -91,14 +91,13 @@ export default function InstructorDashboard() {
 
   const load = useCallback(async () => {
     try {
-      const [statsRes, meRes, todayRes, futureRes, pastRes, usersRes, slotsRes] = await Promise.allSettled([
+      const [statsRes, meRes, todayRes, futureRes, pastRes, usersRes] = await Promise.allSettled([
         api.get("/instructors/me/stats"),
         api.get("/users/me"),
         api.get(`/calendars/me/bookings?start=${today}&end=${today}`),
         api.get(`/calendars/me/bookings?start=${today}&end=${futureEnd}`),
         api.get(`/calendars/me/bookings?start=${wideStart}&end=${today}`),
         api.get("/users?limit=200"),
-        api.get("/calendars/me/time-slots"),
       ]);
 
       if (statsRes.status === "fulfilled") setStats(statsRes.value.data);
@@ -131,13 +130,6 @@ export default function InstructorDashboard() {
         setCustomerMap(map);
       }
 
-      if (slotsRes.status === "fulfilled" && Array.isArray(slotsRes.value.data)) {
-        const m: Record<number, SlotTime> = {};
-        slotsRes.value.data.forEach((s: { id: number; start_time: string; end_time: string }) => {
-          m[s.id] = { start_time: s.start_time, end_time: s.end_time };
-        });
-        setSlotMap(m);
-      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -200,10 +192,8 @@ export default function InstructorDashboard() {
   }
 
   const guestName = (guestId: string) => customerMap[guestId] ?? "알 수 없음";
-  const slotTime = (slotId: number) => {
-    const s = slotMap[slotId];
-    return s ? `${s.start_time.slice(0, 5)} ~ ${s.end_time.slice(0, 5)}` : "";
-  };
+  const lessonTime = (b: Booking) =>
+    b.start_time && b.end_time ? `${b.start_time.slice(0, 5)} ~ ${b.end_time.slice(0, 5)}` : "";
 
   return (
     <DashboardLayout
@@ -254,7 +244,7 @@ export default function InstructorDashboard() {
                     <tr key={b.id} className={b.status === "CANCEL_REQUESTED" ? "bg-orange-50" : ""}>
                       <td className="px-4 py-3 font-semibold text-gray-900">{guestName(b.guest_id)}</td>
                       <td className="px-4 py-3 text-gray-600">{b.when}</td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">{slotTime(b.time_slot_id)}</td>
+                      <td className="px-4 py-3 text-gray-500 text-xs">{lessonTime(b)}</td>
                       <td className="px-4 py-3">
                         <span className={`text-xs font-bold px-2 py-1 rounded-full ${STATUS_COLOR[b.status] ?? ""}`}>
                           {STATUS_LABEL[b.status] ?? b.status}
@@ -319,7 +309,7 @@ export default function InstructorDashboard() {
                   {todayBookings.map(b => (
                     <tr key={b.id}>
                       <td className="px-4 py-3 font-semibold text-gray-900">{guestName(b.guest_id)}</td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">{slotTime(b.time_slot_id)}</td>
+                      <td className="px-4 py-3 text-gray-500 text-xs">{lessonTime(b)}</td>
                       <td className="px-4 py-3 text-blue-600 text-xs font-semibold">{b.topic ?? "-"}</td>
                       <td className="px-4 py-3">
                         <span className={`text-xs font-bold px-2 py-1 rounded-full ${STATUS_COLOR[b.status] ?? ""}`}>
@@ -417,10 +407,10 @@ export default function InstructorDashboard() {
               <span className="text-gray-500">날짜</span>
               <span className="font-semibold">{cancelTarget.when}</span>
             </div>
-            {slotMap[cancelTarget.time_slot_id] && (
+            {lessonTime(cancelTarget) && (
               <div className="flex justify-between py-2 border-b border-gray-50">
                 <span className="text-gray-500">시간</span>
-                <span className="font-semibold">{slotTime(cancelTarget.time_slot_id)}</span>
+                <span className="font-semibold">{lessonTime(cancelTarget)}</span>
               </div>
             )}
             <div className="bg-orange-50 rounded-xl p-3 mt-2">

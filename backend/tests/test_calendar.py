@@ -12,7 +12,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from tests.conftest import _ensure_instructor, insert_pass_for_slot
+from tests.conftest import _ensure_instructor, insert_booking, insert_pass_for_slot
 
 ALL_WEEKDAYS = "[0,1,2,3,4,5,6]"
 DAY = date.today() + timedelta(days=7)        # 막을 날짜
@@ -148,15 +148,7 @@ async def test_cannot_block_time_with_lesson_booking(
     async with db_conn_and_sessionmaker() as session:
         guest = (await session.execute(text("select id from public.users where role = 'INSTRUCTOR' limit 1"))).scalar_one()
         cp_id = await insert_pass_for_slot(session, guest, slot_a)
-        await session.execute(
-            text(
-                """
-                insert into public.bookings ("when", topic, type, status, time_slot_id, guest_id, customer_pass_id)
-                values (:d, '레슨', 'LESSON', 'CONFIRMED', :slot, :guest, :cp)
-                """
-            ),
-            {"d": DAY, "slot": slot_a, "guest": guest, "cp": cp_id},
-        )
+        await insert_booking(session, when=DAY, status="CONFIRMED", slot_id=slot_a, guest_id=guest, customer_pass_id=cp_id)
         await session.commit()
 
     r = await instructor_client.post("/calendars/me/blocks", json={"date": DAY.isoformat(), "time_slot_ids": [slot_a]})
@@ -209,11 +201,11 @@ async def test_customer_cannot_book_blocked_time(client, other_calendar, db_conn
         me = (await client.get("/users/me")).json()["id"]
         await insert_pass_for_slot(session, me, slot_a)  # 예약하려면 그 강사의 수강권이 있어야 한다
 
-    blocked = await client.post("/bookings", json={"time_slot_id": slot_a, "when": DAY.isoformat(), "topic": "레슨"})
+    blocked = await client.post("/bookings", json={"time_slot_ids": [slot_a], "when": DAY.isoformat(), "topic": "레슨"})
     assert blocked.status_code == 400, blocked.text
     # 같은 날 다른 시간, 다른 날 같은 시간은 예약 가능
-    assert (await client.post("/bookings", json={"time_slot_id": slot_b, "when": DAY.isoformat(), "topic": "레슨"})).status_code == 201
-    assert (await client.post("/bookings", json={"time_slot_id": slot_a, "when": NEXT_WEEK.isoformat(), "topic": "레슨"})).status_code == 201
+    assert (await client.post("/bookings", json={"time_slot_ids": [slot_b], "when": DAY.isoformat(), "topic": "레슨"})).status_code == 201
+    assert (await client.post("/bookings", json={"time_slot_ids": [slot_a], "when": NEXT_WEEK.isoformat(), "topic": "레슨"})).status_code == 201
 
 
 @pytest.mark.asyncio

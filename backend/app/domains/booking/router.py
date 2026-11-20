@@ -49,7 +49,8 @@ async def list_my_calendar_bookings(
     if end < start:
         raise HTTPException(status_code=400, detail="end must be >= start")
     calendar_id = await CalendarRepository(session).calendar_id_of_host(UUID(str(host.id)))
-    return await BookingRepository(session).list_by_calendar(calendar_id, start, end)
+    repo = BookingRepository(session)
+    return await repo.read_many(await repo.list_by_calendar(calendar_id, start, end))
 
 
 # Bookings: 생성·조회
@@ -60,7 +61,8 @@ async def create_booking(
     user: CurrentUser = Depends(get_current_user),
 ):
     """레슨 신청 (REQUESTED)"""
-    return await BookingRepository(session).create(data, user)
+    repo = BookingRepository(session)
+    return await repo.read(await repo.create(data, user))
 
 
 # 내 예약 목록 (고객)
@@ -69,7 +71,8 @@ async def list_my_bookings(
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(get_current_user),
 ):
-    return await BookingRepository(session).list_by_guest(UUID(str(user.id)))
+    repo = BookingRepository(session)
+    return await repo.read_many(await repo.list_by_guest(UUID(str(user.id))))
 
 
 # Host: 예약 상태 전환
@@ -82,7 +85,7 @@ async def confirm_booking_as_host(
 ):
     """확정: REQUESTED -> CONFIRMED"""
     repo = BookingRepository(session)
-    return await repo.confirm(await repo.get_or_404(booking_id), host, body.topic if body else None)
+    return await repo.read(await repo.confirm(await repo.get_or_404(booking_id), host, body.topic if body else None))
 
 
 @cal_router.patch("/me/bookings/{booking_id}/decline", response_model=BookingRead)
@@ -94,7 +97,7 @@ async def decline_booking_as_host(
 ):
     """거절: REQUESTED -> CANCELLED (슬롯 다시 열림)"""
     repo = BookingRepository(session)
-    return await repo.decline(await repo.get_or_404(booking_id), host, _reason(body))
+    return await repo.read(await repo.decline(await repo.get_or_404(booking_id), host, _reason(body)))
 
 
 @cal_router.patch("/me/bookings/{booking_id}/cancel", response_model=BookingCancelResponse)
@@ -117,7 +120,7 @@ async def complete_booking_as_host(
 ):
     """출석 완료: CONFIRMED -> COMPLETED (수강권 1회 차감)"""
     repo = BookingRepository(session)
-    return await repo.complete(await repo.get_or_404(booking_id), host)
+    return await repo.read(await repo.complete(await repo.get_or_404(booking_id), host))
 
 
 @cal_router.patch("/me/bookings/{booking_id}/no-show", response_model=BookingRead)
@@ -128,7 +131,7 @@ async def no_show_booking_as_host(
 ):
     """노쇼: CONFIRMED -> NO_SHOW (수강권 차감)"""
     repo = BookingRepository(session)
-    return await repo.mark_no_show(await repo.get_or_404(booking_id), host)
+    return await repo.read(await repo.mark_no_show(await repo.get_or_404(booking_id), host))
 
 
 @cal_router.patch("/me/bookings/{booking_id}/approve-cancel", response_model=BookingCancelResponse)
@@ -150,7 +153,7 @@ async def reject_cancel_as_host(
 ):
     """고객 취소 신청 거절: CANCEL_REQUESTED -> CONFIRMED"""
     repo = BookingRepository(session)
-    return await repo.reject_cancel(await repo.get_or_404(booking_id), host)
+    return await repo.read(await repo.reject_cancel(await repo.get_or_404(booking_id), host))
 
 
 # Guest: 예약 상태 전환
@@ -163,9 +166,9 @@ async def update_booking_as_guest(
 ):
     """REQUESTED 상태인 예약의 주제/메모를 수정합니다."""
     repo = BookingRepository(session)
-    return await repo.update_by_guest(
+    return await repo.read(await repo.update_by_guest(
         await repo.get_or_404(booking_id), user, body.topic, "description" in body.model_fields_set, body.description
-    )
+    ))
 
 
 @bk_router.patch("/{booking_id}/cancel", response_model=BookingCancelResponse)
@@ -200,7 +203,7 @@ async def withdraw_cancel_as_guest(
 ):
     """고객 취소 신청 철회: CANCEL_REQUESTED -> CONFIRMED (강사 승인 전)"""
     repo = BookingRepository(session)
-    return await repo.withdraw_cancel_by_guest(await repo.get_or_404(booking_id), user)
+    return await repo.read(await repo.withdraw_cancel_by_guest(await repo.get_or_404(booking_id), user))
 
 
 # 스마트폰 캘린더용 .ics 파일 다운로드 (예약한 고객·강사·관리자만)

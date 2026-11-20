@@ -5,14 +5,14 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 from icalendar import Calendar as ICal, Event as ICalEvent
-from sqlalchemy import func, select, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth.deps import CurrentUser
 from app.core.logging import log_event
-from app.domains.booking.models import ACTIVE_LESSON_STATUSES, Booking, BookingType
-from app.domains.booking.schemas import BookingCreate
+from app.domains.booking.models import ACTIVE_LESSON_STATUSES, Booking, BookingSlot, BookingType
+from app.domains.booking.schemas import BookingCreate, BookingRead
 from app.domains.calendar.models import Calendar, TimeSlot
 from app.domains.calendar.repository import CalendarBlockRepository
 from app.domains.passes.repository import PassRepository
@@ -20,23 +20,28 @@ from app.domains.users.models import User
 from app.domains.users.repository import UserRepository
 
 
-def _booking_conflict_detail(*, time_slot_id: int, when: date, error: str) -> dict:
+def _booking_conflict_detail(*, time_slot_ids: list[int], when: date, error: str) -> dict:
     return {
         "error": error,  # SLOT_ALREADY_BOOKED / BOOKING_CONFLICT
         "message": "이미 예약된 시간대입니다. 최신 일정으로 갱신 후 다시 선택해주세요."
         if error == "SLOT_ALREADY_BOOKED"
         else "예약 충돌이 발생했습니다. 최신 일정으로 갱신 후 다시 시도해주세요.",
         "hint": "REFETCH_AVAILABILITY",
-        "time_slot_id": time_slot_id,
+        "time_slot_ids": time_slot_ids,
         "when": when.isoformat(),
     }
 
 
-def _conflict(error: str, time_slot_id: int, when: date) -> HTTPException:
+def _conflict(error: str, time_slot_ids: list[int], when: date) -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_409_CONFLICT,
-        detail=_booking_conflict_detail(time_slot_id=time_slot_id, when=when, error=error),
+        detail=_booking_conflict_detail(time_slot_ids=time_slot_ids, when=when, error=error),
     )
+
+
+def _bad_request(detail: str) -> HTTPException:
+    """요청 자체가 규칙에 맞지 않음 (다시 보내도 실패). 지금 상태와의 충돌은 _reject·_conflict(409)"""
+    return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
 
 
 def _log(event: str, booking: Booking, actor: CurrentUser, **fields) -> None:
@@ -56,6 +61,8 @@ def _reason_values(reason: Optional[str]) -> dict:
 class BookingRepository:
     """레슨 예약 생성과 상태 전환 (휴무·영업일 전환은 CalendarBlockRepository)
 
+    예약 1건 = 레슨 1회. 레슨이 차지하는 시간은 BookingSlot 에 슬롯마다 한 행씩 있다 (2시간 레슨이면 2행).
+
     상태: REQUESTED → CONFIRMED → COMPLETED / NO_SHOW
                     ↘ CANCELLED (강사 거절·고객 철회)     CONFIRMED ⇄ CANCEL_REQUESTED → CANCELLED
     """
@@ -72,19 +79,14 @@ class BookingRepository:
         return booking
 
     async def host_id_of(self, booking: Booking) -> Optional[UUID]:
-        ts = await self.session.get(TimeSlot, booking.time_slot_id)
-        cal = await self.session.get(Calendar, ts.calendar_id) if ts else None
+        cal = await self.session.get(Calendar, booking.calendar_id)
         return UUID(str(cal.host_id)) if cal else None
 
     async def ensure_host_can_manage(self, booking: Booking, host: CurrentUser) -> None:
         """강사는 본인 캘린더의 예약만 조작 (관리자는 전체)"""
         if (host.role or "").upper() == "ADMIN":
             return
-        ts = await self.session.get(TimeSlot, booking.time_slot_id)
-        if not ts:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="TimeSlot not found")
-        cal = await self.session.get(Calendar, ts.calendar_id)
-        if not cal or UUID(str(cal.host_id)) != UUID(str(host.id)):
+        if await self.host_id_of(booking) != UUID(str(host.id)):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only manage bookings in your calendar")
 
     @staticmethod
@@ -105,11 +107,40 @@ class BookingRepository:
             raise HTTPException(status_code=400, detail="end must be >= start")
         res = await self.session.execute(
             select(Booking)
-            .join(TimeSlot, TimeSlot.id == Booking.time_slot_id)
-            .where(TimeSlot.calendar_id == calendar_id, Booking.when >= start, Booking.when <= end)
+            .where(Booking.calendar_id == calendar_id, Booking.when >= start, Booking.when <= end)
             .order_by(Booking.when.desc(), Booking.id.desc())
         )
         return list(res.scalars().all())
+
+    # 응답 조립
+
+    async def read(self, booking: Booking) -> BookingRead:
+        return (await self.read_many([booking]))[0]
+
+    async def read_many(self, bookings: list[Booking]) -> list[BookingRead]:
+        """예약 응답: 예약마다 차지하는 슬롯(시작 시각 순)과 시작·끝 시각을 붙인다 (슬롯 조회는 한 번)"""
+        slots: dict[int, list[TimeSlot]] = {}
+        if bookings:
+            rows = await self.session.execute(
+                select(BookingSlot.booking_id, TimeSlot)
+                .join(TimeSlot, TimeSlot.id == BookingSlot.time_slot_id)
+                .where(BookingSlot.booking_id.in_([b.id for b in bookings]))
+                .order_by(TimeSlot.start_time, TimeSlot.id)
+            )
+            for booking_id, ts in rows.all():
+                slots.setdefault(booking_id, []).append(ts)
+        result: list[BookingRead] = []
+        for b in bookings:
+            mine = slots.get(b.id, [])
+            result.append(BookingRead(
+                id=b.id, when=b.when, topic=b.topic, status=b.status, type=b.type, description=b.description,
+                cancel_reason=b.cancel_reason, guest_id=b.guest_id, customer_pass_id=b.customer_pass_id,
+                created_at=b.created_at, updated_at=b.updated_at,
+                time_slot_ids=[ts.id for ts in mine],
+                start_time=mine[0].start_time if mine else None,
+                end_time=mine[-1].end_time if mine else None,
+            ))
+        return result
 
     # 생성
 
@@ -122,61 +153,90 @@ class BookingRepository:
         if user_role not in {"CUSTOMER", "ADMIN"}:
             raise HTTPException(status_code=403, detail="Only customer can request a LESSON booking")
 
-        ts = (await self.session.execute(select(TimeSlot).where(TimeSlot.id == data.time_slot_id))).scalar_one_or_none()
-        if not ts:
-            raise HTTPException(status_code=404, detail="TimeSlot not found")
-        if not ts.is_active:
-            raise HTTPException(status_code=400, detail="TimeSlot is inactive")
-        if data.when.weekday() not in (ts.weekdays or []):
-            raise HTTPException(status_code=400, detail="Selected date is not available for this time slot")
+        slots = await self._lesson_slots(data.time_slot_ids, data.when)
+        slot_ids = [ts.id for ts in slots]
 
-        calendar = (await self.session.execute(select(Calendar).where(Calendar.id == ts.calendar_id))).scalar_one_or_none()
+        calendar = (await self.session.execute(select(Calendar).where(Calendar.id == slots[0].calendar_id))).scalar_one_or_none()
         if not calendar:
             raise HTTPException(status_code=404, detail="Calendar not found")
 
         st = await CalendarBlockRepository(self.session).day_status_for(calendar, data.when)
-        if ts.id not in st.open_slot_ids:
+        if not set(slot_ids) <= st.open_slot_ids:
             detail = {"RECURRING": "강사의 정기 휴무일입니다.", "TEMPORARY": "강사의 임시 휴무일입니다."}.get(st.off_type or "", "강사가 닫은 시간입니다.")
             raise HTTPException(status_code=400, detail=detail)
-        initial_status = "REQUESTED"
 
-        # 이 예약에 쓸 수강권을 고정한다 (지정한 것, 안 했으면 그 강사의 가장 오래된 쓸 수 있는 수강권)
-        customer_pass_id = await self._pin_pass(guest_id, UUID(str(calendar.host_id)), data.customer_pass_id)
+        # 이 예약에 쓸 수강권을 고정한다 (지정한 것, 안 했으면 그 강사의 가장 오래된 쓸 수 있는 수강권).
+        # 레슨 1회의 길이는 수강권이 정한다: 슬롯 수가 수강권의 회당 시간과 같아야 한다
+        customer_pass_id = await self._pin_pass(guest_id, UUID(str(calendar.host_id)), data.customer_pass_id, len(slots))
 
-        # 같은 날짜·슬롯의 (취소 아닌) 예약은 하나만
-        if await self._active_exists(data.time_slot_id, data.when, data.type):
-            raise _conflict("SLOT_ALREADY_BOOKED", data.time_slot_id, data.when)
+        # 같은 날짜·슬롯을 차지하는 예약은 하나만. 고른 시간 중 하나라도 잡혀 있으면 전체를 거부한다 (반쪽 예약을 만들지 않는다)
+        if await self._active_exists(slot_ids, data.when):
+            raise _conflict("SLOT_ALREADY_BOOKED", slot_ids, data.when)
 
         booking = Booking(
             when=data.when,
             topic=data.topic,
             description=data.description,
-            time_slot_id=data.time_slot_id,
+            calendar_id=calendar.id,
             guest_id=guest_id,
-            status=initial_status,
+            status="REQUESTED",
             type=data.type,
             customer_pass_id=customer_pass_id,
         )
         self.session.add(booking)
         try:
+            await self.session.flush()  # 예약 id 를 받는다
+            # 예약과 그 시간들은 한 트랜잭션: 하나라도 유니크 인덱스에 걸리면 예약도 남지 않는다.
+            # 슬롯 id 순으로 넣는다 (겹치는 예약 둘이 서로 반대 순서로 넣다가 교착되지 않게)
+            await self.session.execute(
+                insert(BookingSlot),
+                [{"booking_id": booking.id, "time_slot_id": sid, "when": data.when} for sid in sorted(slot_ids)],
+            )
             await self.session.commit()
         except IntegrityError:
             await self.session.rollback()
             # 동시에 같은 시간을 잡은 경우
-            if await self._active_exists(data.time_slot_id, data.when, data.type):
-                raise _conflict("SLOT_ALREADY_BOOKED", data.time_slot_id, data.when)
-            raise _conflict("BOOKING_CONFLICT", data.time_slot_id, data.when)
+            if await self._active_exists(slot_ids, data.when):
+                raise _conflict("SLOT_ALREADY_BOOKED", slot_ids, data.when)
+            raise _conflict("BOOKING_CONFLICT", slot_ids, data.when)
         await self.session.refresh(booking)
-        _log("booking.created", booking, user, time_slot_id=booking.time_slot_id, when=booking.when, customer_pass_id=customer_pass_id)
+        _log("booking.created", booking, user, time_slot_ids=slot_ids, when=booking.when, customer_pass_id=customer_pass_id)
         return booking
 
-    async def _pin_pass(self, guest_id: UUID, instructor_id: UUID, requested_id: Optional[int]) -> int:
+    async def _lesson_slots(self, time_slot_ids: list[int], when: date) -> list[TimeSlot]:
+        """요청한 슬롯들을 시작 시각 순으로 돌려준다. 한 레슨이 될 수 없는 조합이면 거부한다
+
+        같은 캘린더의 켜진 슬롯이고, 그 요일에 열리며, 앞 슬롯의 끝 = 다음 슬롯의 시작으로 이어져야 한다.
+        """
+        if len(set(time_slot_ids)) != len(time_slot_ids):
+            raise _bad_request("같은 시간을 두 번 고를 수 없습니다.")
+        slots = list((await self.session.execute(
+            select(TimeSlot).where(TimeSlot.id.in_(time_slot_ids)).order_by(TimeSlot.start_time, TimeSlot.id)
+        )).scalars().all())
+        if len(slots) != len(time_slot_ids):
+            raise HTTPException(status_code=404, detail="TimeSlot not found")
+        if len({ts.calendar_id for ts in slots}) != 1:
+            raise _bad_request("한 강사의 시간만 함께 예약할 수 있습니다.")
+        for ts in slots:
+            if not ts.is_active:
+                raise HTTPException(status_code=400, detail="TimeSlot is inactive")
+            if when.weekday() not in (ts.weekdays or []):
+                raise HTTPException(status_code=400, detail="Selected date is not available for this time slot")
+        for prev, nxt in zip(slots, slots[1:]):
+            if prev.end_time != nxt.start_time:
+                raise _bad_request("레슨 시간은 서로 이어져 있어야 합니다.")
+        return slots
+
+    async def _pin_pass(self, guest_id: UUID, instructor_id: UUID, requested_id: Optional[int], slot_count: int) -> int:
         """예약에 고정할 수강권 id. 남은 횟수 = 총 횟수 − 사용 − 이 수강권에 걸린 진행 중 예약 수 가 1 이상이어야 한다
 
         지정한 수강권이 남의 것·다른 강사의 것이면 400 (PassRepository), 쓸 수 있는 수강권이 없으면 409.
+        쓸 수 있는 수강권은 있는데 회당 시간(duration_hours)이 고른 슬롯 수와 다르면 400:
+        2시간 수강권으로 1시간만 예약하거나 3시간을 예약할 수 없다 (예약 1건 = 레슨 1회 = 1회 차감).
         후보 수강권 행을 잠근 상태에서 세므로, 같은 수강권으로 동시에 예약해도 남은 횟수를 넘지 않는다 (잠금은 commit 까지).
         """
         candidates = await PassRepository(self.session).lock_passes_for_booking(guest_id, instructor_id, requested_id)
+        usable = []
         for cp in candidates:
             if cp.status != "ACTIVE":
                 continue
@@ -186,19 +246,22 @@ class BookingRepository:
                 )
             )).scalar_one()
             if cp.sessions_total - cp.sessions_used - reserved > 0:
+                usable.append(cp)
+        if not usable:
+            raise _reject("사용할 수 있는 수강권이 없습니다.")
+        for cp in usable:
+            if cp.duration_hours == slot_count:
                 return cp.id
-        raise _reject("사용할 수 있는 수강권이 없습니다.")
+        raise _bad_request(f"이 수강권은 레슨 1회가 {usable[0].duration_hours}시간입니다. 이어진 {usable[0].duration_hours}개 시간을 선택해 주세요.")
 
-    async def _active_exists(self, time_slot_id: int, when: date, booking_type: BookingType) -> bool:
+    async def _active_exists(self, time_slot_ids: list[int], when: date) -> bool:
+        """그 날짜에 이 슬롯들 중 하나라도 다른 예약이 차지하고 있는가"""
         res = await self.session.execute(
-            select(Booking.id).where(
-                Booking.time_slot_id == time_slot_id,
-                Booking.when == when,
-                Booking.status != "CANCELLED",
-                Booking.type == booking_type,
-            )
+            select(BookingSlot.id)
+            .where(BookingSlot.time_slot_id.in_(time_slot_ids), BookingSlot.when == when, BookingSlot.holds_slot)
+            .limit(1)
         )
-        return res.scalar_one_or_none() is not None
+        return res.first() is not None
 
     # 고객 동작
 
@@ -329,16 +392,16 @@ class BookingRepository:
             if booking.guest_id != uid and await self.host_id_of(booking) != uid:
                 raise HTTPException(status_code=403, detail="Forbidden")
 
-        ts = (await self.session.execute(select(TimeSlot).where(TimeSlot.id == booking.time_slot_id))).scalar_one_or_none()
-        if not ts:
+        read = await self.read(booking)
+        if read.start_time is None or read.end_time is None:
             raise HTTPException(status_code=404, detail="TimeSlot not found")
 
         cal = ICal()
         event = ICalEvent()
         event.add("summary", f"[CRM 예약] {booking.topic}")
         event.add("description", booking.description or "CRM 앱에서 생성된 예약입니다.")
-        event.add("dtstart", datetime.combine(booking.when, ts.start_time))
-        event.add("dtend", datetime.combine(booking.when, ts.end_time))
+        event.add("dtstart", datetime.combine(booking.when, read.start_time))
+        event.add("dtend", datetime.combine(booking.when, read.end_time))
         event.add("dtstamp", datetime.now())
         cal.add_component(event)
         return cal.to_ical()
@@ -363,6 +426,11 @@ class BookingRepository:
         )
         if res.first() is None:
             raise _reject(f"Booking status was changed by another request (expected {expected})")
+        if new_status == "CANCELLED":
+            # 취소된 예약은 시간을 더 차지하지 않는다 (같은 트랜잭션: 상태와 시간이 어긋난 채 남지 않는다)
+            await self.session.execute(
+                update(BookingSlot).where(BookingSlot.booking_id == booking.id).values(holds_slot=False)
+            )
         await self.session.refresh(booking)  # 이 트랜잭션 안에서 바뀐 값으로 맞춘다
 
     async def _save(self, booking: Booking) -> Booking:

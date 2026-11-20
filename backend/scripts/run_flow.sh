@@ -269,7 +269,7 @@ echo
 echo "9) POST /bookings (guest)"
 BOOK_PAYLOAD="$(cat <<JSON
 {
-  "time_slot_id": $BOOK_SLOT_ID,
+  "time_slot_ids": [$BOOK_SLOT_ID],
   "when": "$BOOK_DATE",
   "topic": "[TEST] 아이언",
   "description": null
