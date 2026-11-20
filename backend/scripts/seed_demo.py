@@ -124,7 +124,7 @@ def main() -> None:
         avail = call("cust", "GET", f"/calendars/{ids['inst']}/availability", params=window)
         for i, d in enumerate([d for d in avail["days"] if d["slots"]][:2]):
             slot = d["slots"][len(d["slots"]) // 2]
-            b = call("cust", "POST", "/bookings", json={"time_slot_id": slot["time_slot_id"], "when": d["date"], "topic": "드라이버 스윙"})
+            b = call("cust", "POST", "/bookings", json={"time_slot_ids": [slot["time_slot_id"]], "when": d["date"], "topic": "드라이버 스윙"})
             if i == 0:
                 call("inst", "PATCH", f"/calendars/me/bookings/{b['id']}/confirm", json={"topic": "드라이버 스윙 교정"})
 

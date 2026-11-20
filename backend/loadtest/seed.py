@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from app.domains.booking.models import Booking  # noqa: E402
+from app.domains.booking.models import Booking, BookingSlot  # noqa: E402
 from app.domains.calendar.models import Calendar, CalendarBlock, TimeSlot  # noqa: E402
 from app.domains.passes.models import CustomerPass, LessonPassType  # noqa: E402
 from app.domains.users.models import User  # noqa: E402
@@ -52,6 +52,7 @@ def build(today: date) -> dict[str, list[dict]]:
         return datetime.combine(d, time(9), tzinfo=KST)
 
     slot_id = 0
+    booking_id = 0
     pass_id = 0
     for i in range(N_INSTRUCTORS):
         host = instructor_id(i)
@@ -118,12 +119,17 @@ def build(today: date) -> dict[str, list[dict]]:
                 if status in ("COMPLETED", "NO_SHOW"):
                     used[c] += 1
                 created = ts(d - timedelta(days=rnd.randint(1, 14)))
+                booking_id += 1
                 row = dict(
-                    when=d, topic="레슨", type="LESSON", status=status,
+                    id=booking_id, when=d, topic="레슨", type="LESSON", status=status,
                     cancel_reason="일정 변경" if status == "CANCELLED" else None,
-                    time_slot_id=sid, guest_id=customer_id(c), created_at=created, updated_at=created,
+                    calendar_id=cal_id, guest_id=customer_id(c), created_at=created, updated_at=created,
                 )
                 rows["bookings"].append(row)
+                # 예약이 차지하는 시간 (1시간 레슨 = 슬롯 1개). 취소된 예약은 시간을 차지하지 않는다
+                rows["booking_slots"].append(dict(
+                    booking_id=booking_id, time_slot_id=sid, when=d, holds_slot=status != "CANCELLED",
+                ))
                 if status in ("REQUESTED", "CONFIRMED", "CANCEL_REQUESTED"):
                     active[c].append(row)
 
@@ -169,6 +175,7 @@ def build(today: date) -> dict[str, list[dict]]:
 TABLES = [
     ("users", User), ("calendars", Calendar), ("time_slots", TimeSlot), ("calendar_blocks", CalendarBlock),
     ("lesson_pass_types", LessonPassType), ("customer_passes", CustomerPass), ("bookings", Booking),
+    ("booking_slots", BookingSlot),
 ]
 
 
@@ -185,7 +192,7 @@ async def main() -> None:
             for start in range(0, len(data), 2000):
                 await conn.execute(insert(model.__table__), data[start:start + 2000])
         # id 를 직접 넣은 표는 다음 번호를 맞춘다 (부하 테스트 중 새 행이 겹치지 않게)
-        for table in ("calendars", "time_slots", "lesson_pass_types", "customer_passes"):
+        for table in ("calendars", "time_slots", "lesson_pass_types", "customer_passes", "bookings"):
             await conn.execute(text(
                 f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), (SELECT max(id) FROM {table}))"
             ))

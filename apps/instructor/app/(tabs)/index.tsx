@@ -5,7 +5,7 @@ import {
   RefreshControl, StyleSheet, ActivityIndicator,
 } from "react-native";
 import { apiFetch } from "@/lib/api";
-import type { InstructorStats, BookingRead, UsersListResponse, TimeSlotRead } from "@/types/api";
+import type { InstructorStats, BookingRead, UsersListResponse } from "@/types/api";
 import { toLocalDateStr } from "@/lib/bookingUtils";
 
 const STATUS_COLOR: Record<string, string> = {
@@ -106,7 +106,6 @@ export default function DashboardScreen() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [cancelModalTarget, setCancelModalTarget] = useState<BookingRead | null>(null);
   const [cancelActionLoading, setCancelActionLoading] = useState(false);
-  const [slotTimeMap, setSlotTimeMap] = useState<Record<number, { start_time: string; end_time: string }>>({});
 
   const today = toLocalDateStr();
   const futureEnd = (() => { const d = new Date(); d.setDate(d.getDate() + 30); return toLocalDateStr(d); })();
@@ -115,13 +114,12 @@ export default function DashboardScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [stRes, todayRes, futureRes, pastRes, cuRes, slotsRes] = await Promise.allSettled([
+      const [stRes, todayRes, futureRes, pastRes, cuRes] = await Promise.allSettled([
         apiFetch<InstructorStats>("/instructors/me/stats"),
         apiFetch<BookingRead[]>(`/calendars/me/bookings?start=${today}&end=${today}`),
         apiFetch<BookingRead[]>(`/calendars/me/bookings?start=${today}&end=${futureEnd}`),
         apiFetch<BookingRead[]>(`/calendars/me/bookings?start=${wideStart}&end=${today}`),
         apiFetch<UsersListResponse>("/users?limit=200"),
-        apiFetch<TimeSlotRead[]>("/calendars/me/time-slots"),
       ]);
       if (stRes.status === "fulfilled") setStats(stRes.value);
       if (todayRes.status === "fulfilled") {
@@ -148,11 +146,6 @@ export default function DashboardScreen() {
         const map: Record<string, string> = {};
         items.forEach(u => { if (u?.id) map[u.id] = u.display_name ?? "알 수 없음"; });
         setCustomerMap(map);
-      }
-      if (slotsRes.status === "fulfilled" && Array.isArray(slotsRes.value)) {
-        const m: Record<number, { start_time: string; end_time: string }> = {};
-        slotsRes.value.forEach(s => { m[s.id] = { start_time: s.start_time, end_time: s.end_time }; });
-        setSlotTimeMap(m);
       }
     } catch (e) {
       console.error("대시보드 로드 실패:", e);
@@ -449,11 +442,11 @@ export default function DashboardScreen() {
               <Text style={cancelSt.label}>날짜</Text>
               <Text style={cancelSt.value}>{cancelModalTarget?.when}</Text>
             </View>
-            {cancelModalTarget && slotTimeMap[cancelModalTarget.time_slot_id] && (
+            {cancelModalTarget?.start_time && cancelModalTarget.end_time && (
               <View style={cancelSt.row}>
                 <Text style={cancelSt.label}>시간</Text>
                 <Text style={cancelSt.value}>
-                  {slotTimeMap[cancelModalTarget.time_slot_id].start_time.slice(0, 5)} ~ {slotTimeMap[cancelModalTarget.time_slot_id].end_time.slice(0, 5)}
+                  {cancelModalTarget.start_time.slice(0, 5)} ~ {cancelModalTarget.end_time.slice(0, 5)}
                 </Text>
               </View>
             )}

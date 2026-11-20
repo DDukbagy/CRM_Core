@@ -59,7 +59,9 @@ export interface BookingRead {
   type: BookingType;
   description: string | null;
   cancel_reason: string | null;
-  time_slot_id: number;
+  time_slot_ids: number[];      // 이 레슨이 차지하는 슬롯 (예약 1건 = 레슨 1회, 2시간이면 2개)
+  start_time: string | null;    // 첫 슬롯의 시작 ~ 마지막 슬롯의 끝 (HH:MM:SS)
+  end_time: string | null;
   guest_id: string;
   customer_pass_id: number | null; // 예약에 고정된 수강권 (완료·노쇼 때 여기서 차감)
   created_at: string;
@@ -67,7 +69,7 @@ export interface BookingRead {
 }
 
 export interface BookingCreate {
-  time_slot_id: number;
+  time_slot_ids: number[]; // 이 레슨이 차지할 시간. 수강권의 회당 시간만큼, 서로 이어진 슬롯
   when: string; // date string YYYY-MM-DD
   topic?: string;
   description?: string;

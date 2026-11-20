@@ -36,7 +36,7 @@ import app.domains.calendar.router as calendar_router
 pytestmark = pytest.mark.asyncio
 
 DAY = date.today() + timedelta(days=10)
-ROLES = {"host": "INSTRUCTOR", "guest": "CUSTOMER"}
+ROLES = {"host": "INSTRUCTOR", "guest": "CUSTOMER", "guest2": "CUSTOMER"}
 
 
 # ── 준비 (fixture) ────────────────────────────────────────────────
@@ -51,7 +51,7 @@ async def real_db() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
 
 @pytest_asyncio.fixture
 async def world(real_db: async_sessionmaker[AsyncSession]) -> AsyncIterator[dict]:
-    """강사(host)·담당 고객(guest)·강사 캘린더·매일 열리는 시간 3개 + 요청용 클라이언트(client).
+    """강사(host)·담당 고객 2명(guest·guest2)·강사 캘린더·매일 열리는 시간 3개 + 요청용 클라이언트(client).
     끝나면 이 테스트가 만든 데이터를 지운다."""
     ids: dict = {}
     async with real_db() as s:
@@ -63,7 +63,7 @@ async def world(real_db: async_sessionmaker[AsyncSession]) -> AsyncIterator[dict
                     " values (:id, :u, :e, :d, true, 'ACTIVE', :r, :m, true)"
                 ),
                 {"id": str(uid), "u": f"cc-{uid.hex[:8]}", "e": f"cc-{uid.hex[:8]}@example.com", "d": name,
-                 "r": role, "m": str(ids["host"]) if name == "guest" else None},
+                 "r": role, "m": str(ids["host"]) if name != "host" else None},
             )
             ids[name] = uid
         cal = (await s.execute(
@@ -105,10 +105,11 @@ async def world(real_db: async_sessionmaker[AsyncSession]) -> AsyncIterator[dict
             # 예약 → 수강권 → 회원 순서로 지운다. 진행 중 예약이 남은 채 수강권을 지우면 예약의 수강권 칸이 비어
             # DB 제약(진행 중 예약은 수강권 필수)에 걸린다. 수강권은 회원 삭제를 막는다(RESTRICT)
             p = {"h": str(ids["host"])}
-            await s.execute(text("delete from public.bookings where guest_id = :g"), {"g": str(ids["guest"])})
+            guests = {"g": str(ids["guest"]), "g2": str(ids["guest2"])}
+            await s.execute(text("delete from public.bookings where guest_id in (:g, :g2)"), guests)
             await s.execute(text("delete from public.customer_passes where instructor_id = :h"), p)
             await s.execute(text("delete from public.lesson_pass_types where instructor_id = :h"), p)
-            await s.execute(text("delete from public.users where id in (:h, :g)"), {**p, "g": str(ids["guest"])})
+            await s.execute(text("delete from public.users where id in (:h, :g, :g2)"), {**p, **guests})
             await s.commit()
 
 
@@ -148,18 +149,18 @@ def gate(monkeypatch) -> RaceGate:
 
 # ── 도우미 ────────────────────────────────────────────────────────
 
-async def give_pass(real_db, w, total: int) -> int:
-    """고객에게 그 강사의 수강권(총 total 회)을 발급하고 id 를 돌려준다."""
+async def give_pass(real_db, w, total: int, *, customer: str = "guest", hours: int = 1) -> int:
+    """고객에게 그 강사의 수강권(회당 hours 시간, 총 total 회)을 발급하고 id 를 돌려준다."""
     async with real_db() as s:
         type_id = (await s.execute(
             text("insert into public.lesson_pass_types (instructor_id, name, duration_hours, session_count, is_active)"
-                 " values (:i, '수강권', 1, :n, true) returning id"),
-            {"i": str(w["host"]), "n": total},
+                 " values (:i, '수강권', :d, :n, true) returning id"),
+            {"i": str(w["host"]), "n": total, "d": hours},
         )).scalar_one()
         cp_id = (await s.execute(
             text("insert into public.customer_passes (pass_type_id, customer_id, instructor_id, pass_name, duration_hours, sessions_total)"
-                 " values (:t, :c, :i, '수강권', 1, :n) returning id"),
-            {"t": type_id, "c": str(w["guest"]), "i": str(w["host"]), "n": total},
+                 " values (:t, :c, :i, '수강권', :d, :n) returning id"),
+            {"t": type_id, "c": str(w[customer]), "i": str(w["host"]), "n": total, "d": hours},
         )).scalar_one()
         await s.commit()
     return cp_id
@@ -169,7 +170,7 @@ async def book(w, slot_index: int, *, confirm: bool) -> int:
     """고객이 slot_index 번째 시간에 예약 신청 (confirm=True 면 강사 확정까지). 예약 id 를 돌려준다."""
     c = w["client"]
     r = await c.post("/bookings", headers=as_("guest"),
-                     json={"time_slot_id": w["slots"][slot_index], "when": DAY.isoformat(), "topic": "레슨"})
+                     json={"time_slot_ids": [w["slots"][slot_index]], "when": DAY.isoformat(), "topic": "레슨"})
     assert r.status_code == 201, r.text
     bid = r.json()["id"]
     if confirm:

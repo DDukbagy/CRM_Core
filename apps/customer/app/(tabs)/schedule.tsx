@@ -39,7 +39,7 @@ const timeDiff = (start: string, end: string) => _timeDiff(start, end, HOUR_H);
 
 // 1. 월간 달력 그리드
 function MonthGrid({
-  year, month, bookings, availability, selectedDate, onSelect, recurringOffDays, slotTimeMap, holidayDates,
+  year, month, bookings, availability, selectedDate, onSelect, recurringOffDays, holidayDates,
 }: {
   year: number; month: number;
   bookings: BookingRead[];
@@ -47,7 +47,6 @@ function MonthGrid({
   selectedDate: string;
   onSelect: (d: string) => void;
   recurringOffDays: number[];
-  slotTimeMap: Record<number, { start_time: string; end_time: string }>;
   holidayDates: Set<string>;
 }) {
   const firstDay = new Date(year, month, 1).getDay();
@@ -89,7 +88,7 @@ function MonthGrid({
               hasBookings: bk.length > 0,
               isHoliday,
             });
-            const sessions = makeBookingGroups(bk, slotTimeMap, false);
+            const sessions = makeBookingGroups(bk);
             return (
               <Pressable key={di} style={[mg.cell, isEffectiveOff && mg.offCell]} onPress={() => onSelect(ds)}>
                 <View style={[mg.numWrap, isToday && mg.todayWrap, isSelected && mg.selectedWrap]}>
@@ -150,14 +149,13 @@ const mg = StyleSheet.create({
 
 // 2. 날짜별 패널 (타임라인 미리보기 + 수강권 기반 자동 슬롯 선택)
 function DayPanel({
-  date, bookings, slots, managerId, activePass, slotTimeMap, onAddSlots, onClose, onSelectBooking,
+  date, bookings, slots, managerId, activePass, onAddSlots, onClose, onSelectBooking,
 }: {
   date: string;
   bookings: BookingRead[];
   slots: AvailabilitySlot[];
   managerId: string | null;
   activePass: CustomerPassRead | null;
-  slotTimeMap: Record<number, { start_time: string; end_time: string }>;
   onAddSlots: (slots: AvailabilitySlot[]) => void;
   onClose: () => void;
   onSelectBooking: (b: BookingRead) => void;
@@ -191,7 +189,7 @@ function DayPanel({
     selectedSlotIds.clear();
   }
 
-  // 수강권 기반 자동 슬롯 선택: 탭한 슬롯부터 duration_hours개 연속 선택
+  // 수강권 기반 자동 슬롯 선택: 탭한 슬롯부터 duration_hours개 연속 선택 (예약 1건 = 레슨 1회)
   const slotsPerLesson = activePass?.duration_hours ?? 1;
 
   function selectSlot(tappedId: number) {
@@ -202,14 +200,19 @@ function DayPanel({
       setSelectedSlotIds(new Set());
       return;
     }
-    // 앞으로 연속 슬롯 수집
+    // 탭한 시간부터 뒤로 이어진 슬롯 수집
     const forward: AvailabilitySlot[] = [uniqueSlots[idx]];
     for (let i = idx + 1; i < uniqueSlots.length && forward.length < slotsPerLesson; i++) {
       if (forward[forward.length - 1].end_time === uniqueSlots[i].start_time) {
         forward.push(uniqueSlots[i]);
       } else break;
     }
-    // 앞이 부족하면 뒤로 채우기
+    const select = (picked: AvailabilitySlot[]) => setSelectedSlotIds(new Set(picked.map(s => s.time_slot_id)));
+    if (forward.length === slotsPerLesson) {
+      select(forward);
+      return;
+    }
+    // 뒤가 모자라면(닫힌 시간·이미 예약된 시간·하루의 끝) 앞 시간으로 채울 수 있는지 본다
     const backward: AvailabilitySlot[] = [];
     const needed = slotsPerLesson - forward.length;
     for (let i = idx - 1; i >= 0 && backward.length < needed; i--) {
@@ -218,7 +221,22 @@ function DayPanel({
         backward.unshift(uniqueSlots[i]);
       } else break;
     }
-    setSelectedSlotIds(new Set([...backward, ...forward].map(s => s.time_slot_id)));
+    const shifted = [...backward, ...forward];
+    if (shifted.length < slotsPerLesson) {
+      // 서버도 슬롯 수가 수강권의 회당 시간과 다르면 거부한다 (400)
+      appAlert("알림", `${slotsPerLesson}시간 연속으로 비어 있는 시간이 없습니다.`);
+      return;
+    }
+    // 자동으로 옮기지 않고 고객에게 묻는다
+    const times = shifted.map(s => `${fmtTime(s.start_time)}~${fmtTime(s.end_time)}`).join(", ");
+    appAlert(
+      "알림",
+      `이어진 시간이 예약이 불가능한 상태입니다.\n앞의 시간으로 예약하시겠습니까?\n(${times})`,
+      [
+        { text: "아니오", style: "cancel" },
+        { text: "예", onPress: () => select(shifted) },
+      ],
+    );
   }
 
   function handleBook() {
@@ -227,31 +245,8 @@ function DayPanel({
     onAddSlots(toBook);
   }
 
-  // Group consecutive bookings into session rows
-  const bkSorted = [...bookings].sort((a, b) =>
-    (slotTimeMap[a.time_slot_id]?.start_time ?? "").localeCompare(slotTimeMap[b.time_slot_id]?.start_time ?? "")
-  );
-  type BkGroup = { bookings: BookingRead[]; startTime: string | null; endTime: string | null };
-  const bookingGroups: BkGroup[] = [];
-  let bgi = 0;
-  while (bgi < bkSorted.length) {
-    const cur = bkSorted[bgi];
-    const curTimes = slotTimeMap[cur.time_slot_id];
-    const group: BookingRead[] = [cur];
-    let endT: string | null = curTimes?.end_time ?? null;
-    let j = bgi + 1;
-    while (j < bkSorted.length && endT) {
-      const next = bkSorted[j];
-      const nextTimes = slotTimeMap[next.time_slot_id];
-      if (nextTimes?.start_time === endT) {
-        group.push(next);
-        endT = nextTimes?.end_time ?? null;
-        j++;
-      } else break;
-    }
-    bookingGroups.push({ bookings: group, startTime: curTimes?.start_time ?? null, endTime: endT });
-    bgi = j;
-  }
+  // 예약 1건 = 레슨 1회 (시작 시각 순)
+  const bookingGroups = makeBookingGroups(bookings);
 
   const DAYS_KO_PANEL = ["일", "월", "화", "수", "목", "금", "토"];
   const jsDay = new Date(date + "T00:00:00").getDay();
@@ -436,13 +431,12 @@ const dp = StyleSheet.create({
 // 3. 타임라인 뷰
 function TimelineView({
   year, month, selectedDate,
-  bookings, availability, slotTimeMap,
+  bookings, availability,
   onSelectDate, onBack, onAddSlot, onSelectBooking,
 }: {
   year: number; month: number; selectedDate: string;
   bookings: BookingRead[];
   availability: Record<string, AvailabilitySlot[]>;
-  slotTimeMap: Record<number, { start_time: string; end_time: string }>;
   onSelectDate: (d: string) => void;
   onBack: () => void;
   onAddSlot: (slot: AvailabilitySlot) => void;
@@ -473,7 +467,7 @@ function TimelineView({
 
   // 내 예약
   dayBookings.forEach(b => {
-    const st = slotTimeMap[b.time_slot_id];
+    const st = b.start_time && b.end_time ? { start_time: b.start_time, end_time: b.end_time } : null;
     if (st) {
       events.push({
         id: `b-${b.id}`,
@@ -627,7 +621,6 @@ export default function ScheduleScreen() {
   const [instructorRecurringOffDays, setInstructorRecurringOffDays] = useState<number[]>([]);
   const [availability, setAvailability] = useState<Record<string, AvailabilitySlot[]>>({});
   const [holidayDates, setHolidayDates] = useState<Set<string>>(new Set());
-  const [slotTimeMap, setSlotTimeMap] = useState<Record<number, { start_time: string; end_time: string }>>({});
   const [myBookings, setMyBookings] = useState<BookingRead[]>([]);
   const [activePass, setActivePass] = useState<CustomerPassRead | null>(null);
   const [loading, setLoading] = useState(true);
@@ -635,7 +628,6 @@ export default function ScheduleScreen() {
   const [detailBooking, setDetailBooking] = useState<BookingRead | null>(null);
 
   // 누적 슬롯 시간 정보 (월 이동해도 유지)
-  const slotTimeAccum = useRef<Record<number, { start_time: string; end_time: string }>>({});
   const managerIdRef = useRef<string | null>(null);
   const yearRef = useRef(year);
   const monthRef = useRef(month);
@@ -671,15 +663,11 @@ export default function ScheduleScreen() {
       avail.days.forEach((d: any) => {
         if (d.slots.length > 0) {
           slotMap[d.date] = d.slots;
-          d.slots.forEach((s: AvailabilitySlot) => {
-            slotTimeAccum.current[s.time_slot_id] = { start_time: s.start_time, end_time: s.end_time };
-          });
         }
         if (d.is_holiday) holidays.add(d.date);
       });
       setAvailability(slotMap);
       setHolidayDates(holidays);
-      setSlotTimeMap({ ...slotTimeAccum.current });
     } catch { }
   }
 
@@ -704,17 +692,6 @@ export default function ScheduleScreen() {
           .then(i => {
             if (i?.display_name) setInstructorName(i.display_name);
             setInstructorRecurringOffDays(i?.recurring_off_days ?? []);
-          })
-          .catch(() => {});
-        // 강사 전체 슬롯을 미리 불러 slotTimeMap에 등록 (과거 예약 시간 표시용)
-        apiFetch<{ id: number; start_time: string; end_time: string }[]>(
-          `/calendars/${me.manager_id}/time-slots`
-        )
-          .then(instructorSlots => {
-            instructorSlots.forEach(s => {
-              slotTimeAccum.current[s.id] = { start_time: s.start_time, end_time: s.end_time };
-            });
-            setSlotTimeMap({ ...slotTimeAccum.current });
           })
           .catch(() => {});
         await loadAvailability(me.manager_id, yearRef.current, monthRef.current);
@@ -826,20 +803,16 @@ export default function ScheduleScreen() {
     if (selectedSlots.length === 0 || !selectedDate) return;
     setSubmitting(true);
     try {
-      await Promise.all(selectedSlots.map(slot => {
-        const body: BookingCreate = {
-          time_slot_id: slot.time_slot_id,
-          when: selectedDate,
-          description: descText.trim() || undefined,
-          type: "LESSON",
-          customer_pass_id: activePass?.id,
-        };
-        return apiFetch("/bookings", { method: "POST", body });
-      }));
-      const msg = selectedSlots.length > 1
-        ? `${selectedSlots.length}개 시간 예약이 신청되었습니다.\n강사 수락 후 확정됩니다.`
-        : "예약이 신청되었습니다.\n강사 수락 후 확정됩니다.";
-      appAlert("완료", msg);
+      // 고른 시간 전체가 예약 1건(레슨 1회)이다. 하나라도 안 되면 서버가 전체를 거부한다
+      const body: BookingCreate = {
+        time_slot_ids: selectedSlots.map(slot => slot.time_slot_id),
+        when: selectedDate,
+        description: descText.trim() || undefined,
+        type: "LESSON",
+        customer_pass_id: activePass?.id,
+      };
+      await apiFetch("/bookings", { method: "POST", body });
+      appAlert("완료", "예약이 신청되었습니다.\n강사 수락 후 확정됩니다.");
       setModalVisible(false);
       load();
     } catch (e: any) {
@@ -938,7 +911,6 @@ export default function ScheduleScreen() {
               selectedDate={selectedDate}
               onSelect={openPanel}
               recurringOffDays={instructorRecurringOffDays}
-              slotTimeMap={slotTimeMap}
               holidayDates={holidayDates}
             />
           </Animated.View>
@@ -950,7 +922,6 @@ export default function ScheduleScreen() {
               selectedDate={selectedDate}
               onSelect={openPanel}
               recurringOffDays={instructorRecurringOffDays}
-              slotTimeMap={slotTimeMap}
               holidayDates={holidayDates}
             />
           </Animated.View>
@@ -962,7 +933,6 @@ export default function ScheduleScreen() {
               selectedDate={selectedDate}
               onSelect={openPanel}
               recurringOffDays={instructorRecurringOffDays}
-              slotTimeMap={slotTimeMap}
               holidayDates={holidayDates}
             />
           </Animated.View>
@@ -1016,7 +986,6 @@ export default function ScheduleScreen() {
             slots={availability[selectedDate] ?? []}
             managerId={managerId}
             activePass={activePass}
-            slotTimeMap={slotTimeMap}
             onAddSlots={(slots) => openBookingModal(slots)}
             onClose={() => closePanel()}
             onSelectBooking={(b) => closePanel(() => setDetailBooking(b))}
@@ -1033,7 +1002,6 @@ export default function ScheduleScreen() {
       <BookingDetailModal
         visible={detailBooking !== null}
         booking={detailBooking}
-        slotTimeMap={slotTimeMap}
         instructorName={instructorName}
         onClose={() => setDetailBooking(null)}
         onCancelled={(id) => {
@@ -1179,10 +1147,9 @@ const s = StyleSheet.create({
 });
 
 // 예약 상세 모달
-function BookingDetailModal({ visible, booking, slotTimeMap, instructorName, onClose, onCancelled, onUpdated }: {
+function BookingDetailModal({ visible, booking, instructorName, onClose, onCancelled, onUpdated }: {
   visible: boolean;
   booking: BookingRead | null;
-  slotTimeMap: Record<number, { start_time: string; end_time: string }>;
   instructorName: string | null;
   onClose: () => void;
   onCancelled: (id: number) => void;
@@ -1196,7 +1163,7 @@ function BookingDetailModal({ visible, booking, slotTimeMap, instructorName, onC
 
   if (!booking) return null;
 
-  const slot = slotTimeMap[booking.time_slot_id];
+  const slot = booking.start_time && booking.end_time ? { start_time: booking.start_time, end_time: booking.end_time } : null;
   const canWithdraw = booking.status === "REQUESTED";
   const canCancel = booking.status === "CONFIRMED";
   const canCancelRequest = booking.status === "CANCEL_REQUESTED";

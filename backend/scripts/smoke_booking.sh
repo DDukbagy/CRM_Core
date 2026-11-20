@@ -77,7 +77,7 @@ create_booking() {
   curl -sS -w "\n%{http_code}" -X POST "$API_URL/bookings" \
     -H "Authorization: Bearer $CUSTOMER_TOKEN" \
     -H "Content-Type: application/json" \
-    -d "{\"time_slot_id\": $TIME_SLOT_ID, \"when\": \"$when\", \"topic\": \"smoke\", \"description\": \"\", \"type\": \"$TYPE\"}"
+    -d "{\"time_slot_ids\": [$TIME_SLOT_ID], \"when\": \"$when\", \"topic\": \"smoke\", \"description\": \"\", \"type\": \"$TYPE\"}"
 }
 
 confirm_booking() {

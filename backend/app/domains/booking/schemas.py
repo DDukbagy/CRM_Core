@@ -1,7 +1,7 @@
 # 예약 요청·응답 스키마
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Literal
 from uuid import UUID
 
@@ -15,9 +15,10 @@ BookingStatus = Literal["REQUESTED", "CONFIRMED", "CANCEL_REQUESTED", "CANCELLED
 
 class BookingCreate(BaseModel):
     """
-    게스트가 예약 생성할 때 입력
+    게스트가 예약 생성할 때 입력. 예약 1건 = 레슨 1회
     """
-    time_slot_id: int
+    # 이 레슨이 차지할 시간. 수강권의 회당 시간(duration_hours)만큼, 서로 이어진 슬롯이어야 한다
+    time_slot_ids: list[int] = Field(min_length=1, max_length=12)
     when: date
     topic: str | None = None
     description: str | None = None
@@ -42,13 +43,13 @@ class BookingRead(BaseModel):
     type: BookingType
     description: str | None
     cancel_reason: str | None = None
-    time_slot_id: int
+    time_slot_ids: list[int]         # 이 레슨이 차지하는 슬롯 (시작 시각 순)
+    start_time: time | None = None   # 첫 슬롯의 시작 ~ 마지막 슬롯의 끝
+    end_time: time | None = None
     guest_id: UUID
     customer_pass_id: int | None = None  # 예약에 고정된 수강권 (이 기능 이전에 끝난 예약은 비어 있음)
     created_at: datetime
     updated_at: datetime
-
-    model_config = {"from_attributes": True}
 
 
 class BookingUpdateRequest(BaseModel):

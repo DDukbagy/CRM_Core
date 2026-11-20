@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from tests.conftest import _ensure_customer_managed_by, _ensure_instructor, insert_user
+from tests.conftest import _ensure_customer_managed_by, _ensure_instructor, insert_booking, insert_user
 
 pytestmark = pytest.mark.asyncio
 
@@ -205,17 +205,9 @@ async def test_completing_lesson_deducts_one_session(
                 {"c": calendar_id},
             )
         ).scalar_one()
-        booking_id = (
-            await session.execute(
-                text(
-                    """
-                    insert into public.bookings ("when", topic, type, status, time_slot_id, guest_id, customer_pass_id)
-                    values (:d, '레슨', 'LESSON', 'CONFIRMED', :s, :g, :cp) returning id
-                    """
-                ),
-                {"d": lesson_day, "s": slot_id, "g": str(managed_customer_id), "cp": cp["id"]},
-            )
-        ).scalar_one()
+        booking_id = await insert_booking(
+            session, when=lesson_day, status="CONFIRMED", slot_id=slot_id, guest_id=managed_customer_id, customer_pass_id=cp["id"]
+        )
         await session.commit()
 
     r = await instructor_client.patch(f"/calendars/me/bookings/{booking_id}/complete")
@@ -250,15 +242,10 @@ async def _confirmed_booking(session: AsyncSession, host_id: uuid.UUID, guest_id
             {"c": calendar_id},
         )
     ).scalar_one()
-    booking_id = (
-        await session.execute(
-            text(
-                'insert into public.bookings ("when", topic, type, status, time_slot_id, guest_id, customer_pass_id)'
-                " values (:d, '레슨', 'LESSON', 'CONFIRMED', :s, :g, :cp) returning id"
-            ),
-            {"d": date.today() + timedelta(days=3), "s": slot_id, "g": str(guest_id), "cp": customer_pass_id},
-        )
-    ).scalar_one()
+    booking_id = await insert_booking(
+        session, when=date.today() + timedelta(days=3), status="CONFIRMED", slot_id=slot_id, guest_id=guest_id,
+        customer_pass_id=customer_pass_id,
+    )
     await session.commit()
     return booking_id
 

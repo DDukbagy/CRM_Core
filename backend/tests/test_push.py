@@ -213,7 +213,7 @@ async def test_booking_transitions_push_with_booking_id(monkeypatch, actor, db_c
         await insert_customer_pass(s, guest, host)  # 예약하려면 그 강사의 수강권이 있어야 한다
     people.update({"host": (host, "INSTRUCTOR"), "guest": (guest, "CUSTOMER")})
 
-    r = await act("guest").post("/bookings", json={"time_slot_id": slot, "when": day.isoformat(), "topic": "레슨"})
+    r = await act("guest").post("/bookings", json={"time_slot_ids": [slot], "when": day.isoformat(), "topic": "레슨"})
     assert r.status_code == 201, r.text
     bid = r.json()["id"]
 

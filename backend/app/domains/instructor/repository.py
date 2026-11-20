@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.clock import KST
 from app.core.config import settings
 from app.domains.booking.models import Booking
-from app.domains.calendar.models import Calendar, TimeSlot
+from app.domains.calendar.models import Calendar
 from app.domains.calendar.repository import CalendarRepository
 from app.domains.passes.repository import PassRepository
 from app.domains.payment.repository import PaymentRepository
@@ -265,8 +265,7 @@ class InstructorRepository:
             await self.session.execute(
                 select(func.count())
                 .select_from(Booking)
-                .join(TimeSlot, TimeSlot.id == Booking.time_slot_id)
-                .join(Calendar, Calendar.id == TimeSlot.calendar_id)
+                .join(Calendar, Calendar.id == Booking.calendar_id)
                 .where(Calendar.host_id == instructor_id, Booking.status == "COMPLETED", Booking.when >= month_start)
             )
         ).scalar_one()

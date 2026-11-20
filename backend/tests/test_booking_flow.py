@@ -101,7 +101,7 @@ async def guest_pass(world, db_conn_and_sessionmaker) -> int:
 
 
 async def _book(act, ids, slot="slot_a", day=DAY, **extra) -> dict:
-    r = await act("guest").post("/bookings", json={"time_slot_id": ids[slot], "when": day.isoformat(), "topic": "레슨 신청", **extra})
+    r = await act("guest").post("/bookings", json={"time_slot_ids": [ids[slot]], "when": day.isoformat(), "topic": "레슨 신청", **extra})
     assert r.status_code == 201, r.text
     assert r.json()["status"] == "REQUESTED"
     return r.json()
@@ -199,7 +199,7 @@ async def test_host_cancel_and_no_show(world, db_conn_and_sessionmaker):
 async def test_duplicate_request_is_409(world, guest_pass):
     act, ids = world
     await _book(act, ids)
-    r = await act("guest").post("/bookings", json={"time_slot_id": ids["slot_a"], "when": DAY.isoformat(), "topic": "x"})
+    r = await act("guest").post("/bookings", json={"time_slot_ids": [ids["slot_a"]], "when": DAY.isoformat(), "topic": "x"})
     assert r.status_code == 409 and "SLOT_ALREADY_BOOKED" in r.text
 
 
@@ -235,7 +235,7 @@ async def test_admin_handles_cancel_requests_on_any_calendar(world, guest_pass):
 
 async def test_booking_type_permissions(world):
     act, ids = world
-    body = {"time_slot_id": ids["slot_a"], "when": DAY.isoformat(), "topic": "x"}
+    body = {"time_slot_ids": [ids["slot_a"]], "when": DAY.isoformat(), "topic": "x"}
     assert (await act("host").post("/bookings", json=body)).status_code == 403                        # 강사는 레슨 신청 불가
     # 예약은 레슨만. 휴무·영업일 전환은 /calendars/me/blocks
     for t in ("HOLIDAY", "WORK_OVERRIDE"):
@@ -272,7 +272,7 @@ async def test_recurring_off_day(world, db_conn_and_sessionmaker):
     day = await _available(act, ids)
     assert day["slots"] == [] and day["off_type"] == "RECURRING" and day["is_holiday"] is False
     # 가용 목록에 없을 뿐 아니라 API 로 직접 신청해도 막힌다
-    r = await act("guest").post("/bookings", json={"time_slot_id": ids["slot_a"], "when": DAY.isoformat(), "topic": "x"})
+    r = await act("guest").post("/bookings", json={"time_slot_ids": [ids["slot_a"]], "when": DAY.isoformat(), "topic": "x"})
     assert r.status_code == 400 and "정기 휴무일" in r.text
     # 정기 휴무일 전체를 다시 '임시 휴무'로 닫을 수는 없다
     assert (await act("host").post("/calendars/me/blocks", json={"date": DAY.isoformat()})).status_code == 400
@@ -287,7 +287,7 @@ async def test_temporary_off_day(world):
 
     day = await _available(act, ids)
     assert day["slots"] == [] and day["off_type"] == "TEMPORARY" and day["is_holiday"] is True
-    r = await act("guest").post("/bookings", json={"time_slot_id": ids["slot_a"], "when": DAY.isoformat(), "topic": "x"})
+    r = await act("guest").post("/bookings", json={"time_slot_ids": [ids["slot_a"]], "when": DAY.isoformat(), "topic": "x"})
     assert r.status_code == 400 and "임시 휴무일" in r.text
 
     assert (await act("host").delete(f"/calendars/me/blocks/{block['id']}")).status_code == 204   # 해제하면 다시 영업
@@ -374,7 +374,7 @@ async def test_completed_and_no_show_lessons_use_pass_sessions(world, db_conn_an
 
 async def test_booking_no_longer_takes_membership(world):
     act, ids = world
-    body = {"time_slot_id": ids["slot_a"], "when": DAY.isoformat(), "topic": "x", "membership_id": str(uuid.uuid4())}
+    body = {"time_slot_ids": [ids["slot_a"]], "when": DAY.isoformat(), "topic": "x", "membership_id": str(uuid.uuid4())}
     assert (await act("guest").post("/bookings", json=body)).status_code == 422
 
 

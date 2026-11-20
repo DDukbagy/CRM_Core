@@ -7,8 +7,6 @@
 import type { BookingRead } from "@/types/api";
 
 // 타입
-export type SlotMap = Record<number, { start_time: string; end_time: string }>;
-
 export type SessionGroup = {
   bookings: BookingRead[];
   startTime: string | null;
@@ -112,45 +110,13 @@ export function isEffectiveOffDay({
   return (recurring && !hasAvailability && !hasBookings) || isHoliday;
 }
 
-// 세션 그룹핑
+// 예약 목록을 화면에 그릴 묶음으로 바꾼다
 /**
- * 연속된 시간 슬롯을 한 세션으로 묶는다.
- *
- * @param groupByGuestId
- *   true  (강사 뷰): 같은 고객의 연속 슬롯만 묶음
- *   false (고객 뷰): 시간 연속이면 묶음 (고객은 항상 본인 예약만 봄)
+ * 예약 1건 = 레슨 1회이므로 묶음 하나에 예약 하나가 들어간다 (시작 시각 순).
+ * 시작·끝 시각은 서버가 예약에 붙여 준 값을 쓴다 (2시간 레슨이면 10:00 ~ 12:00).
  */
-export function makeBookingGroups(
-  bks: BookingRead[],
-  slotMap: SlotMap,
-  groupByGuestId = true,
-): SessionGroup[] {
-  const sorted = [...bks].sort((a, b) =>
-    (slotMap[a.time_slot_id]?.start_time ?? "").localeCompare(
-      slotMap[b.time_slot_id]?.start_time ?? ""
-    )
-  );
-  const groups: SessionGroup[] = [];
-  let i = 0;
-  while (i < sorted.length) {
-    const cur = sorted[i];
-    const curSlot = slotMap[cur.time_slot_id];
-    const group: BookingRead[] = [cur];
-    let endT: string | null = curSlot?.end_time ?? null;
-    let j = i + 1;
-    while (j < sorted.length && endT) {
-      const next = sorted[j];
-      const nextSlot = slotMap[next.time_slot_id];
-      const timeMatch = nextSlot?.start_time === endT;
-      const guestMatch = !groupByGuestId || next.guest_id === cur.guest_id;
-      if (timeMatch && guestMatch) {
-        group.push(next);
-        endT = nextSlot?.end_time ?? null;
-        j++;
-      } else break;
-    }
-    groups.push({ bookings: group, startTime: curSlot?.start_time ?? null, endTime: endT });
-    i = j;
-  }
-  return groups;
+export function makeBookingGroups(bks: BookingRead[]): SessionGroup[] {
+  return [...bks]
+    .sort((a, b) => (a.start_time ?? "").localeCompare(b.start_time ?? ""))
+    .map(b => ({ bookings: [b], startTime: b.start_time, endTime: b.end_time }));
 }

@@ -72,7 +72,7 @@ class Customer(HttpUser):
     @task(1)
     def create_booking(self) -> None:
         when = _today() + timedelta(days=random.randint(1, 30))
-        body = {"time_slot_id": random.choice(self.slot_ids), "when": when.isoformat(), "topic": "부하 테스트"}
+        body = {"time_slot_ids": [random.choice(self.slot_ids)], "when": when.isoformat(), "topic": "부하 테스트"}
         with self.client.post("/bookings", json=body, name="POST /bookings", catch_response=True) as res:
             # 빈 시간을 고르지 않고 아무 날짜·슬롯이나 고르므로, 이미 찬 시간(409)이나 휴무일(400)도 정상적인 거절이다
             # 예상한 코드만 성공으로 센다. 서버 오류(5xx)나 예상 못 한 코드는 실패 → 실패율이 진짜 이상을 잡는다
