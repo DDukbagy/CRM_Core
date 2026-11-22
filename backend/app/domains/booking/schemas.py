@@ -87,3 +87,24 @@ class BookingCancelResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"extra": "forbid"}
+
+
+class BulkCompleteRequest(BaseModel):
+    """강사가 여러 예약을 한 번에 완료할 때 입력"""
+    booking_ids: list[int] = Field(min_length=1, max_length=50)
+
+    model_config = {"extra": "forbid"}
+
+
+class BulkCompleteItem(BaseModel):
+    """일괄 완료의 예약 한 건 결과. 안 된 건은 ok=False 와 화면에 보여 줄 이유(message)"""
+    booking_id: int
+    ok: bool
+    status: str | None = None   # 처리 뒤의 예약 상태
+    message: str | None = None
+
+
+class BulkCompleteResponse(BaseModel):
+    results: list[BulkCompleteItem]   # 처리한 순서 (레슨 날짜가 빠른 순)
+    completed: int
+    failed: int

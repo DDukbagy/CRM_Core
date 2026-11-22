@@ -114,7 +114,7 @@ async def list_my_blocks(
     host: CurrentUser = Depends(require_role(HOST_ROLES)),
 ):
     if end < start:
-        raise HTTPException(status_code=400, detail="end must be >= start")
+        raise HTTPException(status_code=400, detail="종료일은 시작일보다 빠를 수 없습니다.")
     repo = CalendarBlockRepository(session)
     calendar_id = await repo.calendar_id_of_host(UUID(str(host.id)))
     return await repo.list_overlapping(calendar_id, start, end)

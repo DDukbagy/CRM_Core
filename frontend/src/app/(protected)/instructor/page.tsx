@@ -2,7 +2,7 @@
 // 강사 웹 대시보드: 통계, 레슨 신청 확정·거절, 취소 신청 처리, 오늘 예약 완료·노쇼
 
 import React, { useEffect, useState, useCallback } from "react";
-import { api } from "@/lib/axios";
+import { api, apiErrorMessage } from "@/lib/axios";
 import DashboardLayout, { type SidebarItem } from "@/components/layout/DashboardLayout";
 import { Loader2, CheckCircle, XCircle, CheckSquare, AlertTriangle } from "lucide-react";
 import { toLocalDateStr } from "@/lib/date";
@@ -147,7 +147,7 @@ export default function InstructorDashboard() {
       await api.patch(`/calendars/me/bookings/${confirmTarget.id}/confirm`, { topic });
       setConfirmTarget(null); setConfirmTopic(""); setConfirmCustom("");
       await load();
-    } catch { setError("확정 처리 실패"); } finally { setConfirmLoading(false); }
+    } catch (e) { setError(apiErrorMessage(e, "확정 처리 실패")); } finally { setConfirmLoading(false); }
   }
 
   async function doDecline() {
@@ -158,7 +158,7 @@ export default function InstructorDashboard() {
       await api.patch(`/calendars/me/bookings/${declineTarget.id}/decline`, { reason });
       setDeclineTarget(null); setDeclineReason(""); setDeclineCustom("");
       await load();
-    } catch { setError("거절 처리 실패"); } finally { setDeclineLoading(false); }
+    } catch (e) { setError(apiErrorMessage(e, "거절 처리 실패")); } finally { setDeclineLoading(false); }
   }
 
   async function doCancel(action: "approve-cancel" | "reject-cancel") {
@@ -168,7 +168,7 @@ export default function InstructorDashboard() {
       await api.patch(`/calendars/me/bookings/${cancelTarget.id}/${action}`);
       setCancelTarget(null);
       await load();
-    } catch { setError("처리 실패"); } finally { setCancelLoading(false); }
+    } catch (e) { setError(apiErrorMessage(e, "처리 실패")); } finally { setCancelLoading(false); }
   }
 
   async function doSimple() {
@@ -178,7 +178,7 @@ export default function InstructorDashboard() {
       await api.patch(`/calendars/me/bookings/${simpleTarget.booking.id}/${simpleTarget.action}`);
       setSimpleTarget(null);
       await load();
-    } catch { setError("처리 실패"); } finally { setSimpleLoading(false); }
+    } catch (e) { setError(apiErrorMessage(e, "처리 실패")); } finally { setSimpleLoading(false); }
   }
 
   if (loading) {

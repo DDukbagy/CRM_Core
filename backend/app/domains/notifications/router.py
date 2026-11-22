@@ -36,5 +36,5 @@ async def mark_notification_as_read(
     repo = NotificationRepository(session)
     success = await repo.mark_notification_as_read(UUID(str(user.id)), notification_id)
     if not success:
-        raise HTTPException(status_code=404, detail="Notification not found or access denied")
+        raise HTTPException(status_code=404, detail="알림을 찾을 수 없습니다.")
     return {"ok": True}

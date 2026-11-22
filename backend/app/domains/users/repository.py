@@ -33,7 +33,7 @@ def safe_uuid(value) -> UUID:
     try:
         return UUID(str(value))
     except (ValueError, TypeError):
-        raise HTTPException(status_code=401, detail="Invalid token subject")
+        raise HTTPException(status_code=401, detail="로그인 정보가 올바르지 않습니다.")
 
 
 def _make_username(user_id: UUID, email: Optional[str]) -> str:
@@ -49,7 +49,7 @@ class UserRepository:
     async def get_or_404(self, user_id: UUID) -> User:
         user = (await self.session.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
         if not user:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="사용자를 찾을 수 없습니다.")
         return user
 
     # 내 계정
@@ -163,14 +163,14 @@ class UserRepository:
             return user
         if current.role == "INSTRUCTOR":
             if user.id != me and user.manager_id != me:
-                raise HTTPException(status_code=403, detail="Forbidden")
+                raise HTTPException(status_code=403, detail="권한이 없습니다.")
             return user
         if user.id == me:
             return user
         me_row = (await self.session.execute(select(User).where(User.id == me))).scalar_one_or_none()
         if me_row and me_row.manager_id and me_row.manager_id == user.id:
             return user
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise HTTPException(status_code=403, detail="권한이 없습니다.")
 
     # 계정 관리
 
@@ -227,9 +227,9 @@ class UserRepository:
         me = safe_uuid(current.id)
         if current.role == "INSTRUCTOR":
             if user.id != me and user.manager_id != me:
-                raise HTTPException(status_code=403, detail="Forbidden")
+                raise HTTPException(status_code=403, detail="권한이 없습니다.")
         elif current.role != "ADMIN" and user.id != me:
-            raise HTTPException(status_code=403, detail="Forbidden")
+            raise HTTPException(status_code=403, detail="권한이 없습니다.")
 
         data = user_in.model_dump(exclude_unset=True)
         for field in ("username", "email", "display_name"):
@@ -254,7 +254,7 @@ class UserRepository:
         user = await self.get_or_404(user_id)
         me = safe_uuid(current.id)
         if not (user.id == me or current.role == "ADMIN" or (current.role == "INSTRUCTOR" and user.manager_id == me)):
-            raise HTTPException(status_code=403, detail="Forbidden")
+            raise HTTPException(status_code=403, detail="권한이 없습니다.")
         if (user.status or "").upper() == "WITHDRAWN":
             return user
 
@@ -287,9 +287,9 @@ class UserRepository:
         user = await self.get_or_404(user_id)
         if current.role == "INSTRUCTOR":
             if user.manager_id != safe_uuid(current.id):
-                raise HTTPException(status_code=403, detail="Forbidden")
+                raise HTTPException(status_code=403, detail="권한이 없습니다.")
         elif current.role != "ADMIN":
-            raise HTTPException(status_code=403, detail="Forbidden")
+            raise HTTPException(status_code=403, detail="권한이 없습니다.")
 
         payments = PaymentRepository(self.session)
         passes = PassRepository(self.session)

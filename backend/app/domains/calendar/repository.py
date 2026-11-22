@@ -80,13 +80,13 @@ class CalendarRepository:
     async def get_by_host(self, host_id: UUID) -> Calendar:
         calendar = (await self.session.execute(select(Calendar).where(Calendar.host_id == host_id))).scalar_one_or_none()
         if not calendar:
-            raise HTTPException(status_code=404, detail="Calendar not found")
+            raise HTTPException(status_code=404, detail="강사 캘린더를 찾을 수 없습니다.")
         return calendar
 
     async def calendar_id_of_host(self, host_id: UUID) -> int:
         cal_id = (await self.session.execute(select(Calendar.id).where(Calendar.host_id == host_id))).scalar_one_or_none()
         if cal_id is None:
-            raise HTTPException(status_code=404, detail="Calendar not found")
+            raise HTTPException(status_code=404, detail="강사 캘린더를 찾을 수 없습니다.")
         return cal_id
 
     async def ensure_default(self, host_id: UUID) -> Calendar:
@@ -111,7 +111,7 @@ class CalendarRepository:
     async def create(self, host_id: UUID, data: CalendarCreate) -> Calendar:
         exists = await self.session.execute(select(Calendar).where(Calendar.host_id == host_id))
         if exists.scalar_one_or_none():
-            raise HTTPException(status_code=409, detail="Calendar already exists for this host")
+            raise HTTPException(status_code=409, detail="이미 캘린더가 있습니다.")
         calendar = Calendar(host_id=host_id, topics=data.topics, description=data.description)
         self.session.add(calendar)
         await self.session.commit()
@@ -145,15 +145,15 @@ class CalendarRepository:
             await self.session.execute(select(TimeSlot).where(TimeSlot.id == slot_id, TimeSlot.calendar_id == calendar_id))
         ).scalar_one_or_none()
         if not ts:
-            raise HTTPException(status_code=404, detail="TimeSlot not found")
+            raise HTTPException(status_code=404, detail="시간을 찾을 수 없습니다.")
         return ts
 
     # 시간 슬롯 추가
     async def add_slot(self, calendar_id: int, data: TimeSlotCreate) -> TimeSlot:
         if data.end_time <= data.start_time:
-            raise HTTPException(status_code=400, detail="end_time must be after start_time")
+            raise HTTPException(status_code=400, detail="종료 시각은 시작 시각보다 늦어야 합니다.")
         if any((w < 0 or w > 6) for w in data.weekdays):
-            raise HTTPException(status_code=400, detail="weekdays must be within 0..6")
+            raise HTTPException(status_code=400, detail="요일 값이 올바르지 않습니다.")
         ts = TimeSlot(calendar_id=calendar_id, start_time=data.start_time, end_time=data.end_time, weekdays=data.weekdays)
         self.session.add(ts)
         await self.session.commit()
@@ -169,12 +169,12 @@ class CalendarRepository:
             ts.end_time = payload["end_time"]
         if "weekdays" in payload:
             if any((w < 0 or w > 6) for w in (payload["weekdays"] or [])):
-                raise HTTPException(status_code=400, detail="weekdays must be within 0..6")
+                raise HTTPException(status_code=400, detail="요일 값이 올바르지 않습니다.")
             ts.weekdays = payload["weekdays"]
         if "is_active" in payload:
             ts.is_active = payload["is_active"]
         if ts.end_time <= ts.start_time:
-            raise HTTPException(status_code=400, detail="end_time must be after start_time")
+            raise HTTPException(status_code=400, detail="종료 시각은 시작 시각보다 늦어야 합니다.")
         self.session.add(ts)
         await self.session.commit()
         await self.session.refresh(ts)
@@ -188,7 +188,7 @@ class CalendarRepository:
             .where(TimeSlot.id == slot_id, Calendar.host_id == host_id)
         )
         if not slot:
-            raise HTTPException(status_code=403, detail="You can update time slots only in your calendar")
+            raise HTTPException(status_code=403, detail="본인 캘린더의 시간만 수정할 수 있습니다.")
         slot.weekdays = weekdays
         await self.session.commit()
         await self.session.refresh(slot)
@@ -198,7 +198,7 @@ class CalendarRepository:
     async def delete_slot(self, ts: TimeSlot) -> None:
         booked = await self.session.execute(select(BookingSlot.id).where(BookingSlot.time_slot_id == ts.id).limit(1))
         if booked.first():
-            raise HTTPException(status_code=409, detail="TimeSlot has bookings and cannot be deleted")
+            raise HTTPException(status_code=409, detail="예약이 있는 시간은 삭제할 수 없습니다.")
         await self.session.delete(ts)
         await self.session.commit()
 
@@ -210,13 +210,13 @@ class CalendarRepository:
         - 이미 레슨이 잡힌 시간과 같은 시작·끝 시간대는 제외, 같은 시간대 중복 슬롯은 하나만
         """
         if end < start:
-            raise HTTPException(status_code=400, detail="end must be >= start")
+            raise HTTPException(status_code=400, detail="종료일은 시작일보다 빠를 수 없습니다.")
         if (end - start).days > 90:
-            raise HTTPException(status_code=400, detail="range is too large (max 90 days)")
+            raise HTTPException(status_code=400, detail="조회 기간은 최대 90일입니다.")
 
         calendar_id = (await self.session.execute(select(Calendar.id).where(Calendar.host_id == host_id))).scalar_one_or_none()
         if calendar_id is None:
-            raise HTTPException(status_code=404, detail="Calendar not found")
+            raise HTTPException(status_code=404, detail="강사 캘린더를 찾을 수 없습니다.")
 
         host = (await self.session.execute(select(User).where(User.id == host_id))).scalar_one_or_none()
         recurring_off: set[int] = set(host.recurring_off_days or []) if host else set()
@@ -278,7 +278,7 @@ class CalendarBlockRepository:
     async def calendar_of_host(self, host_id: UUID) -> Calendar:
         calendar = (await self.session.execute(select(Calendar).where(Calendar.host_id == host_id))).scalar_one_or_none()
         if calendar is None:
-            raise HTTPException(status_code=404, detail="Calendar not found")
+            raise HTTPException(status_code=404, detail="강사 캘린더를 찾을 수 없습니다.")
         return calendar
 
     async def calendar_id_of_host(self, host_id: UUID) -> int:
@@ -341,7 +341,7 @@ class CalendarBlockRepository:
                 )).scalars().all()
             )
             if owned != set(slot_ids):
-                raise HTTPException(status_code=404, detail="TimeSlot not found")
+                raise HTTPException(status_code=404, detail="시간을 찾을 수 없습니다.")
 
         recurring = day.weekday() in await self._recurring_off_days(calendar)
         if kind == BlockKind.OPEN.value:
@@ -380,7 +380,7 @@ class CalendarBlockRepository:
         """블록 해제. 정기 휴무일을 열어 둔 것(OPEN)을 해제하면 그 시간이 다시 닫히므로, 그 시간에 레슨이 있으면 막는다"""
         block = await self.session.get(CalendarBlock, block_id)
         if not block or block.calendar_id != calendar_id:
-            raise HTTPException(status_code=404, detail="Block not found")
+            raise HTTPException(status_code=404, detail="휴무 설정을 찾을 수 없습니다.")
         await self.session.delete(block)
         if block.kind == BlockKind.OPEN.value:
             # 해제한 뒤에도 그날 잡힌 레슨 시간이 모두 열려 있어야 한다 (다른 OPEN 블록이 덮고 있으면 허용)

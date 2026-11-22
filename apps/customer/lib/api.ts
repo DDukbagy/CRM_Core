@@ -15,6 +15,12 @@ export class ApiError extends Error {
   }
 }
 
+// 서버 오류 응답 {"error": {"code", "message"}} 에서 사람이 읽을 이유를 꺼낸다 (없으면 상태 코드만)
+function _errorMessage(status: number, body: unknown): string {
+  const message = (body as { error?: { message?: unknown } } | undefined)?.error?.message;
+  return typeof message === "string" && message ? message : `API Error (${status})`;
+}
+
 async function _getAccessToken(): Promise<string | null> {
   const { data: { session } } = await supabase.auth.getSession();
   return session?.access_token ?? null;
@@ -73,7 +79,7 @@ export async function apiFetch<T>(
   }
 
   if (!res.ok) {
-    throw new ApiError(`API Error (${res.status})`, res.status, json);
+    throw new ApiError(_errorMessage(res.status, json), res.status, json);
   }
 
   return json as T;

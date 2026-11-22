@@ -18,6 +18,8 @@ from app.domains.booking.schemas import (
     BookingCreate,
     BookingRead,
     BookingUpdateRequest,
+    BulkCompleteRequest,
+    BulkCompleteResponse,
 )
 from app.domains.calendar.repository import CalendarRepository
 
@@ -47,7 +49,7 @@ async def list_my_calendar_bookings(
     host: CurrentUser = Depends(require_role(HOST_ROLES)),
 ):
     if end < start:
-        raise HTTPException(status_code=400, detail="end must be >= start")
+        raise HTTPException(status_code=400, detail="종료일은 시작일보다 빠를 수 없습니다.")
     calendar_id = await CalendarRepository(session).calendar_id_of_host(UUID(str(host.id)))
     repo = BookingRepository(session)
     return await repo.read_many(await repo.list_by_calendar(calendar_id, start, end))
@@ -121,6 +123,16 @@ async def complete_booking_as_host(
     """출석 완료: CONFIRMED -> COMPLETED (수강권 1회 차감)"""
     repo = BookingRepository(session)
     return await repo.read(await repo.complete(await repo.get_or_404(booking_id), host))
+
+
+@cal_router.post("/me/bookings/complete", response_model=BulkCompleteResponse)
+async def complete_bookings_as_host(
+    body: BulkCompleteRequest,
+    session: AsyncSession = Depends(get_session),
+    host: CurrentUser = Depends(require_role(INSTRUCTOR_ROLES)),
+):
+    """일괄 완료: 여러 예약을 레슨 날짜가 빠른 순으로 완료하고 건별 결과를 돌려준다"""
+    return await BookingRepository(session).complete_many(body.booking_ids, host)
 
 
 @cal_router.patch("/me/bookings/{booking_id}/no-show", response_model=BookingRead)

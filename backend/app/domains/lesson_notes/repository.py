@@ -27,7 +27,7 @@ class LessonNoteRepository:
     async def get_or_404(self, note_id: UUID) -> LessonNote:
         note = await self.session.get(LessonNote, note_id)
         if not note:
-            raise HTTPException(status_code=404, detail="Lesson note not found")
+            raise HTTPException(status_code=404, detail="레슨노트를 찾을 수 없습니다.")
         return note
 
     async def get_by_booking_or_404(self, booking_id: int) -> LessonNote:
@@ -35,7 +35,7 @@ class LessonNoteRepository:
             await self.session.execute(select(LessonNote).where(LessonNote.booking_id == booking_id))
         ).scalar_one_or_none()
         if not note:
-            raise HTTPException(status_code=404, detail="Lesson note not found")
+            raise HTTPException(status_code=404, detail="레슨노트를 찾을 수 없습니다.")
         return note
 
     async def list_for(self, user: CurrentUser, customer_id: Optional[UUID]) -> list[LessonNote]:
@@ -57,10 +57,10 @@ class LessonNoteRepository:
             return
         if user.role == "INSTRUCTOR":
             if note.instructor_id != uid:
-                raise HTTPException(status_code=403, detail="Forbidden")
+                raise HTTPException(status_code=403, detail="권한이 없습니다.")
             return
         if note.customer_id != uid:
-            raise HTTPException(status_code=403, detail="Forbidden")
+            raise HTTPException(status_code=403, detail="권한이 없습니다.")
         if not note.is_shared:
             raise HTTPException(status_code=403, detail="강사가 아직 공유하지 않은 노트입니다.")
 
@@ -96,7 +96,7 @@ class LessonNoteRepository:
         if data.booking_id is not None:
             booking = await self.session.get(Booking, data.booking_id)
             if not booking:
-                raise HTTPException(status_code=404, detail="Booking not found")
+                raise HTTPException(status_code=404, detail="예약을 찾을 수 없습니다.")
             if not is_admin and await self._host_of_booking(booking) != instructor_id:
                 raise HTTPException(status_code=403, detail="본인 캘린더의 예약에만 노트를 작성할 수 있습니다.")
             if booking.status not in ("CONFIRMED", "COMPLETED"):
@@ -112,7 +112,7 @@ class LessonNoteRepository:
         else:
             customer = await self.session.get(User, customer_id)
             if not customer or (customer.role or "").upper() != "CUSTOMER":
-                raise HTTPException(status_code=404, detail="Customer not found")
+                raise HTTPException(status_code=404, detail="고객을 찾을 수 없습니다.")
             if not is_admin and customer.manager_id != instructor_id:
                 raise HTTPException(status_code=403, detail="담당 고객에게만 노트를 작성할 수 있습니다.")
 
@@ -134,7 +134,7 @@ class LessonNoteRepository:
 
     def _ensure_author(self, note: LessonNote, user: CurrentUser) -> None:
         if user.role != "ADMIN" and note.instructor_id != UUID(str(user.id)):
-            raise HTTPException(status_code=403, detail="Forbidden")
+            raise HTTPException(status_code=403, detail="권한이 없습니다.")
 
     # 노트 수정 (작성 강사만)
     async def update(self, note: LessonNote, data: LessonNoteUpdate, instructor: CurrentUser) -> LessonNote:

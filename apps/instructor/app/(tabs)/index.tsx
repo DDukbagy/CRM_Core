@@ -1,11 +1,11 @@
-// 홈 탭: 통계, 레슨 신청 처리, 오늘 예약
+// 홈 탭: 통계, 레슨 신청 처리, 완료할 레슨(일괄 완료), 오늘 예약
 import { useCallback, useEffect, useState } from "react";
 import {
   View, Text, ScrollView, Pressable, Modal, TextInput,
   RefreshControl, StyleSheet, ActivityIndicator,
 } from "react-native";
 import { apiFetch } from "@/lib/api";
-import type { InstructorStats, BookingRead, UsersListResponse } from "@/types/api";
+import type { InstructorStats, BookingRead, UsersListResponse, BulkCompleteItem, BulkCompleteResponse } from "@/types/api";
 import { toLocalDateStr } from "@/lib/bookingUtils";
 
 const STATUS_COLOR: Record<string, string> = {
@@ -78,6 +78,28 @@ function PickerModal({
 }
 
 const MANAGE_LIMIT = 5;
+const BULK_LIMIT = 50; // 일괄 완료 한 요청에 담을 수 있는 예약 수 (서버 제한과 같다)
+const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+
+// 예약 한 건을 한 줄로: "11/20 (목) 10:00 ~ 12:00"
+function lessonLine(b: BookingRead): string {
+  const [, m, d] = b.when.split("-").map(Number);
+  const day = WEEKDAYS[new Date(b.when + "T00:00:00").getDay()];
+  const time = b.start_time && b.end_time ? ` ${b.start_time.slice(0, 5)} ~ ${b.end_time.slice(0, 5)}` : "";
+  return `${m}/${d} (${day})${time}`;
+}
+
+// 예약을 고객별로 묶는다 (확인 창·결과 창에서 고객이 섞이지 않게)
+function byCustomer<T>(items: T[], guestOf: (item: T) => string): { guestId: string; items: T[] }[] {
+  const groups: { guestId: string; items: T[] }[] = [];
+  for (const item of items) {
+    const guestId = guestOf(item);
+    const group = groups.find(g => g.guestId === guestId);
+    if (group) group.items.push(item);
+    else groups.push({ guestId, items: [item] });
+  }
+  return groups;
+}
 
 export default function DashboardScreen() {
   const [stats, setStats] = useState<InstructorStats | null>(null);
@@ -102,6 +124,13 @@ export default function DashboardScreen() {
   // 완료/노쇼 모달 (기존 단순 confirm)
   const [simpleTarget, setSimpleTarget] = useState<{ id: number; action: "complete" | "no-show"; label: string } | null>(null);
   const [simpleLoading, setSimpleLoading] = useState(false);
+
+  // 완료할 레슨: 오늘까지의 확정 예약 (밀린 것 포함). 골라서 한 번에 완료한다
+  const [dueBookings, setDueBookings] = useState<BookingRead[]>([]);
+  const [dueSelected, setDueSelected] = useState<Set<number>>(new Set());
+  const [bulkConfirmVisible, setBulkConfirmVisible] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ completed: number; failed: { booking: BookingRead; message: string }[] } | null>(null);
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [cancelModalTarget, setCancelModalTarget] = useState<BookingRead | null>(null);
@@ -141,6 +170,12 @@ export default function DashboardScreen() {
         return a.status === "CANCEL_REQUESTED" ? -1 : 1;
       });
       setManageBookings(manageable);
+      // 완료할 레슨: 오늘까지의 확정 예약, 날짜가 빠른 순
+      const due = pastList
+        .filter(b => b.status === "CONFIRMED" && b.when <= today)
+        .sort((a, b) => a.when.localeCompare(b.when) || (a.start_time ?? "").localeCompare(b.start_time ?? ""));
+      setDueBookings(due);
+      setDueSelected(prev => new Set(due.filter(b => prev.has(b.id)).map(b => b.id)));
       if (cuRes.status === "fulfilled") {
         const items = Array.isArray(cuRes.value?.items) ? cuRes.value.items : [];
         const map: Record<string, string> = {};
@@ -205,7 +240,47 @@ export default function DashboardScreen() {
     finally { setSimpleLoading(false); }
   }
 
+  function toggleDue(id: number) {
+    setDueSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  // 일괄 완료: 요청 하나로 보내고(많으면 50건씩) 건별 결과를 받는다. 안 된 건은 이유와 함께 결과 창에 보여 준다
+  async function doBulkComplete() {
+    const ids = dueBookings.filter(b => dueSelected.has(b.id)).map(b => b.id);
+    if (ids.length === 0) return;
+    setBulkLoading(true);
+    try {
+      const results: BulkCompleteItem[] = [];
+      for (let i = 0; i < ids.length; i += BULK_LIMIT) {
+        const res = await apiFetch<BulkCompleteResponse>("/calendars/me/bookings/complete", {
+          method: "POST", body: { booking_ids: ids.slice(i, i + BULK_LIMIT) },
+        });
+        results.push(...res.results);
+      }
+      const byId = new Map(dueBookings.map(b => [b.id, b]));
+      setBulkResult({
+        completed: results.filter(r => r.ok).length,
+        failed: results.filter(r => !r.ok && byId.has(r.booking_id))
+          .map(r => ({ booking: byId.get(r.booking_id) as BookingRead, message: r.message ?? "처리되지 않았습니다." })),
+      });
+      setDueSelected(new Set());
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : "처리 실패");
+    } finally {
+      setBulkConfirmVisible(false);
+      setBulkLoading(false);
+      await load();
+    }
+  }
+
   const activeToday = todayBookings.filter(b => b.status !== "CANCELLED");
+  const dueChosen = dueBookings.filter(b => dueSelected.has(b.id));
+  const dueAllSelected = dueBookings.length > 0 && dueChosen.length === dueBookings.length;
+  const nameOf = (guestId: string) => customerMap[guestId] ?? "알 수 없음";
 
   return (
     <View style={{ flex: 1 }}>
@@ -272,6 +347,38 @@ export default function DashboardScreen() {
             )}</>
           )}
         </>
+
+        {/* 완료할 레슨: 오늘까지의 확정 예약을 골라 한 번에 완료 */}
+        <SectionHeader title="완료할 레슨" count={dueBookings.length} color="#15803d" bg="#dcfce7" />
+        {dueBookings.length === 0 ? (
+          <View style={s.emptyBox}><Text style={s.emptyText}>완료할 레슨이 없습니다.</Text></View>
+        ) : (
+          <View style={bk.box}>
+            <Pressable style={bk.allRow} onPress={() => setDueSelected(dueAllSelected ? new Set() : new Set(dueBookings.map(b => b.id)))}>
+              <View style={[bk.check, dueAllSelected && bk.checkOn]}>{dueAllSelected && <Text style={bk.checkTxt}>✓</Text>}</View>
+              <Text style={bk.allTxt}>전체 선택</Text>
+            </Pressable>
+            {dueBookings.map(b => {
+              const on = dueSelected.has(b.id);
+              return (
+                <Pressable key={b.id} style={[bk.row, on && bk.rowOn]} onPress={() => toggleDue(b.id)}>
+                  <View style={[bk.check, on && bk.checkOn]}>{on && <Text style={bk.checkTxt}>✓</Text>}</View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={bk.name}>{nameOf(b.guest_id)}</Text>
+                    <Text style={bk.when}>{lessonLine(b)}{b.topic ? ` · ${b.topic}` : ""}</Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+            <Pressable
+              style={[bk.submit, dueChosen.length === 0 && bk.submitOff]}
+              disabled={dueChosen.length === 0}
+              onPress={() => setBulkConfirmVisible(true)}
+            >
+              <Text style={bk.submitTxt}>선택 완료{dueChosen.length > 0 ? ` (${dueChosen.length})` : ""}</Text>
+            </Pressable>
+          </View>
+        )}
 
         {/* 오늘 예약 */}
         <SectionHeader title="오늘 예약" count={activeToday.length} color="#16a34a" bg="#d1fae5" />
@@ -369,6 +476,69 @@ export default function DashboardScreen() {
                 {simpleLoading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={cm.okTxt}>확인</Text>}
               </Pressable>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 일괄 완료 확인: 고객별로 나눠 보여 준다 */}
+      <Modal visible={bulkConfirmVisible} transparent animationType="fade">
+        <View style={cm.backdrop}>
+          <View style={bk.sheet}>
+            <Text style={cm.title}>레슨 완료 처리</Text>
+            <ScrollView style={{ maxHeight: 360 }}>
+              {byCustomer(dueChosen, b => b.guest_id).map(g => (
+                <View key={g.guestId} style={bk.group}>
+                  <View style={bk.groupHead}>
+                    <Text style={bk.groupName}>{nameOf(g.guestId)}</Text>
+                    <Text style={bk.groupCount}>{g.items.length}건 · {g.items.length}회 차감</Text>
+                  </View>
+                  {g.items.map(b => (
+                    <Text key={b.id} style={bk.groupLine}>{lessonLine(b)}{b.topic ? ` · ${b.topic}` : ""}</Text>
+                  ))}
+                </View>
+              ))}
+            </ScrollView>
+            <Text style={bk.total}>
+              합계 {byCustomer(dueChosen, b => b.guest_id).length}명 · {dueChosen.length}건 · {dueChosen.length}회 차감
+            </Text>
+            <View style={cm.btnRow}>
+              <Pressable style={[cm.btn, cm.cancelBtn]} onPress={() => setBulkConfirmVisible(false)} disabled={bulkLoading}>
+                <Text style={cm.cancelTxt}>취소</Text>
+              </Pressable>
+              <Pressable style={[cm.btn, { backgroundColor: "#16a34a" }]} onPress={doBulkComplete} disabled={bulkLoading}>
+                {bulkLoading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={cm.okTxt}>완료 처리</Text>}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 일괄 완료 결과: 안 된 건은 고객별로 이유와 함께 */}
+      <Modal visible={bulkResult !== null} transparent animationType="fade">
+        <View style={cm.backdrop}>
+          <View style={bk.sheet}>
+            <Text style={cm.title}>완료 처리 결과</Text>
+            <Text style={cm.body}>
+              {bulkResult?.completed ?? 0}건 완료{bulkResult && bulkResult.failed.length > 0 ? ` · ${bulkResult.failed.length}건은 처리되지 않았습니다` : ""}
+            </Text>
+            {bulkResult && bulkResult.failed.length > 0 && (
+              <ScrollView style={{ maxHeight: 300 }}>
+                {byCustomer(bulkResult.failed, f => f.booking.guest_id).map(g => (
+                  <View key={g.guestId} style={[bk.group, bk.groupFailed]}>
+                    <Text style={bk.groupName}>{nameOf(g.guestId)}</Text>
+                    {g.items.map(f => (
+                      <View key={f.booking.id}>
+                        <Text style={bk.groupLine}>{lessonLine(f.booking)}</Text>
+                        <Text style={bk.failReason}>{f.message}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+            <Pressable style={[cm.btn, cm.okBtn, { flex: 0 }]} onPress={() => setBulkResult(null)}>
+              <Text style={cm.okTxt}>확인</Text>
+            </Pressable>
           </View>
         </View>
       </Modal>
@@ -568,6 +738,32 @@ const s = StyleSheet.create({
 });
 
 // 단순 확인 모달 스타일
+// 완료할 레슨 (일괄 완료)
+const bk = StyleSheet.create({
+  box: { backgroundColor: "#fff", marginHorizontal: 16, marginBottom: 10, borderRadius: 12, padding: 12, gap: 6 },
+  allRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 6, paddingHorizontal: 4 },
+  allTxt: { fontSize: 13, color: "#6b7280", fontWeight: "600" },
+  row: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10, paddingHorizontal: 4, borderTopWidth: 1, borderTopColor: "#f3f4f6" },
+  rowOn: { backgroundColor: "#f0fdf4" },
+  check: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: "#d1d5db", alignItems: "center", justifyContent: "center" },
+  checkOn: { backgroundColor: "#16a34a", borderColor: "#16a34a" },
+  checkTxt: { color: "#fff", fontSize: 13, fontWeight: "800" },
+  name: { fontSize: 15, fontWeight: "700", color: "#111" },
+  when: { fontSize: 12, color: "#6b7280", marginTop: 2 },
+  submit: { marginTop: 6, backgroundColor: "#16a34a", paddingVertical: 12, borderRadius: 10, alignItems: "center" },
+  submitOff: { backgroundColor: "#d1d5db" },
+  submitTxt: { color: "#fff", fontSize: 14, fontWeight: "700" },
+  sheet: { backgroundColor: "#fff", borderRadius: 16, padding: 20, width: 320, gap: 12 },
+  group: { borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 10, padding: 12, marginBottom: 8, gap: 4 },
+  groupFailed: { borderColor: "#fecaca", backgroundColor: "#fef2f2" },
+  groupHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 2 },
+  groupName: { fontSize: 15, fontWeight: "800", color: "#111" },
+  groupCount: { fontSize: 12, fontWeight: "700", color: "#15803d" },
+  groupLine: { fontSize: 13, color: "#374151" },
+  failReason: { fontSize: 12, color: "#b91c1c", marginBottom: 4 },
+  total: { fontSize: 13, fontWeight: "700", color: "#111", textAlign: "center" },
+});
+
 const cm = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center" },
   sheet: { backgroundColor: "#fff", borderRadius: 16, padding: 24, width: 300, gap: 12 },
