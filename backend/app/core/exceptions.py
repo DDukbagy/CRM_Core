@@ -28,10 +28,17 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def http_exception_handler(request: Request, exc: HTTPException):
         # 401/403/404 등은 절대 500으로 바뀌면 안 됨
         request_id = getattr(request.state, "request_id", None)
-        return JSONResponse(
-            status_code=exc.status_code,
-            content=_error(code="HTTP_EXCEPTION", message=str(exc.detail), request_id=request_id),
-        )
+        # detail 이 {"error": 코드, "message": 문장, ...} 묶음이면 풀어서 내보낸다 (예: 예약 충돌 SLOT_ALREADY_BOOKED).
+        # 통째로 문자열로 바꾸면 화면에 보여 줄 수 없는 메시지가 된다. 나머지 값은 details 로 넘긴다
+        if isinstance(exc.detail, dict) and "message" in exc.detail:
+            extra = {k: v for k, v in exc.detail.items() if k not in ("error", "message")}
+            content = _error(
+                code=str(exc.detail.get("error", "HTTP_EXCEPTION")), message=str(exc.detail["message"]),
+                details=extra or None, request_id=request_id,
+            )
+        else:
+            content = _error(code="HTTP_EXCEPTION", message=str(exc.detail), request_id=request_id)
+        return JSONResponse(status_code=exc.status_code, content=content)
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):

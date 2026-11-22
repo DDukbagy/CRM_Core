@@ -44,6 +44,20 @@ export interface BookingRead {
   updated_at: string;
 }
 
+// 일괄 완료 (POST /calendars/me/bookings/complete) 의 예약 한 건 결과. 안 된 건은 ok=false 와 이유(message)
+export interface BulkCompleteItem {
+  booking_id: number;
+  ok: boolean;
+  status: BookingStatus | null;
+  message: string | null;
+}
+
+export interface BulkCompleteResponse {
+  results: BulkCompleteItem[]; // 처리한 순서 (레슨 날짜가 빠른 순)
+  completed: number;
+  failed: number;
+}
+
 export interface TimeSlotRead {
   id: number;
   calendar_id: number;

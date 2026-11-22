@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth.deps import CurrentUser
 from app.core.logging import log_event
 from app.domains.booking.models import ACTIVE_LESSON_STATUSES, Booking, BookingSlot, BookingType
-from app.domains.booking.schemas import BookingCreate, BookingRead
+from app.domains.booking.schemas import BookingCreate, BookingRead, BulkCompleteItem, BulkCompleteResponse
 from app.domains.calendar.models import Calendar, TimeSlot
 from app.domains.calendar.repository import CalendarBlockRepository
 from app.domains.passes.repository import PassRepository
@@ -54,6 +54,13 @@ def _reject(detail: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
 
 
+# 거부 이유에 쓰는 상태 이름 (화면에 그대로 보인다)
+STATUS_LABEL = {
+    "REQUESTED": "신청 중", "CONFIRMED": "확정", "CANCEL_REQUESTED": "취소 신청 중",
+    "CANCELLED": "취소됨", "COMPLETED": "완료", "NO_SHOW": "노쇼",
+}
+
+
 def _reason_values(reason: Optional[str]) -> dict:
     return {"cancel_reason": reason} if reason else {}
 
@@ -75,7 +82,7 @@ class BookingRepository:
     async def get_or_404(self, booking_id: int) -> Booking:
         booking = (await self.session.execute(select(Booking).where(Booking.id == booking_id))).scalar_one_or_none()
         if not booking:
-            raise HTTPException(status_code=404, detail="Booking not found")
+            raise HTTPException(status_code=404, detail="예약을 찾을 수 없습니다.")
         return booking
 
     async def host_id_of(self, booking: Booking) -> Optional[UUID]:
@@ -87,12 +94,12 @@ class BookingRepository:
         if (host.role or "").upper() == "ADMIN":
             return
         if await self.host_id_of(booking) != UUID(str(host.id)):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only manage bookings in your calendar")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="본인 캘린더의 예약만 처리할 수 있습니다.")
 
     @staticmethod
-    def ensure_guest(booking: Booking, user: CurrentUser, action: str) -> None:
+    def ensure_guest(booking: Booking, user: CurrentUser) -> None:
         if booking.guest_id != UUID(str(user.id)):
-            raise HTTPException(status_code=403, detail=f"Only the guest can {action}")
+            raise HTTPException(status_code=403, detail="본인의 예약만 처리할 수 있습니다.")
 
     # 고객의 예약 목록
     async def list_by_guest(self, guest_id: UUID) -> list[Booking]:
@@ -104,7 +111,7 @@ class BookingRepository:
     # 강사 캘린더의 예약 목록
     async def list_by_calendar(self, calendar_id: int, start: date, end: date) -> list[Booking]:
         if end < start:
-            raise HTTPException(status_code=400, detail="end must be >= start")
+            raise HTTPException(status_code=400, detail="종료일은 시작일보다 빠를 수 없습니다.")
         res = await self.session.execute(
             select(Booking)
             .where(Booking.calendar_id == calendar_id, Booking.when >= start, Booking.when <= end)
@@ -151,14 +158,14 @@ class BookingRepository:
         guest_id = UUID(str(user.id))
         user_role = ((user.role or "CUSTOMER").strip()).upper()
         if user_role not in {"CUSTOMER", "ADMIN"}:
-            raise HTTPException(status_code=403, detail="Only customer can request a LESSON booking")
+            raise HTTPException(status_code=403, detail="예약은 고객만 신청할 수 있습니다.")
 
         slots = await self._lesson_slots(data.time_slot_ids, data.when)
         slot_ids = [ts.id for ts in slots]
 
         calendar = (await self.session.execute(select(Calendar).where(Calendar.id == slots[0].calendar_id))).scalar_one_or_none()
         if not calendar:
-            raise HTTPException(status_code=404, detail="Calendar not found")
+            raise HTTPException(status_code=404, detail="강사 캘린더를 찾을 수 없습니다.")
 
         st = await CalendarBlockRepository(self.session).day_status_for(calendar, data.when)
         if not set(slot_ids) <= st.open_slot_ids:
@@ -214,14 +221,14 @@ class BookingRepository:
             select(TimeSlot).where(TimeSlot.id.in_(time_slot_ids)).order_by(TimeSlot.start_time, TimeSlot.id)
         )).scalars().all())
         if len(slots) != len(time_slot_ids):
-            raise HTTPException(status_code=404, detail="TimeSlot not found")
+            raise HTTPException(status_code=404, detail="시간을 찾을 수 없습니다.")
         if len({ts.calendar_id for ts in slots}) != 1:
             raise _bad_request("한 강사의 시간만 함께 예약할 수 있습니다.")
         for ts in slots:
             if not ts.is_active:
-                raise HTTPException(status_code=400, detail="TimeSlot is inactive")
+                raise HTTPException(status_code=400, detail="강사가 사용하지 않는 시간입니다.")
             if when.weekday() not in (ts.weekdays or []):
-                raise HTTPException(status_code=400, detail="Selected date is not available for this time slot")
+                raise HTTPException(status_code=400, detail="선택한 날짜에는 열리지 않는 시간입니다.")
         for prev, nxt in zip(slots, slots[1:]):
             if prev.end_time != nxt.start_time:
                 raise _bad_request("레슨 시간은 서로 이어져 있어야 합니다.")
@@ -267,9 +274,9 @@ class BookingRepository:
 
     async def update_by_guest(self, booking: Booking, user: CurrentUser, topic: Optional[str], description_set: bool, description: Optional[str]) -> Booking:
         """신청(REQUESTED) 중인 레슨의 주제·메모 수정"""
-        self.ensure_guest(booking, user, "modify this booking")
+        self.ensure_guest(booking, user)
         if booking.status != "REQUESTED":
-            raise HTTPException(status_code=400, detail="Only REQUESTED bookings can be modified")
+            raise HTTPException(status_code=400, detail="신청 중인 예약만 수정할 수 있습니다.")
         if topic is not None:
             booking.topic = topic
         if description_set:
@@ -278,11 +285,11 @@ class BookingRepository:
 
     async def request_cancel_by_guest(self, booking: Booking, user: CurrentUser, reason: Optional[str]) -> Booking:
         """확정된 예약의 취소 신청: CONFIRMED → CANCEL_REQUESTED (강사 승인 대기). 신청 중이면 withdraw"""
-        self.ensure_guest(booking, user, "cancel this booking")
+        self.ensure_guest(booking, user)
         if booking.status == "COMPLETED":
-            raise _reject("Completed booking cannot be cancelled")
+            raise _reject("완료된 예약은 취소할 수 없습니다.")
         if booking.status == "REQUESTED":
-            raise _reject("Requested booking should be withdrawn, not cancelled")
+            raise _reject("신청 중인 예약은 취소 신청이 아니라 신청 철회로 처리해 주세요.")
         await self._transition(booking, "CONFIRMED", "CANCEL_REQUESTED", **_reason_values(reason))
         booking = await self._save(booking)
         _log("booking.cancel_requested", booking, user)
@@ -297,9 +304,9 @@ class BookingRepository:
 
     async def withdraw_by_guest(self, booking: Booking, user: CurrentUser, reason: Optional[str]) -> Booking:
         """신청 철회: REQUESTED → CANCELLED"""
-        self.ensure_guest(booking, user, "withdraw this booking")
+        self.ensure_guest(booking, user)
         if booking.status == "COMPLETED":
-            raise _reject("Completed booking cannot be withdrawn")
+            raise _reject("완료된 예약은 철회할 수 없습니다.")
         await self._transition(booking, "REQUESTED", "CANCELLED", **_reason_values(reason))
         booking = await self._save(booking)
         _log("booking.withdrawn", booking, user)
@@ -307,7 +314,7 @@ class BookingRepository:
 
     async def withdraw_cancel_by_guest(self, booking: Booking, user: CurrentUser) -> Booking:
         """취소 신청 철회: CANCEL_REQUESTED → CONFIRMED (강사 승인 전)"""
-        self.ensure_guest(booking, user, "withdraw this cancel request")
+        self.ensure_guest(booking, user)
         await self._transition(booking, "CANCEL_REQUESTED", "CONFIRMED")
         booking = await self._save(booking)
         _log("booking.cancel_withdrawn", booking, user)
@@ -319,7 +326,7 @@ class BookingRepository:
         """확정: REQUESTED → CONFIRMED (강사가 수업 내용 지정 가능)"""
         await self.ensure_host_can_manage(booking, host)
         if booking.status == "CANCELLED":
-            raise _reject("Cancelled booking cannot be confirmed")
+            raise _reject("취소된 예약은 확정할 수 없습니다.")
         await self._transition(booking, "REQUESTED", "CONFIRMED", **({"topic": topic} if topic else {}))
         booking = await self._save(booking)
         _log("booking.confirmed", booking, host)
@@ -339,9 +346,9 @@ class BookingRepository:
         """강사 취소: CONFIRMED → CANCELLED (신청 중은 decline)"""
         await self.ensure_host_can_manage(booking, host)
         if booking.status == "COMPLETED":
-            raise _reject("Completed booking cannot be cancelled")
+            raise _reject("완료된 예약은 취소할 수 없습니다.")
         if booking.status == "REQUESTED":
-            raise _reject("Requested booking should be declined, not cancelled")
+            raise _reject("신청 중인 예약은 취소가 아니라 거절로 처리해 주세요.")
         await self._transition(booking, "CONFIRMED", "CANCELLED", **_reason_values(reason))
         booking = await self._save(booking)
         _log("booking.cancelled", booking, host)
@@ -356,6 +363,45 @@ class BookingRepository:
         _log("booking.completed", booking, host, customer_pass_id=customer_pass_id)
         await self._push_guest(booking, "레슨 완료", f"{booking.topic} ({booking.when}) 레슨이 완료 처리되었습니다.")
         return booking
+
+    async def complete_many(self, booking_ids: list[int], host: CurrentUser) -> BulkCompleteResponse:
+        """여러 예약을 한 번에 완료한다. 결과는 레슨 날짜가 빠른 순으로 하나씩 완료했을 때와 같다
+
+        - 요청 자체가 잘못됐으면(없는 번호, 다른 강사의 예약) 아무것도 처리하지 않고 404.
+          없는 번호와 남의 번호를 같은 응답으로 묶어, 남의 예약 번호가 있는지 드러나지 않게 한다
+        - 그 밖에는 건별 결과: 그사이 상태가 바뀌었거나 수강권이 모자란 건(409)만 실패로 남고 나머지는 완료된다.
+          예약마다 따로 commit 하므로 한 건의 실패가 다른 건을 되돌리지 않는다
+        같은 번호가 두 번 들어 있으면 한 번만 처리한다.
+        """
+        wanted = list(dict.fromkeys(booking_ids))
+        rows = (await self.session.execute(
+            select(Booking.id, Booking.when, Booking.calendar_id).where(Booking.id.in_(wanted))
+        )).all()
+        allowed = len(rows) == len(wanted)
+        if allowed and (host.role or "").upper() != "ADMIN":
+            my_calendar = (await self.session.execute(
+                select(Calendar.id).where(Calendar.host_id == UUID(str(host.id)))
+            )).scalar_one_or_none()
+            allowed = all(calendar_id == my_calendar for _, _, calendar_id in rows)
+        if not allowed:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="예약을 찾을 수 없습니다.")
+
+        results: list[BulkCompleteItem] = []
+        for booking_id, _, _ in sorted(rows, key=lambda row: (row[1], row[0])):
+            try:
+                booking = await self.complete(await self.get_or_404(booking_id), host)
+                results.append(BulkCompleteItem(booking_id=booking_id, ok=True, status=booking.status))
+            except HTTPException as e:
+                if e.status_code != status.HTTP_409_CONFLICT:
+                    raise
+                # 이 건만 실패: 이 건의 변경을 되돌리고 다음 건으로 넘어간다 (앞에서 완료한 건은 이미 commit 됨)
+                await self.session.rollback()
+                current = (await self.session.execute(select(Booking.status).where(Booking.id == booking_id))).scalar_one_or_none()
+                results.append(BulkCompleteItem(booking_id=booking_id, ok=False, status=current, message=str(e.detail)))
+        completed = sum(1 for r in results if r.ok)
+        log_event("booking.bulk_completed", actor_id=str(host.id), requested=len(wanted), completed=completed,
+                  failed=len(results) - completed)
+        return BulkCompleteResponse(results=results, completed=completed, failed=len(results) - completed)
 
     async def mark_no_show(self, booking: Booking, host: CurrentUser) -> Booking:
         """노쇼: CONFIRMED → NO_SHOW. 수강권은 차감 (쓸 수 있는 수강권이 없으면 409, 예약도 그대로)"""
@@ -390,11 +436,11 @@ class BookingRepository:
         if (user.role or "").upper() != "ADMIN":
             uid = UUID(str(user.id))
             if booking.guest_id != uid and await self.host_id_of(booking) != uid:
-                raise HTTPException(status_code=403, detail="Forbidden")
+                raise HTTPException(status_code=403, detail="권한이 없습니다.")
 
         read = await self.read(booking)
         if read.start_time is None or read.end_time is None:
-            raise HTTPException(status_code=404, detail="TimeSlot not found")
+            raise HTTPException(status_code=404, detail="시간을 찾을 수 없습니다.")
 
         cal = ICal()
         event = ICalEvent()
@@ -416,7 +462,7 @@ class BookingRepository:
         나중 요청의 UPDATE 는 앞 트랜잭션의 커밋을 기다린 뒤 WHERE 를 다시 확인하므로 바뀐 행이 0 → 409.
         """
         if booking.status != expected:
-            raise _reject(f"Invalid status transition: {booking.status} -> {new_status}")
+            raise _reject(f"지금 상태({STATUS_LABEL.get(booking.status, booking.status)})에서는 할 수 없는 처리입니다.")
         res = await self.session.execute(
             update(Booking)
             .where(Booking.id == booking.id, Booking.status == expected)
@@ -425,7 +471,7 @@ class BookingRepository:
             .execution_options(synchronize_session=False)
         )
         if res.first() is None:
-            raise _reject(f"Booking status was changed by another request (expected {expected})")
+            raise _reject("다른 요청이 먼저 처리되어 예약 상태가 바뀌었습니다. 새로 고친 뒤 다시 확인해 주세요.")
         if new_status == "CANCELLED":
             # 취소된 예약은 시간을 더 차지하지 않는다 (같은 트랜잭션: 상태와 시간이 어긋난 채 남지 않는다)
             await self.session.execute(

@@ -49,7 +49,7 @@ class PostRepository:
     async def get_or_404(self, post_id: UUID) -> Post:
         post = await self.get_by_id(post_id)
         if not post:
-            raise HTTPException(status_code=404, detail="Post not found")
+            raise HTTPException(status_code=404, detail="게시물을 찾을 수 없습니다.")
         return post
 
     # 역할별 목록: 강사는 본인 글, 고객은 공개 글 + 본인 피드백, 그 외(관리자 등)는 전체
@@ -130,14 +130,14 @@ class PostRepository:
         if self.can_view(post, user):
             return
         if user is None:
-            raise HTTPException(status_code=401, detail="Authentication required")
-        raise HTTPException(status_code=403, detail="Forbidden")
+            raise HTTPException(status_code=401, detail="로그인이 필요합니다.")
+        raise HTTPException(status_code=403, detail="권한이 없습니다.")
 
     def ensure_can_manage(self, post: Post, user: CurrentUser) -> None:
         uid = UUID(str(user.id))
         if user.role == "ADMIN" or uid in (post.instructor_id, post.created_by_user_id):
             return
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise HTTPException(status_code=403, detail="권한이 없습니다.")
 
     async def _is_staff_of_instructor(self, instructor_id: UUID, staff_user_id: UUID) -> bool:
         res = await self.session.execute(
@@ -155,7 +155,7 @@ class PostRepository:
         uid = UUID(str(user.id))
         role = (user.role or "").upper()
         if role not in WRITER_ROLES:
-            raise HTTPException(status_code=403, detail="Forbidden")
+            raise HTTPException(status_code=403, detail="권한이 없습니다.")
 
         # 피드백은 레슨노트로 작성한다 (기존 FEEDBACK 게시물은 마이그레이션 x9y0z1a2b3c4 가 옮김)
         if data.type == PostType.FEEDBACK.value:
@@ -169,13 +169,13 @@ class PostRepository:
         # 게시물 주인 결정
         if role == "CONTENT_MANAGER":
             if data.instructor_id is None:
-                raise HTTPException(status_code=400, detail="instructor_id is required for CONTENT_MANAGER")
+                raise HTTPException(status_code=400, detail="어느 강사의 게시물인지 지정해야 합니다.")
             if not await self._is_staff_of_instructor(data.instructor_id, uid):
-                raise HTTPException(status_code=403, detail="Not assigned to this instructor")
+                raise HTTPException(status_code=403, detail="담당하지 않는 강사입니다.")
             owner_id = data.instructor_id
         elif role == "INSTRUCTOR":
             if data.instructor_id is not None and data.instructor_id != uid:
-                raise HTTPException(status_code=403, detail="Instructor can create posts only in own scope")
+                raise HTTPException(status_code=403, detail="본인 이름으로만 게시물을 작성할 수 있습니다.")
             owner_id = uid
         else:  # ADMIN
             owner_id = data.instructor_id or uid
@@ -185,7 +185,7 @@ class PostRepository:
                 raise HTTPException(status_code=400, detail="FEEDBACK 게시물은 customer_id가 필요합니다.")
             customer = await self.session.get(User, data.customer_id)
             if not customer:
-                raise HTTPException(status_code=404, detail="Customer not found")
+                raise HTTPException(status_code=404, detail="고객을 찾을 수 없습니다.")
             if role != "ADMIN" and customer.manager_id != owner_id:
                 raise HTTPException(status_code=403, detail="담당 고객의 피드백만 등록할 수 있습니다.")
             is_public = False  # FEEDBACK은 비공개로 시작 (대상 고객이 동의하면 공개)
@@ -336,7 +336,7 @@ class PostRepository:
     async def get_comment_or_404(self, comment_id: int) -> PostComment:
         comment = await self.session.get(PostComment, comment_id)
         if not comment or comment.deleted_at is not None:
-            raise HTTPException(status_code=404, detail="Comment not found")
+            raise HTTPException(status_code=404, detail="댓글을 찾을 수 없습니다.")
         return comment
 
     @staticmethod
@@ -369,7 +369,7 @@ class PostRepository:
     # 댓글 수정 (작성자만)
     async def update_comment(self, comment: PostComment, user: CurrentUser, content: str) -> PostComment:
         if comment.user_id != UUID(str(user.id)):
-            raise HTTPException(status_code=403, detail="Only owner can update comment")
+            raise HTTPException(status_code=403, detail="본인이 쓴 댓글만 수정할 수 있습니다.")
         comment.content = content
         comment.updated_at = datetime.now(timezone.utc)
         self.session.add(comment)
@@ -380,7 +380,7 @@ class PostRepository:
     # 행은 남기고(대댓글 유지) 원문과 그 댓글로 생긴 알림을 지운다. 목록에는 "삭제된 댓글입니다"로 보인다
     async def delete_comment(self, comment: PostComment, user: CurrentUser) -> None:
         if comment.user_id != UUID(str(user.id)) and user.role != "ADMIN":
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise HTTPException(status_code=403, detail="권한이 없습니다.")
 
         post = await self.get_or_404(comment.post_id)
         if post.instructor_id != comment.user_id:

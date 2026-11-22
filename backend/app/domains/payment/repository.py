@@ -38,7 +38,7 @@ class PaymentRepository:
 
         customer = (await self.session.execute(select(User).where(User.id == data.customer_id))).scalar_one_or_none()
         if not customer:
-            raise HTTPException(status_code=404, detail="Customer not found")
+            raise HTTPException(status_code=404, detail="고객을 찾을 수 없습니다.")
 
         if user.role == "INSTRUCTOR" and customer.manager_id != user_id:
             raise HTTPException(status_code=403, detail="본인이 담당하는 고객의 결제만 등록할 수 있습니다.")
@@ -107,11 +107,11 @@ class PaymentRepository:
     # 관리자 수동 상태 변경 (PG 웹훅 연동 전)
     async def update_status(self, payment_id: UUID, status: str, actor: CurrentUser) -> Payment:
         if status not in VALID_STATUSES:
-            raise HTTPException(status_code=400, detail=f"Invalid status. Allowed: {VALID_STATUSES}")
+            raise HTTPException(status_code=400, detail=f"결제 상태 값이 올바르지 않습니다. 가능한 값: {VALID_STATUSES}")
 
         payment = (await self.session.execute(select(Payment).where(Payment.id == payment_id))).scalar_one_or_none()
         if not payment:
-            raise HTTPException(status_code=404, detail="Payment not found")
+            raise HTTPException(status_code=404, detail="결제 내역을 찾을 수 없습니다.")
 
         previous = payment.status
         payment.status = status

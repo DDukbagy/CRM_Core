@@ -46,15 +46,15 @@ class InstructorRepository:
     async def add_staff(self, instructor_id: UUID, staff_email: str) -> None:
         staff_user = (await self.session.execute(select(User).where(User.email == staff_email))).scalar_one_or_none()
         if not staff_user:
-            raise HTTPException(status_code=404, detail="Staff user not found")
+            raise HTTPException(status_code=404, detail="스태프로 지정할 사용자를 찾을 수 없습니다.")
         if staff_user.id == instructor_id:
-            raise HTTPException(status_code=400, detail="Cannot add yourself as staff")
+            raise HTTPException(status_code=400, detail="본인을 스태프로 지정할 수 없습니다.")
         try:
             self.session.add(InstructorStaff(instructor_id=instructor_id, staff_user_id=staff_user.id))
             await self.session.commit()
         except Exception:
             await self.session.rollback()
-            raise HTTPException(status_code=409, detail="Staff already assigned")
+            raise HTTPException(status_code=409, detail="이미 지정된 스태프입니다.")
 
     # 스태프 제거
     async def remove_staff(self, instructor_id: UUID, staff_user_id: UUID) -> None:
@@ -66,7 +66,7 @@ class InstructorRepository:
             )
         ).scalar_one_or_none()
         if not entry:
-            raise HTTPException(status_code=404, detail="Staff relation not found")
+            raise HTTPException(status_code=404, detail="지정된 스태프가 아닙니다.")
         await self.session.delete(entry)
         await self.session.commit()
 
@@ -92,12 +92,12 @@ class InstructorRepository:
         """CUSTOMER → INSTRUCTOR(PENDING). 이미 강사면 그대로"""
         db_user = (await self.session.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
         if not db_user:
-            raise HTTPException(status_code=404, detail="User not found")
+            raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
         role = (db_user.role or "").upper()
         if role == "INSTRUCTOR":
             return db_user
         if role != "CUSTOMER":
-            raise HTTPException(status_code=400, detail="Invalid role transition")
+            raise HTTPException(status_code=400, detail="바꿀 수 없는 역할입니다.")
         db_user.role = "INSTRUCTOR"
         db_user.status = "PENDING"
         self.session.add(db_user)
@@ -117,12 +117,12 @@ class InstructorRepository:
     # 강사 승인 (기본 캘린더 생성)
     async def approve(self, user_id: UUID) -> User:
         if settings.SUPER_ADMIN_USER_ID and str(user_id) == str(settings.SUPER_ADMIN_USER_ID):
-            raise HTTPException(status_code=403, detail="Cannot modify super admin")
+            raise HTTPException(status_code=403, detail="최고 관리자는 변경할 수 없습니다.")
         target = (
             await self.session.execute(select(User).where(and_(User.id == user_id, User.role == "INSTRUCTOR")))
         ).scalar_one_or_none()
         if not target:
-            raise HTTPException(status_code=404, detail="Pending instructor not found")
+            raise HTTPException(status_code=404, detail="승인 대기 중인 강사를 찾을 수 없습니다.")
         target.status = "ACTIVE"
         self.session.add(target)
         await self.session.commit()
