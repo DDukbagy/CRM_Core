@@ -201,11 +201,12 @@ async def booking_status(real_db, booking_id: int) -> str:
 
 # ── 테스트 ────────────────────────────────────────────────────────
 
-async def test_spec4_같은_예약_완료_N번_동시_1회만_차감(real_db, world, gate):
+async def test_spec4_같은_예약_완료_N번_동시_1회만_차감(real_db, world, gate, clock):
     """명세 4: 같은 예약에 완료 요청 N번이 동시에 오면 → 수강권은 1회만 차감, 나머지는 409"""
     w, c = world, world["client"]
     cp_id = await give_pass(real_db, w, total=5)
     bid = await book(w, 0, confirm=True)
+    clock.after_lessons()  # 수업 날짜가 지난 뒤로 옮긴다 (완료·노쇼는 수업 당일부터 된다)
     url = f"/calendars/me/bookings/{bid}/complete"
     N = 3
 
@@ -220,7 +221,7 @@ async def test_spec4_같은_예약_완료_N번_동시_1회만_차감(real_db, wo
     assert await sessions_used(real_db, cp_id) == 1
 
 
-async def test_spec2_서로_다른_예약_완료와_노쇼_동시_2회_차감(real_db, world, gate):
+async def test_spec2_서로_다른_예약_완료와_노쇼_동시_2회_차감(real_db, world, gate, clock):
     """명세 2: 한 고객의 서로 다른 예약 완료(노쇼 포함) 2건이 동시에 오면 → 수강권 2회 차감"""
     w, c = world, world["client"]
     # 2회를 차감해도 충분한 수강권을 발급한다
@@ -230,6 +231,7 @@ async def test_spec2_서로_다른_예약_완료와_노쇼_동시_2회_차감(re
 
     gate.arm(2)
     # b1 은 완료, b2 는 노쇼 요청을 동시에 보낸다
+    clock.after_lessons()  # 수업 날짜가 지난 뒤로 옮긴다 (완료·노쇼는 수업 당일부터 된다)
     responses = await asyncio.gather(
         c.patch(f"/calendars/me/bookings/{b1}/complete", headers=as_("host")),
         c.patch(f"/calendars/me/bookings/{b2}/no-show", headers=as_("host")),
@@ -240,7 +242,7 @@ async def test_spec2_서로_다른_예약_완료와_노쇼_동시_2회_차감(re
     assert await sessions_used(real_db, cp_id) == 2
 
 
-async def test_spec3_잔여_1회에_서로_다른_예약_2건_동시_1건만(real_db, world, gate):
+async def test_spec3_잔여_1회에_서로_다른_예약_2건_동시_1건만(real_db, world, gate, clock):
     """명세 3: 잔여 1회 수강권으로 서로 다른 예약 2건(노쇼 포함)의 완료가 동시에 오면 → 1건만 완료·차감, 나머지 409"""
     w, c = world, world["client"]
     # 잔여 1회인 수강권에 확정 예약 2건이 걸린 상태를 만든다.
@@ -255,6 +257,7 @@ async def test_spec3_잔여_1회에_서로_다른_예약_2건_동시_1건만(rea
 
     gate.arm(2)
     # b1 완료, b2 노쇼를 동시에 보낸다
+    clock.after_lessons()  # 수업 날짜가 지난 뒤로 옮긴다 (완료·노쇼는 수업 당일부터 된다)
     responses = await asyncio.gather(
         c.patch(f"/calendars/me/bookings/{b1}/complete", headers=as_("host")),
         c.patch(f"/calendars/me/bookings/{b2}/no-show", headers=as_("host")),

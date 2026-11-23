@@ -8,6 +8,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]  # /workspace
 sys.path.insert(0, str(ROOT_DIR))
 
 import uuid
+from datetime import date, timedelta
 from typing import AsyncIterator, Optional
 
 import pytest
@@ -16,6 +17,7 @@ from httpx import AsyncClient, ASGITransport
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
+from app.core.clock import today_kst
 from app.core.config import settings
 from app.main import app
 from app.db.session import get_session
@@ -162,6 +164,27 @@ async def insert_booking(session: AsyncSession, *, when, status: str, slot_id: i
         {"b": booking_id, "s": slot_id, "d": when, "h": status != "CANCELLED"},
     )
     return booking_id
+
+
+# 날짜 옮기기: 예약 규칙은 한국 날짜의 "오늘"로 판단한다 (신청·확정은 수업 전날까지, 완료·노쇼는 수업 당일부터)
+
+class Clock:
+    """예약 저장소가 보는 "오늘"을 테스트 안에서 옮긴다 (테스트가 끝나면 원래대로)"""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch):
+        self._monkeypatch = monkeypatch
+
+    def set(self, day: date) -> None:
+        self._monkeypatch.setattr("app.domains.booking.repository.today_kst", lambda: day)
+
+    def after_lessons(self) -> None:
+        """테스트에서 잡은 수업 날짜들이 모두 지난 뒤로 옮긴다. 신청·확정을 마친 다음, 완료·노쇼 전에 부른다"""
+        self.set(today_kst() + timedelta(days=30))
+
+
+@pytest.fixture
+def clock(monkeypatch: pytest.MonkeyPatch) -> Clock:
+    return Clock(monkeypatch)
 
 
 # 강사·고객 만들기

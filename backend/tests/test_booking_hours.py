@@ -102,7 +102,7 @@ def create_gate(monkeypatch) -> CreateGate:
 
 # 명세 1. 2시간 수강권으로 이어진 슬롯 2개를 예약하고 강사가 확정·완료하면
 #        → 예약은 1건 생기고, 완료 처리하면 수강권은 1회만 차감된다
-async def test_spec1_2시간_예약은_1건이고_완료하면_1회_차감(hours, db_conn_and_sessionmaker):
+async def test_spec1_2시간_예약은_1건이고_완료하면_1회_차감(hours, db_conn_and_sessionmaker, clock):
     act, ids = hours
     db = db_conn_and_sessionmaker
     cp = await _pass(db, ids["guest"], ids["host"], hours=2, total=3)
@@ -118,6 +118,7 @@ async def test_spec1_2시간_예약은_1건이고_완료하면_1회_차감(hours
     bid = r.json()["id"]
     confirmed = await act("host").patch(f"/calendars/me/bookings/{bid}/confirm")
     assert confirmed.status_code == 200, confirmed.text
+    clock.after_lessons()  # 수업 날짜가 지난 뒤로 옮긴다 (완료·노쇼는 수업 당일부터 된다)
     complete = await act("host").patch(f"/calendars/me/bookings/{bid}/complete")
     assert complete.status_code == 200, complete.text
 

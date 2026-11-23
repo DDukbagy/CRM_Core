@@ -7,6 +7,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { apiFetch } from "@/lib/api";
+import { toLocalDateStr } from "@/lib/bookingUtils";
 import { supabase } from "@/lib/supabase";
 import { config } from "@/lib/config";
 import type { BookingRead } from "@/types/api";
@@ -160,13 +161,14 @@ export default function BookingDetailScreen() {
           </Pressable>
         )}
 
-        {booking.status === "CONFIRMED" && (
+        {/* 취소·철회는 수업 전날까지만 된다 (서버 규칙과 같다. 당일·지난 날짜에는 버튼을 숨긴다) */}
+        {booking.status === "CONFIRMED" && booking.when > toLocalDateStr() && (
           <Pressable style={[s.btn, s.cancelBtn]} onPress={handleCancel}>
             <Text style={s.cancelBtnText}>예약 취소</Text>
           </Pressable>
         )}
 
-        {booking.status === "REQUESTED" && (
+        {booking.status === "REQUESTED" && booking.when > toLocalDateStr() && (
           <Pressable style={[s.btn, s.withdrawBtn]} onPress={handleWithdraw}>
             <Text style={s.withdrawBtnText}>신청 철회</Text>
           </Pressable>

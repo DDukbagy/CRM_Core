@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth.deps import CurrentUser
+from app.core.clock import today_kst
 from app.core.logging import log_event
 from app.domains.booking.models import ACTIVE_LESSON_STATUSES, Booking, BookingSlot, BookingType
 from app.domains.booking.schemas import BookingCreate, BookingRead, BulkCompleteItem, BulkCompleteResponse
@@ -61,6 +62,21 @@ STATUS_LABEL = {
 }
 
 
+def _ensure_before_lesson_day(when: date, action: str) -> None:
+    """수업 전날까지만 되는 동작 (신청·신청 철회·취소 신청·확정). 당일과 지난 날짜는 400
+
+    날짜는 한국 날짜 기준이다. 시간이 지나도 될 수 없는 요청이라 409 가 아니라 400 으로 거부한다.
+    """
+    if when <= today_kst():
+        raise _bad_request(f"{action}은 수업 전날까지만 할 수 있습니다.")
+
+
+def _ensure_lesson_day_reached(when: date) -> None:
+    """수업 당일부터 되는 동작 (완료·노쇼). 아직 오지 않은 수업이면 409 (그날이 되면 되는 요청)"""
+    if when > today_kst():
+        raise _reject("아직 수업 날짜가 되지 않은 예약입니다.")
+
+
 def _reason_values(reason: Optional[str]) -> dict:
     return {"cancel_reason": reason} if reason else {}
 
@@ -69,6 +85,9 @@ class BookingRepository:
     """레슨 예약 생성과 상태 전환 (휴무·영업일 전환은 CalendarBlockRepository)
 
     예약 1건 = 레슨 1회. 레슨이 차지하는 시간은 BookingSlot 에 슬롯마다 한 행씩 있다 (2시간 레슨이면 2행).
+
+    날짜 규칙 (한국 날짜 기준): 신청·신청 철회·취소 신청·확정은 수업 전날까지, 완료·노쇼는 수업 당일부터.
+    거절·강사 취소·취소 신청 승인/거절은 날짜 제한이 없다 (지난 예약을 정리할 수 있어야 한다).
 
     상태: REQUESTED → CONFIRMED → COMPLETED / NO_SHOW
                     ↘ CANCELLED (강사 거절·고객 철회)     CONFIRMED ⇄ CANCEL_REQUESTED → CANCELLED
@@ -159,6 +178,7 @@ class BookingRepository:
         user_role = ((user.role or "CUSTOMER").strip()).upper()
         if user_role not in {"CUSTOMER", "ADMIN"}:
             raise HTTPException(status_code=403, detail="예약은 고객만 신청할 수 있습니다.")
+        _ensure_before_lesson_day(data.when, "예약 신청")
 
         slots = await self._lesson_slots(data.time_slot_ids, data.when)
         slot_ids = [ts.id for ts in slots]
@@ -290,6 +310,8 @@ class BookingRepository:
             raise _reject("완료된 예약은 취소할 수 없습니다.")
         if booking.status == "REQUESTED":
             raise _reject("신청 중인 예약은 취소 신청이 아니라 신청 철회로 처리해 주세요.")
+        # 상태로 이미 안 되는 요청은 그 이유를 먼저 알려 주고, 그다음에 날짜를 본다
+        _ensure_before_lesson_day(booking.when, "취소 신청")
         await self._transition(booking, "CONFIRMED", "CANCEL_REQUESTED", **_reason_values(reason))
         booking = await self._save(booking)
         _log("booking.cancel_requested", booking, user)
@@ -307,6 +329,7 @@ class BookingRepository:
         self.ensure_guest(booking, user)
         if booking.status == "COMPLETED":
             raise _reject("완료된 예약은 철회할 수 없습니다.")
+        _ensure_before_lesson_day(booking.when, "신청 철회")
         await self._transition(booking, "REQUESTED", "CANCELLED", **_reason_values(reason))
         booking = await self._save(booking)
         _log("booking.withdrawn", booking, user)
@@ -327,6 +350,7 @@ class BookingRepository:
         await self.ensure_host_can_manage(booking, host)
         if booking.status == "CANCELLED":
             raise _reject("취소된 예약은 확정할 수 없습니다.")
+        _ensure_before_lesson_day(booking.when, "예약 확정")
         await self._transition(booking, "REQUESTED", "CONFIRMED", **({"topic": topic} if topic else {}))
         booking = await self._save(booking)
         _log("booking.confirmed", booking, host)
@@ -493,6 +517,7 @@ class BookingRepository:
         """
         booking_id = booking.id
         try:
+            _ensure_lesson_day_reached(booking.when)
             await self._transition(booking, "CONFIRMED", new_status)
             return await self._deduct_pass(booking)
         except HTTPException as e:

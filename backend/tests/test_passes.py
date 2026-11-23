@@ -183,7 +183,7 @@ async def test_customer_sees_only_own_passes(client, db_conn_and_sessionmaker: a
 # ── 레슨 완료 시 자동 차감 ────────────────────────────────────
 
 async def test_completing_lesson_deducts_one_session(
-    instructor_client, instructor_id, managed_customer_id, db_conn_and_sessionmaker: async_sessionmaker[AsyncSession]
+    instructor_client, instructor_id, managed_customer_id, db_conn_and_sessionmaker: async_sessionmaker[AsyncSession], clock
 ):
     cp = await _assign(instructor_client, managed_customer_id, (await _create_type(instructor_client, session_count=1))["id"])
     lesson_day = date.today() + timedelta(days=3)
@@ -210,6 +210,7 @@ async def test_completing_lesson_deducts_one_session(
         )
         await session.commit()
 
+    clock.after_lessons()  # 수업 날짜가 지난 뒤로 옮긴다 (완료·노쇼는 수업 당일부터 된다)
     r = await instructor_client.patch(f"/calendars/me/bookings/{booking_id}/complete")
     assert r.status_code == 200, r.text
     after = next(p for p in (await instructor_client.get("/passes/customer-passes")).json() if p["id"] == cp["id"])
@@ -275,7 +276,7 @@ async def _booking_status(session: AsyncSession, booking_id: int) -> str:
 
 
 # 명세 1: 확정된 예약을 다른 강사가 완료 처리하면 → 거부, 예약 상태와 고객 수강권은 그대로
-async def test_other_instructor_cannot_complete_booking(actor, db_conn_and_sessionmaker: async_sessionmaker[AsyncSession]):
+async def test_other_instructor_cannot_complete_booking(actor, db_conn_and_sessionmaker: async_sessionmaker[AsyncSession], clock):
     act, people = actor
     async with db_conn_and_sessionmaker() as s:
         people["owner"] = (await insert_user(s, "INSTRUCTOR"), "INSTRUCTOR")   # 예약을 받은 강사 (수강권 발급)
@@ -284,6 +285,7 @@ async def test_other_instructor_cannot_complete_booking(actor, db_conn_and_sessi
         cp_id = await _issue_pass(s, people["owner"][0], people["cust"][0])
         booking_id = await _confirmed_booking(s, people["owner"][0], people["cust"][0], cp_id)
 
+    clock.after_lessons()  # 수업 날짜가 지난 뒤로 옮긴다 (완료·노쇼는 수업 당일부터 된다)
     r = await act("other").patch(f"/calendars/me/bookings/{booking_id}/complete")
 
     async with db_conn_and_sessionmaker() as s:
@@ -296,7 +298,7 @@ async def test_other_instructor_cannot_complete_booking(actor, db_conn_and_sessi
 
 
 # 명세 2: A 강사(먼저 발급)·B 강사(나중 발급) 수강권이 같이 있을 때 B 강사가 완료하면 → A 는 그대로, B 만 차감
-async def test_completion_deducts_only_that_instructors_pass(actor, db_conn_and_sessionmaker: async_sessionmaker[AsyncSession]):
+async def test_completion_deducts_only_that_instructors_pass(actor, db_conn_and_sessionmaker: async_sessionmaker[AsyncSession], clock):
     act, people = actor
     async with db_conn_and_sessionmaker() as s:
         people["a"] = (await insert_user(s, "INSTRUCTOR"), "INSTRUCTOR")
@@ -307,6 +309,7 @@ async def test_completion_deducts_only_that_instructors_pass(actor, db_conn_and_
         b_pass = await _issue_pass(s, people["b"][0], people["cust"][0])
         booking_id = await _confirmed_booking(s, people["b"][0], people["cust"][0], b_pass)
 
+    clock.after_lessons()  # 수업 날짜가 지난 뒤로 옮긴다 (완료·노쇼는 수업 당일부터 된다)
     r = await act("b").patch(f"/calendars/me/bookings/{booking_id}/complete")
     assert r.status_code == 200, r.text
 

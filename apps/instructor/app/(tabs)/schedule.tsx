@@ -348,9 +348,11 @@ function DayPanel({
                         )}
                         {b.status === "REQUESTED" && (
                           <View style={dp.actions}>
-                            <Pressable style={[dp.actionBtn, { backgroundColor: "#3b82f6" }]} onPress={() => onAction(b.id, "confirm")}>
-                              <Text style={dp.actionTxt}>확정</Text>
-                            </Pressable>
+                            {date > today && (
+                              <Pressable style={[dp.actionBtn, { backgroundColor: "#3b82f6" }]} onPress={() => onAction(b.id, "confirm")}>
+                                <Text style={dp.actionTxt}>확정</Text>
+                              </Pressable>
+                            )}
                             <Pressable style={[dp.actionBtn, { backgroundColor: "#9ca3af" }]} onPress={() => onAction(b.id, "decline")}>
                               <Text style={dp.actionTxt}>거절</Text>
                             </Pressable>
@@ -708,9 +710,11 @@ function TimelineView({
                   {b.topic ? <Text style={tl.bkTopic}>{b.topic}</Text> : null}
                   {b.status === "REQUESTED" && (
                     <View style={tl.actions}>
-                      <Pressable style={[tl.btn, { backgroundColor: "#3b82f6" }]} onPress={() => onAction(b.id, "confirm")}>
-                        <Text style={tl.btnTxt}>확정</Text>
-                      </Pressable>
+                      {date > today && (
+                        <Pressable style={[tl.btn, { backgroundColor: "#3b82f6" }]} onPress={() => onAction(b.id, "confirm")}>
+                          <Text style={tl.btnTxt}>확정</Text>
+                        </Pressable>
+                      )}
                       <Pressable style={[tl.btn, { backgroundColor: "#9ca3af" }]} onPress={() => onAction(b.id, "decline")}>
                         <Text style={tl.btnTxt}>거절</Text>
                       </Pressable>
@@ -1220,9 +1224,11 @@ function BookingDetailModal({ visible, booking, slots, customerMap, onClose, onA
 
           {booking.status === "REQUESTED" && (
             <View style={bd.actions}>
-              <Pressable style={[bd.btn, { backgroundColor: "#3b82f6" }]} onPress={() => onAction(booking.id, "confirm")}>
-                <Text style={bd.btnTxt}>확정</Text>
-              </Pressable>
+              {booking.when > today && (
+                <Pressable style={[bd.btn, { backgroundColor: "#3b82f6" }]} onPress={() => onAction(booking.id, "confirm")}>
+                  <Text style={bd.btnTxt}>확정</Text>
+                </Pressable>
+              )}
               <Pressable style={[bd.btn, { backgroundColor: "#9ca3af" }]} onPress={() => onAction(booking.id, "decline")}>
                 <Text style={bd.btnTxt}>거절</Text>
               </Pressable>

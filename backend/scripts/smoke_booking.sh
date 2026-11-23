@@ -105,7 +105,7 @@ cancel_booking_guest() {
 echo "== (1) create booking request =="
 BOOKING_ID=""
 for i in $(seq 0 30); do
-  when=$(date -u -d "+$i day" +%Y-%m-%d 2>/dev/null || date -v+${i}d +%F)
+  when=$(TZ=Asia/Seoul date -d "+$i day" +%Y-%m-%d 2>/dev/null || TZ=Asia/Seoul date -v+${i}d +%F)
   out="$(create_booking "$when")" || true
   body="$(echo "$out" | head -n -1)"
   code="$(echo "$out" | tail -n 1)"
@@ -158,7 +158,7 @@ echo "== (3) decline test (new booking) =="
 # decline 테스트용으로 booking 하나 더 생성
 BOOKING_ID2=""
 for i in $(seq 0 30); do
-  when=$(date -u -d "+$i day" +%Y-%m-%d 2>/dev/null || date -v+${i}d +%F)
+  when=$(TZ=Asia/Seoul date -d "+$i day" +%Y-%m-%d 2>/dev/null || TZ=Asia/Seoul date -v+${i}d +%F)
   out="$(create_booking "$when")" || true
   body="$(echo "$out" | head -n -1)"
   code="$(echo "$out" | tail -n 1)"

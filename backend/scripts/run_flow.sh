@@ -178,8 +178,9 @@ print(json.loads(text).get("id"))
 PY
 }
 
-START_DATE="$(date -I)"
-END_DATE="$(date -I -d "+14 days" 2>/dev/null || true)"
+# 예약 신청은 수업 전날까지만 된다 (한국 날짜 기준) → 내일부터 찾는다
+START_DATE="$(TZ=Asia/Seoul date -I -d "+1 day")"
+END_DATE="$(TZ=Asia/Seoul date -I -d "+15 days" 2>/dev/null || true)"
 if [ -z "$END_DATE" ]; then END_DATE="$START_DATE"; fi
 
 echo "=== FLOW TEST START ==="

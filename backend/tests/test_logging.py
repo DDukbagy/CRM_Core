@@ -139,7 +139,7 @@ async def test_auth_failure_logs_reason_without_token(raw_client, caplog):
 
 
 # 명세 5: 예약 완료 성공 → 사용 로그에 예약 번호, 처리한 사람 ID, 차감된 수강권 번호
-async def test_complete_writes_event_log(world, db_conn_and_sessionmaker, caplog):
+async def test_complete_writes_event_log(world, db_conn_and_sessionmaker, caplog, clock):
     act, ids = world
     async with db_conn_and_sessionmaker() as session:
         cp_id = await _customer_pass(session, ids["guest"], ids["host"])
@@ -147,6 +147,7 @@ async def test_complete_writes_event_log(world, db_conn_and_sessionmaker, caplog
     assert (await act("host").patch(f"/calendars/me/bookings/{bid}/confirm")).status_code == 200
 
     with caplog.at_level(logging.INFO):
+        clock.after_lessons()  # 수업 날짜가 지난 뒤로 옮긴다 (완료·노쇼는 수업 당일부터 된다)
         r = await act("host").patch(f"/calendars/me/bookings/{bid}/complete")
     assert r.status_code == 200, r.text
 
@@ -163,7 +164,7 @@ async def test_complete_writes_event_log(world, db_conn_and_sessionmaker, caplog
 
 
 # 명세 6: 예약 완료 거부(409) → 사용 로그가 남는다 (실제 완료와 구분되는 이름으로)
-async def test_rejected_complete_writes_event_log(world, db_conn_and_sessionmaker, caplog):
+async def test_rejected_complete_writes_event_log(world, db_conn_and_sessionmaker, caplog, clock):
     act, ids = world
     async with db_conn_and_sessionmaker() as session:
         cp_id = await _customer_pass(session, ids["guest"], ids["host"], total=1)
@@ -175,6 +176,7 @@ async def test_rejected_complete_writes_event_log(world, db_conn_and_sessionmake
         await session.execute(text("update public.customer_passes set sessions_used = sessions_total where id = :i"), {"i": cp_id})
         await session.commit()
     with caplog.at_level(logging.INFO):
+        clock.after_lessons()  # 수업 날짜가 지난 뒤로 옮긴다 (완료·노쇼는 수업 당일부터 된다)
         r = await act("host").patch(f"/calendars/me/bookings/{bid}/complete")
     assert r.status_code == 409, r.text
 
