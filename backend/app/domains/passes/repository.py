@@ -10,6 +10,7 @@ from sqlmodel import select
 from app.core.auth.deps import CurrentUser
 from app.core.logging import log_event
 from app.core.retention import retention_cutoff
+from app.domains.booking.models import ACTIVE_LESSON_STATUSES, Booking
 from app.domains.passes.models import CustomerPass, LessonPassType
 from app.domains.passes.schemas import CustomerPassAssign, CustomerPassUpdate, PassTypeCreate, PassTypeUpdate
 from app.domains.users.models import User
@@ -139,10 +140,53 @@ class PassRepository:
         return cp
 
     # 사용 횟수는 총 횟수를 넘을 수 없고, 다 쓰면 자동 COMPLETED
+    async def _lock(self, cp: CustomerPass) -> CustomerPass:
+        """수강권 행을 잠그고 지금 값으로 다시 읽는다 (잠금은 commit 까지)
+
+        강사의 수정은 "읽고 → 계산 → 저장"이라, 읽은 뒤 저장하기 전에 완료의 차감이나 다른 수정이 끼어들면
+        옛 값으로 계산한 결과를 덮어쓴다. 저장 직전에 잠그고 다시 읽으면 겹친 요청들이 차례로 처리된다.
+        차감(deduct_for_lesson)과 예약 신청(lock_passes_for_booking)도 같은 행을 잠그거나 조건부로 고치므로 서로 기다린다.
+        """
+        return (await self.session.execute(
+            select(CustomerPass).where(CustomerPass.id == cp.id).with_for_update().execution_options(populate_existing=True)
+        )).scalar_one()
+
+    async def _reserved(self, cp: CustomerPass) -> int:
+        """이 수강권에 걸려 있는 진행 중 예약 수 (신청·확정·취소 신청). 이 예약들은 완료될 때 이 수강권에서 차감된다"""
+        return (await self.session.execute(
+            select(func.count()).select_from(Booking).where(
+                Booking.customer_pass_id == cp.id, Booking.status.in_(ACTIVE_LESSON_STATUSES)
+            )
+        )).scalar_one()
+
     async def update_customer_pass(self, cp: CustomerPass, data: CustomerPassUpdate) -> CustomerPass:
+        """수동 수정 (사용 횟수·상태·메모). 걸려 있는 예약을 완료할 수 없게 만드는 수정은 409 로 거부한다
+
+        - 진행 중이 아닌 상태(취소·만료·다 씀)로 바꾸기: 걸린 예약이 있으면 거부 (예약을 먼저 처리해야 한다)
+        - 사용 횟수 올리기: 남은 횟수가 걸린 예약 수보다 적어지면 거부
+        """
+        cp = await self._lock(cp)
         patch = data.model_dump(exclude_none=True)
-        if patch.get("sessions_used", cp.sessions_used) > cp.sessions_total:
+        new_used = patch.get("sessions_used", cp.sessions_used)
+        new_status = patch.get("status", cp.status)
+        if new_used > cp.sessions_total:
             raise HTTPException(status_code=400, detail="사용 횟수는 총 횟수를 넘을 수 없습니다.")
+
+        closing = new_status != "ACTIVE" and cp.status == "ACTIVE"
+        raising = new_used > cp.sessions_used
+        if closing or raising:
+            reserved = await self._reserved(cp)
+            if reserved and closing:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"진행 중인 예약이 {reserved}건 있어 수강권 상태를 바꿀 수 없습니다. 예약을 먼저 처리해 주세요.",
+                )
+            if reserved and cp.sessions_total - new_used < reserved:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"진행 중인 예약이 {reserved}건 있어 남은 횟수를 {reserved}회 아래로 줄일 수 없습니다. 예약을 먼저 처리해 주세요.",
+                )
+
         for field, value in patch.items():
             setattr(cp, field, value)
         if cp.sessions_used >= cp.sessions_total and cp.status == "ACTIVE":
@@ -159,6 +203,7 @@ class PassRepository:
     async def add_sessions(self, cp: CustomerPass, sessions: int, note: Optional[str]) -> CustomerPass:
         if sessions <= 0:
             raise HTTPException(status_code=400, detail="추가 횟수는 1 이상이어야 합니다.")
+        cp = await self._lock(cp)  # 지금 값에 더한다 (동시에 온 추가·차감이 사라지지 않게)
         cp.sessions_total += sessions
         if note:
             cp.note = (cp.note + "\n" + note).strip() if cp.note else note
