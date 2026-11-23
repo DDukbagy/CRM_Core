@@ -327,9 +327,11 @@ export default function DashboardScreen() {
                         <Text style={s.cancelDetailHint}>자세히{"\n"}보기 →</Text>
                       ) : (
                         <>
-                          <Pressable style={s.squareConfirm} onPress={() => { setSelectedTopic(""); setCustomTopic(""); setConfirmTarget({ id: b.id, name }); }}>
-                            <Text style={s.squareConfirmTxt}>수락</Text>
-                          </Pressable>
+                          {b.when > today && (
+                            <Pressable style={s.squareConfirm} onPress={() => { setSelectedTopic(""); setCustomTopic(""); setConfirmTarget({ id: b.id, name }); }}>
+                              <Text style={s.squareConfirmTxt}>수락</Text>
+                            </Pressable>
+                          )}
                           <Pressable style={s.squareDecline} onPress={() => { setSelectedReason(""); setCustomReason(""); setDeclineTarget({ id: b.id, name }); }}>
                             <Text style={s.squareDeclineTxt}>거절</Text>
                           </Pressable>
@@ -407,9 +409,11 @@ export default function DashboardScreen() {
               ) : null}
               {b.status === "REQUESTED" && (
                 <View style={s.actions}>
-                  <Pressable style={[s.actionBtn, s.confirmBtn]} onPress={() => { setSelectedTopic(""); setCustomTopic(""); setConfirmTarget({ id: b.id, name }); }}>
-                    <Text style={s.actionTxt}>✓ 확정</Text>
-                  </Pressable>
+                  {b.when > today && (
+                    <Pressable style={[s.actionBtn, s.confirmBtn]} onPress={() => { setSelectedTopic(""); setCustomTopic(""); setConfirmTarget({ id: b.id, name }); }}>
+                      <Text style={s.actionTxt}>✓ 확정</Text>
+                    </Pressable>
+                  )}
                   <Pressable style={[s.actionBtn, s.declineBtn]} onPress={() => { setSelectedReason(""); setCustomReason(""); setDeclineTarget({ id: b.id, name }); }}>
                     <Text style={s.actionTxt}>✕ 거절</Text>
                   </Pressable>
@@ -579,9 +583,11 @@ export default function DashboardScreen() {
                         <Text style={s.cancelDetailHint}>자세히{"\n"}보기 →</Text>
                       ) : (
                         <>
-                          <Pressable style={s.squareConfirm} onPress={() => { setSelectedTopic(""); setCustomTopic(""); setConfirmTarget({ id: b.id, name }); }}>
-                            <Text style={s.squareConfirmTxt}>수락</Text>
-                          </Pressable>
+                          {b.when > today && (
+                            <Pressable style={s.squareConfirm} onPress={() => { setSelectedTopic(""); setCustomTopic(""); setConfirmTarget({ id: b.id, name }); }}>
+                              <Text style={s.squareConfirmTxt}>수락</Text>
+                            </Pressable>
+                          )}
                           <Pressable style={s.squareDecline} onPress={() => { setSelectedReason(""); setCustomReason(""); setDeclineTarget({ id: b.id, name }); }}>
                             <Text style={s.squareDeclineTxt}>거절</Text>
                           </Pressable>

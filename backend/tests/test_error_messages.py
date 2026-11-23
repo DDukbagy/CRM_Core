@@ -35,13 +35,14 @@ async def test_이미_예약된_시간은_코드와_문장을_따로_준다(worl
     assert error["details"]["time_slot_ids"] == [ids["slot_a"]] and error["details"]["hint"] == "REFETCH_AVAILABILITY"
 
 
-async def test_할_수_없는_상태_전환은_지금_상태를_한국어로_알려_준다(world, db_conn_and_sessionmaker):  # noqa: F811
+async def test_할_수_없는_상태_전환은_지금_상태를_한국어로_알려_준다(world, db_conn_and_sessionmaker, clock):  # noqa: F811
     act, ids = world
     async with db_conn_and_sessionmaker() as s:
         await _customer_pass(s, ids["guest"], ids["host"])
     bid = (await act("guest").post("/bookings", json=_body(ids))).json()["id"]
 
     # 확정하지 않은(신청 중) 예약을 완료 처리
+    clock.after_lessons()  # 수업 날짜가 지난 뒤로 옮긴다 (완료·노쇼는 수업 당일부터 된다)
     r = await act("host").patch(f"/calendars/me/bookings/{bid}/complete")
 
     assert r.status_code == 409, r.text

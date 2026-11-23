@@ -4,6 +4,7 @@ import { View, Text, FlatList, Pressable, ActivityIndicator, RefreshControl, Sty
 import { appAlert } from "@/lib/alert";
 import { useFocusEffect, useRouter } from "expo-router";
 import { apiFetch } from "@/lib/api";
+import { toLocalDateStr } from "@/lib/bookingUtils";
 import type { BookingRead, BookingStatus } from "@/types/api";
 
 const STATUS_LABEL: Record<BookingStatus, string> = {
@@ -120,8 +121,10 @@ export default function BookingsScreen() {
         }
         renderItem={({ item: b }) => {
           const color = STATUS_COLOR[b.status] ?? "#6b7280";
-          const canCancel = b.status === "CONFIRMED";
-          const canWithdraw = b.status === "REQUESTED";
+          // 신청 철회·취소 신청은 수업 전날까지만 된다 (서버 규칙과 같다. 당일·지난 날짜에는 버튼을 숨긴다)
+          const beforeLessonDay = b.when > toLocalDateStr();
+          const canCancel = b.status === "CONFIRMED" && beforeLessonDay;
+          const canWithdraw = b.status === "REQUESTED" && beforeLessonDay;
 
           return (
             <View style={s.card}>

@@ -1164,8 +1164,10 @@ function BookingDetailModal({ visible, booking, instructorName, onClose, onCance
   if (!booking) return null;
 
   const slot = booking.start_time && booking.end_time ? { start_time: booking.start_time, end_time: booking.end_time } : null;
-  const canWithdraw = booking.status === "REQUESTED";
-  const canCancel = booking.status === "CONFIRMED";
+  // 신청 철회·취소 신청은 수업 전날까지만 된다 (서버 규칙과 같다. 당일·지난 날짜에는 버튼을 숨긴다)
+  const beforeLessonDay = booking.when > toLocalDateStr();
+  const canWithdraw = booking.status === "REQUESTED" && beforeLessonDay;
+  const canCancel = booking.status === "CONFIRMED" && beforeLessonDay;
   const canCancelRequest = booking.status === "CANCEL_REQUESTED";
   const canEdit = booking.status === "REQUESTED";
 

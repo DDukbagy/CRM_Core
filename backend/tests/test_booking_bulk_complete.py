@@ -76,7 +76,7 @@ async def _rival_booking(db, ids) -> int:
 
 # 명세 1. 확정된 예약 3건(고객 2명)을 한 번에 완료하면
 #        → 200 을 반환하고 3건 모두 완료 상태가 되며, 2건을 예약한 고객의 수강권은 2회, 1건을 예약한 고객의 수강권은 1회 차감된다
-async def test_spec1_세_건을_한_번에_완료(world, db_conn_and_sessionmaker):  # noqa: F811
+async def test_spec1_세_건을_한_번에_완료(world, db_conn_and_sessionmaker, clock):  # noqa: F811
     act, ids = world
     db = db_conn_and_sessionmaker
     async with db() as s:
@@ -89,6 +89,7 @@ async def test_spec1_세_건을_한_번에_완료(world, db_conn_and_sessionmake
     # host 가 세 예약(g1, g2, s1)을 한 번에 완료 요청한다
     assert g1 != g2 != s1, "예약 번호가 서로 달라야 한다"
     assert len({g1, g2, s1}) == 3, "예약 번호가 서로 달라야 한다"
+    clock.after_lessons()  # 수업 날짜가 지난 뒤로 옮긴다 (완료·노쇼는 수업 당일부터 된다)
     r = await act("host").post(BULK, json=_ids([g1, g2, s1]))
     assert r.status_code == 200, r.text
 
@@ -107,7 +108,7 @@ async def test_spec1_세_건을_한_번에_완료(world, db_conn_and_sessionmake
 
 # 명세 2. 3건 중 1건이 이미 취소된 예약이면
 #        → 200 을 반환하고 나머지 2건은 완료·차감된다. 취소된 건은 결과에 실패와 이유가 담기고, 상태는 취소 그대로이며 차감되지 않는다
-async def test_spec2_취소된_건만_실패하고_나머지는_완료(world, db_conn_and_sessionmaker):  # noqa: F811
+async def test_spec2_취소된_건만_실패하고_나머지는_완료(world, db_conn_and_sessionmaker, clock):  # noqa: F811
     act, ids = world
     db = db_conn_and_sessionmaker
     async with db() as s:
@@ -120,6 +121,7 @@ async def test_spec2_취소된_건만_실패하고_나머지는_완료(world, db
     assert (await act("host").patch(f"/calendars/me/bookings/{s1}/cancel")).status_code == 200
 
     # host 가 세 예약을 한 번에 완료 요청하고, 응답 코드를 확인한다
+    clock.after_lessons()  # 수업 날짜가 지난 뒤로 옮긴다 (완료·노쇼는 수업 당일부터 된다)
     r = await act("host").post(BULK, json=_ids([g1, g2, s1]))
     assert r.status_code == 200, r.text
 
@@ -139,7 +141,7 @@ async def test_spec2_취소된_건만_실패하고_나머지는_완료(world, db
 
 # 명세 3. 같은 고객의 예약 2건을 보냈는데 그 고객의 수강권이 1회만 남았으면
 #        → 200 을 반환하고 날짜가 빠른 1건만 완료되어 1회 차감된다. 늦은 1건은 결과에 실패와 이유가 담기고 확정 상태 그대로다
-async def test_spec3_수강권이_모자라면_빠른_날짜부터_완료(world, db_conn_and_sessionmaker):  # noqa: F811
+async def test_spec3_수강권이_모자라면_빠른_날짜부터_완료(world, db_conn_and_sessionmaker, clock):  # noqa: F811
     act, ids = world
     db = db_conn_and_sessionmaker
     async with db() as s:
@@ -155,6 +157,7 @@ async def test_spec3_수강권이_모자라면_빠른_날짜부터_완료(world,
     assert later != earlier, "예약 번호가 서로 달라야 한다"
 
     # 응답 코드를 확인한다
+    clock.after_lessons()  # 수업 날짜가 지난 뒤로 옮긴다 (완료·노쇼는 수업 당일부터 된다)
     r = await act("host").post(BULK, json=_ids([later, earlier]))
     assert r.status_code == 200, r.text
 
@@ -170,7 +173,7 @@ async def test_spec3_수강권이_모자라면_빠른_날짜부터_완료(world,
 
 # 명세 4. 목록에 다른 강사의 예약이 섞여 있으면
 #        → 요청 전체가 404 로 거부되고, 내 예약도 완료되지 않으며 수강권은 차감되지 않는다
-async def test_spec4_다른_강사의_예약이_섞이면_전체_404(world, db_conn_and_sessionmaker):  # noqa: F811
+async def test_spec4_다른_강사의_예약이_섞이면_전체_404(world, db_conn_and_sessionmaker, clock):  # noqa: F811
     act, ids = world
     db = db_conn_and_sessionmaker
     async with db() as s:
@@ -180,6 +183,7 @@ async def test_spec4_다른_강사의_예약이_섞이면_전체_404(world, db_c
 
     # host 가 내 예약(mine)과 다른 강사의 예약(others)을 함께 완료 요청하고, 응답 코드를 확인한다
     assert mine != others, "예약 번호가 서로 달라야 한다"
+    clock.after_lessons()  # 수업 날짜가 지난 뒤로 옮긴다 (완료·노쇼는 수업 당일부터 된다)
     r = await act("host").post(BULK, json=_ids([mine, others]))
     assert r.status_code == 404, r.text
 
@@ -196,7 +200,7 @@ async def test_spec4_다른_강사의_예약이_섞이면_전체_404(world, db_c
 
 # 명세 5. 목록에 없는 예약 번호가 섞여 있으면
 #        → 요청 전체가 404 로 거부되고, 내 예약도 완료되지 않으며 수강권은 차감되지 않는다
-async def test_spec5_없는_번호가_섞이면_전체_404(world, db_conn_and_sessionmaker):  # noqa: F811
+async def test_spec5_없는_번호가_섞이면_전체_404(world, db_conn_and_sessionmaker, clock):  # noqa: F811
     act, ids = world
     db = db_conn_and_sessionmaker
     async with db() as s:
@@ -206,6 +210,7 @@ async def test_spec5_없는_번호가_섞이면_전체_404(world, db_conn_and_se
 
     # host 가 내 예약(mine)과 없는 번호(missing)를 함께 완료 요청하고, 응답 코드를 확인한다
     assert mine != missing, "예약 번호가 서로 달라야 한다"
+    clock.after_lessons()  # 수업 날짜가 지난 뒤로 옮긴다 (완료·노쇼는 수업 당일부터 된다)
     r = await act("host").post(BULK, json=_ids([mine, missing]))
     assert r.status_code == 404, r.text
 
@@ -220,7 +225,7 @@ async def test_spec5_없는_번호가_섞이면_전체_404(world, db_conn_and_se
 
 
 # 명세 6. 같은 예약 번호를 두 번 넣어 보내면 → 200 을 반환하고 그 예약은 한 번만 완료되며 수강권은 1회만 차감된다
-async def test_spec6_같은_번호를_두_번_넣어도_한_번만_완료(world, db_conn_and_sessionmaker):  # noqa: F811
+async def test_spec6_같은_번호를_두_번_넣어도_한_번만_완료(world, db_conn_and_sessionmaker, clock):  # noqa: F811
     act, ids = world
     db = db_conn_and_sessionmaker
     async with db() as s:
@@ -228,6 +233,7 @@ async def test_spec6_같은_번호를_두_번_넣어도_한_번만_완료(world,
     b = await _confirmed(act, ids, "guest", "slot_a", DAY, cp)
 
     # host 가 같은 예약 번호를 두 번 넣어 완료 요청하고, 응답 코드를 확인한다
+    clock.after_lessons()  # 수업 날짜가 지난 뒤로 옮긴다 (완료·노쇼는 수업 당일부터 된다)
     r = await act("host").post(BULK, json=_ids([b, b]))
     assert r.status_code == 200, r.text
 
@@ -241,7 +247,7 @@ async def test_spec6_같은_번호를_두_번_넣어도_한_번만_완료(world,
 
 # 명세 7. 같은 일괄 완료 요청을 동시에 두 번 보내면
 #        → 두 요청 모두 200 을 반환하고, 각 예약은 한 번만 완료되며 수강권은 예약 수만큼만 차감된다
-async def test_spec7_같은_요청을_동시에_두_번_보내도_한_번씩만_차감(real_db, race_world, gate):  # noqa: F811
+async def test_spec7_같은_요청을_동시에_두_번_보내도_한_번씩만_차감(real_db, race_world, gate, clock):  # noqa: F811
     w, c = race_world, race_world["client"]
     cp = await give_pass(real_db, w, total=5)
     b1 = await book(w, 0, confirm=True)
@@ -252,6 +258,7 @@ async def test_spec7_같은_요청을_동시에_두_번_보내도_한_번씩만_
     # host 가 같은 일괄 완료 요청([b1, b2])을 동시에 두 번 보낸다
 
     # 두 요청의 응답 코드가 모두 200 인지 확인한다
+    clock.after_lessons()  # 수업 날짜가 지난 뒤로 옮긴다 (완료·노쇼는 수업 당일부터 된다)
     responses = await asyncio.gather(
         c.post(BULK, headers=as_("host"), json=_ids([b1, b2])),
         c.post(BULK, headers=as_("host"), json=_ids([b1, b2])),

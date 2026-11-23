@@ -92,7 +92,7 @@ async def test_spec3_잔여를_예약으로_다_쓰면_409_취소하면_가능(w
 
 
 # 명세 4. 같은 강사의 수강권이 2개일 때 나중 수강권을 지정해 예약하고 완료하면 → 지정한 수강권이 차감되어야 한다
-async def test_spec4_지정한_수강권에서_차감(world, db_conn_and_sessionmaker):
+async def test_spec4_지정한_수강권에서_차감(world, db_conn_and_sessionmaker, clock):
     act, ids = world
     db = db_conn_and_sessionmaker
     async with db() as s:
@@ -103,6 +103,7 @@ async def test_spec4_지정한_수강권에서_차감(world, db_conn_and_session
     assert b.status_code == 201, b.text
     bid = b.json()["id"]
     assert (await act("host").patch(f"/calendars/me/bookings/{bid}/confirm")).status_code == 200
+    clock.after_lessons()  # 수업 날짜가 지난 뒤로 옮긴다 (완료·노쇼는 수업 당일부터 된다)
     assert (await act("host").patch(f"/calendars/me/bookings/{bid}/complete")).status_code == 200
 
     # 지정한 수강권에서만 차감된다

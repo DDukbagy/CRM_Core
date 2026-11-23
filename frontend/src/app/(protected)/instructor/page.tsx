@@ -263,12 +263,14 @@ export default function InstructorDashboard() {
                           </button>
                         ) : (
                           <div className="flex gap-2">
-                            <button
-                              onClick={() => { setConfirmTopic(""); setConfirmCustom(""); setConfirmTarget(b); }}
-                              className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition"
-                            >
-                              수락
-                            </button>
+                            {b.when > today && (
+                              <button
+                                onClick={() => { setConfirmTopic(""); setConfirmCustom(""); setConfirmTarget(b); }}
+                                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition"
+                              >
+                                수락
+                              </button>
+                            )}
                             <button
                               onClick={() => { setDeclineReason(""); setDeclineCustom(""); setDeclineTarget(b); }}
                               className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-200 transition"
@@ -319,11 +321,13 @@ export default function InstructorDashboard() {
                       <td className="px-4 py-3">
                         {b.status === "REQUESTED" && (
                           <div className="flex gap-2">
-                            <button onClick={() => { setConfirmTopic(""); setConfirmCustom(""); setConfirmTarget(b); }} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition">수락</button>
+                            {b.when > today && (
+                              <button onClick={() => { setConfirmTopic(""); setConfirmCustom(""); setConfirmTarget(b); }} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition">수락</button>
+                            )}
                             <button onClick={() => { setDeclineReason(""); setDeclineCustom(""); setDeclineTarget(b); }} className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-200 transition">거절</button>
                           </div>
                         )}
-                        {b.status === "CONFIRMED" && (
+                        {b.status === "CONFIRMED" && b.when <= today && (
                           <div className="flex gap-2">
                             <button onClick={() => setSimpleTarget({ booking: b, action: "complete" })} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-semibold hover:bg-green-700 transition">완료</button>
                             <button onClick={() => setSimpleTarget({ booking: b, action: "no-show" })} className="px-3 py-1.5 bg-red-100 text-red-600 rounded-lg text-xs font-semibold hover:bg-red-200 transition">노쇼</button>

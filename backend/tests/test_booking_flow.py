@@ -118,7 +118,7 @@ async def _available(act, ids, day=DAY) -> dict:
 
 # 레슨 예약 상태 전환
 
-async def test_full_lesson_lifecycle(world, db_conn_and_sessionmaker):
+async def test_full_lesson_lifecycle(world, db_conn_and_sessionmaker, clock):
     act, ids = world
     async with db_conn_and_sessionmaker() as session:
         await _customer_pass(session, ids["guest"], ids["host"])  # 완료하려면 쓸 수 있는 수강권이 있어야 한다
@@ -144,6 +144,7 @@ async def test_full_lesson_lifecycle(world, db_conn_and_sessionmaker):
     assert (await act("host").patch(f"/calendars/me/bookings/{bid}/reject-cancel")).json()["status"] == "CONFIRMED"
 
     # 완료 (이미 완료된 예약에 다시 요청하면 409)
+    clock.after_lessons()  # 수업 날짜가 지난 뒤로 옮긴다 (완료·노쇼는 수업 당일부터 된다)
     r = await act("host").patch(f"/calendars/me/bookings/{bid}/complete")
     assert r.status_code == 200 and r.json()["status"] == "COMPLETED"
     assert (await act("host").patch(f"/calendars/me/bookings/{bid}/complete")).status_code == 409
@@ -178,7 +179,7 @@ async def test_decline_and_withdraw_reopen_slot(world, guest_pass):
     assert (await act("host").patch(f"/calendars/me/bookings/{second}/decline")).status_code == 409  # 이미 취소
 
 
-async def test_host_cancel_and_no_show(world, db_conn_and_sessionmaker):
+async def test_host_cancel_and_no_show(world, db_conn_and_sessionmaker, clock):
     act, ids = world
     async with db_conn_and_sessionmaker() as session:
         await _customer_pass(session, ids["guest"], ids["host"])  # 노쇼도 수강권을 차감한다
@@ -190,6 +191,7 @@ async def test_host_cancel_and_no_show(world, db_conn_and_sessionmaker):
     r = await act("host").patch(f"/calendars/me/bookings/{a}/cancel", json={"reason": "우천"})
     assert r.status_code == 200 and r.json()["status"] == "CANCELLED"
 
+    clock.after_lessons()  # 수업 날짜가 지난 뒤로 옮긴다 (완료·노쇼는 수업 당일부터 된다)
     r = await act("host").patch(f"/calendars/me/bookings/{b}/no-show")
     assert r.status_code == 200 and r.json()["status"] == "NO_SHOW"
     assert (await act("host").patch(f"/calendars/me/bookings/{b}/no-show")).status_code == 409
@@ -355,7 +357,7 @@ async def _customer_pass(session: AsyncSession, customer, instructor, *, total=3
     return cp_id
 
 
-async def test_completed_and_no_show_lessons_use_pass_sessions(world, db_conn_and_sessionmaker):
+async def test_completed_and_no_show_lessons_use_pass_sessions(world, db_conn_and_sessionmaker, clock):
     act, ids = world
     async with db_conn_and_sessionmaker() as session:
         cp_id = await _customer_pass(session, ids["guest"], ids["host"])
@@ -364,6 +366,7 @@ async def test_completed_and_no_show_lessons_use_pass_sessions(world, db_conn_an
     no_show = (await _book(act, ids, slot="slot_b"))["id"]
     for bid in (done, no_show):
         assert (await act("host").patch(f"/calendars/me/bookings/{bid}/confirm")).status_code == 200
+    clock.after_lessons()  # 수업 날짜가 지난 뒤로 옮긴다 (완료·노쇼는 수업 당일부터 된다)
     assert (await act("host").patch(f"/calendars/me/bookings/{done}/complete")).status_code == 200
     assert (await act("host").patch(f"/calendars/me/bookings/{no_show}/no-show")).status_code == 200
 
