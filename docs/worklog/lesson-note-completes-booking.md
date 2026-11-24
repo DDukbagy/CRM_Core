@@ -2,7 +2,7 @@
 
 - 상태: 완료
 - 기간: 2026-11-23 ~ 2026-11-24
-- 브랜치 / PR:
+- 브랜치 / PR: `crm` / #96
 - 관련 작업: [일괄 완료](booking-bulk-complete.md), [예약 날짜 규칙](booking-date-rules.md), [예약 시 수강권 고정](booking-pass-pinning.md)
 
 ## 1. 문제
@@ -84,7 +84,7 @@ FAILED tests/test_lesson_note_complete.py::test_spec7_노트_저장과_완료가
   - API: `POST /lesson-notes` 의 요청·응답 모양은 그대로. `booking_id` 를 넣었을 때의 동작이 바뀐다 (확정 예약 → 완료·차감, 수업 전·수강권 없음 → 409)
   - DB: 변경 없음
   - 웹·고객 앱: 변경 없음. 두 곳 모두 `booking_id` 를 넣어 노트를 만들지 않는다
-- 커밋 / PR:
+- 커밋 / PR: 87f9ded / #96
 
 ## 7. 결과 (고친 후)
 
