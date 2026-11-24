@@ -42,10 +42,11 @@ async def _booking_for_host(
 
 
 async def test_instructor_writes_and_updates_note_on_own_booking(
-    instructor_client, instructor_id, managed_customer_id, db_conn_and_sessionmaker: async_sessionmaker[AsyncSession]
+    instructor_client, instructor_id, managed_customer_id, db_conn_and_sessionmaker: async_sessionmaker[AsyncSession], clock
 ):
     async with db_conn_and_sessionmaker() as session:
         booking_id = await _booking_for_host(session, instructor_id, managed_customer_id)
+    clock.after_lessons()  # 확정 예약에 노트를 쓰면 완료 처리되므로 수업 날짜가 지난 뒤여야 한다
 
     r = await instructor_client.post("/lesson-notes", json={"booking_id": booking_id, "content": "백스윙 교정", "is_shared": False})
     assert r.status_code == 201, r.text

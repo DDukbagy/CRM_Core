@@ -381,12 +381,24 @@ class BookingRepository:
 
     async def complete(self, booking: Booking, host: CurrentUser) -> Booking:
         """출석 완료: CONFIRMED → COMPLETED. 수강권 1회 차감 (쓸 수 있는 수강권이 없으면 409, 예약도 그대로)"""
-        await self.ensure_host_can_manage(booking, host)
-        customer_pass_id = await self._use_lesson(booking, host, "COMPLETED", "booking.complete_rejected")
+        customer_pass_id = await self.complete_uncommitted(booking, host)
         booking = await self._save(booking)
+        await self.announce_completed(booking, host, customer_pass_id)
+        return booking
+
+    async def complete_uncommitted(self, booking: Booking, host: CurrentUser) -> int:
+        """완료의 DB 변경만 한다 (상태 전환 + 수강권 1회 차감). commit 하지 않고, 차감한 수강권 id 를 돌려준다
+
+        완료와 함께 저장할 것이 있는 쪽(레슨노트)이 같은 트랜잭션에 넣고 한 번에 commit 하려고 쓴다.
+        commit 한 뒤에는 announce_completed 를 부른다.
+        """
+        await self.ensure_host_can_manage(booking, host)
+        return await self._use_lesson(booking, host, "COMPLETED", "booking.complete_rejected")
+
+    async def announce_completed(self, booking: Booking, host: CurrentUser, customer_pass_id: int) -> None:
+        """완료가 commit 된 뒤: 사용 로그와 고객 푸시"""
         _log("booking.completed", booking, host, customer_pass_id=customer_pass_id)
         await self._push_guest(booking, "레슨 완료", f"{booking.topic} ({booking.when}) 레슨이 완료 처리되었습니다.")
-        return booking
 
     async def complete_many(self, booking_ids: list[int], host: CurrentUser) -> BulkCompleteResponse:
         """여러 예약을 한 번에 완료한다. 결과는 레슨 날짜가 빠른 순으로 하나씩 완료했을 때와 같다

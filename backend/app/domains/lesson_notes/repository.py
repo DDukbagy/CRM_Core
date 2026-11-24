@@ -4,12 +4,14 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.core.auth.deps import CurrentUser
 from app.core.s3 import create_presigned_upload_url, create_presigned_url, delete_file_from_s3
 from app.domains.booking.models import Booking
+from app.domains.booking.repository import BookingRepository
 from app.domains.calendar.models import Calendar
 from app.domains.lesson_notes.models import LessonNote
 from app.domains.lesson_notes.schemas import LessonNoteCreate, LessonNoteRead, LessonNoteUpdate
@@ -86,17 +88,22 @@ class LessonNoteRepository:
         ).scalar_one_or_none()
 
     async def create(self, data: LessonNoteCreate, instructor: CurrentUser) -> LessonNote:
-        """강사는 담당 고객에게(예약에 연결하면 본인 캘린더의 확정·완료 예약만, 예약당 하나)"""
+        """강사는 담당 고객에게(예약에 연결하면 본인 캘린더의 확정·완료 예약만, 예약당 하나)
+
+        확정 예약에 연결하면 그 예약을 완료 처리한다 (수강권 1회 차감). 노트와 완료는 같은 트랜잭션이라
+        완료가 거부되면(수업 전, 수강권 없음, 다른 요청이 먼저 처리 → 409) 노트도 저장되지 않는다.
+        이미 완료된 예약에는 노트만 저장한다.
+        """
         instructor_id = UUID(str(instructor.id))
         is_admin = instructor.role == "ADMIN"
         if not (data.content and data.content.strip()) and not data.file_key:
             raise HTTPException(status_code=400, detail="내용을 입력하거나 PDF 를 첨부하세요.")
 
         customer_id = data.customer_id
+        bookings = BookingRepository(self.session)
+        booking: Optional[Booking] = None
         if data.booking_id is not None:
-            booking = await self.session.get(Booking, data.booking_id)
-            if not booking:
-                raise HTTPException(status_code=404, detail="예약을 찾을 수 없습니다.")
+            booking = await bookings.get_or_404(data.booking_id)
             if not is_admin and await self._host_of_booking(booking) != instructor_id:
                 raise HTTPException(status_code=403, detail="본인 캘린더의 예약에만 노트를 작성할 수 있습니다.")
             if booking.status not in ("CONFIRMED", "COMPLETED"):
@@ -122,9 +129,20 @@ class LessonNoteRepository:
             title=data.title, content=(data.content or None), file_key=data.file_key, file_name=data.file_name,
             is_shared=data.is_shared,
         )
+        # 확정 예약이면 완료 처리부터 한다. 거부되면 여기서 409 가 나가고 노트는 추가되지 않는다
+        completes = booking is not None and booking.status == "CONFIRMED"
+        customer_pass_id = await bookings.complete_uncommitted(booking, instructor) if completes else None
         self.session.add(note)
-        await self.session.commit()
+        try:
+            await self.session.commit()
+        except IntegrityError:
+            # 같은 예약에 노트 저장이 동시에 왔다 (예약당 하나: booking_id 유니크)
+            await self.session.rollback()
+            raise HTTPException(status_code=409, detail="이미 이 예약에 노트가 존재합니다. PATCH로 수정하세요.")
         await self.session.refresh(note)
+        if completes:
+            await self.session.refresh(booking)
+            await bookings.announce_completed(booking, instructor, customer_pass_id)
         return note
 
     def _check_file_key(self, key: Optional[str], instructor_id: UUID, is_admin: bool) -> None:
