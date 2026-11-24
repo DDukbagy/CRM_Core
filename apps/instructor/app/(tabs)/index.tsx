@@ -1,12 +1,14 @@
 // 홈 탭: 통계, 레슨 신청 처리, 완료할 레슨(일괄 완료), 오늘 예약
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   View, Text, ScrollView, Pressable, Modal, TextInput,
   RefreshControl, StyleSheet, ActivityIndicator,
 } from "react-native";
+import { useFocusEffect, useRouter } from "expo-router";
 import { apiFetch } from "@/lib/api";
 import type { InstructorStats, BookingRead, UsersListResponse, BulkCompleteItem, BulkCompleteResponse } from "@/types/api";
 import { toLocalDateStr } from "@/lib/bookingUtils";
+import { lessonLine } from "@/lib/lessonText";
 
 const STATUS_COLOR: Record<string, string> = {
   REQUESTED: "#f59e0b", CONFIRMED: "#3b82f6", COMPLETED: "#16a34a",
@@ -79,15 +81,6 @@ function PickerModal({
 
 const MANAGE_LIMIT = 5;
 const BULK_LIMIT = 50; // 일괄 완료 한 요청에 담을 수 있는 예약 수 (서버 제한과 같다)
-const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
-
-// 예약 한 건을 한 줄로: "11/20 (목) 10:00 ~ 12:00"
-function lessonLine(b: BookingRead): string {
-  const [, m, d] = b.when.split("-").map(Number);
-  const day = WEEKDAYS[new Date(b.when + "T00:00:00").getDay()];
-  const time = b.start_time && b.end_time ? ` ${b.start_time.slice(0, 5)} ~ ${b.end_time.slice(0, 5)}` : "";
-  return `${m}/${d} (${day})${time}`;
-}
 
 // 예약을 고객별로 묶는다 (확인 창·결과 창에서 고객이 섞이지 않게)
 function byCustomer<T>(items: T[], guestOf: (item: T) => string): { guestId: string; items: T[] }[] {
@@ -102,6 +95,7 @@ function byCustomer<T>(items: T[], guestOf: (item: T) => string): { guestId: str
 }
 
 export default function DashboardScreen() {
+  const router = useRouter();
   const [stats, setStats] = useState<InstructorStats | null>(null);
   const [todayBookings, setTodayBookings] = useState<BookingRead[]>([]);
   const [manageBookings, setManageBookings] = useState<BookingRead[]>([]); // REQUESTED + CANCEL_REQUESTED
@@ -187,7 +181,8 @@ export default function DashboardScreen() {
     }
   }, [today]);
 
-  useEffect(() => { load(); }, [load]);
+  // 다른 탭에서 돌아올 때도 다시 읽는다 (레슨노트 탭에서 노트를 저장하면 그 레슨이 완료되어 목록이 바뀐다)
+  useFocusEffect(useCallback(() => { load(); }, [load]));
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
   async function doConfirm() {
@@ -369,6 +364,10 @@ export default function DashboardScreen() {
                     <Text style={bk.name}>{nameOf(b.guest_id)}</Text>
                     <Text style={bk.when}>{lessonLine(b)}{b.topic ? ` · ${b.topic}` : ""}</Text>
                   </View>
+                  {/* 레슨노트를 쓰면서 완료: 노트가 저장되면 이 레슨이 완료·차감된다 */}
+                  <Pressable style={bk.noteBtn} onPress={() => router.push({ pathname: "/(tabs)/notes", params: { booking_id: String(b.id) } })}>
+                    <Text style={bk.noteBtnTxt}>노트 작성</Text>
+                  </Pressable>
                 </Pressable>
               );
             })}
@@ -756,6 +755,8 @@ const bk = StyleSheet.create({
   checkTxt: { color: "#fff", fontSize: 13, fontWeight: "800" },
   name: { fontSize: 15, fontWeight: "700", color: "#111" },
   when: { fontSize: 12, color: "#6b7280", marginTop: 2 },
+  noteBtn: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8, borderWidth: 1, borderColor: "#16a34a", backgroundColor: "#fff" },
+  noteBtnTxt: { fontSize: 12, color: "#15803d", fontWeight: "700" },
   submit: { marginTop: 6, backgroundColor: "#16a34a", paddingVertical: 12, borderRadius: 10, alignItems: "center" },
   submitOff: { backgroundColor: "#d1d5db" },
   submitTxt: { color: "#fff", fontSize: 14, fontWeight: "700" },
