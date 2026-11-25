@@ -273,6 +273,27 @@ class PassRepository:
             raise HTTPException(status_code=409, detail="사용할 수 있는 수강권이 없습니다.")
         return row[0]
 
+    async def restore_for_lesson(self, customer_pass_id: int) -> int:
+        """완료를 되돌릴 때 그 예약에 고정된 수강권에 1회를 돌려준다 (commit 은 호출한 쪽에서)
+
+        차감과 같은 이유로 조건부 UPDATE 한 문장이다. 그 차감으로 '다 씀'이 됐던 수강권은 다시 사용 중이 된다.
+        취소·만료된 수강권은 횟수만 돌려주고 상태는 그대로 둔다. 돌려줄 횟수가 없으면 409.
+        """
+        res = await self.session.execute(
+            update(CustomerPass)
+            .where(CustomerPass.id == customer_pass_id, CustomerPass.sessions_used > 0)
+            .values(
+                sessions_used=CustomerPass.sessions_used - 1,
+                status=case((CustomerPass.status == "COMPLETED", "ACTIVE"), else_=CustomerPass.status),
+            )
+            .returning(CustomerPass.id)
+            .execution_options(synchronize_session=False)
+        )
+        row = res.first()
+        if row is None:
+            raise HTTPException(status_code=409, detail="돌려줄 사용 횟수가 없는 수강권입니다.")
+        return row[0]
+
     # 응답 조립용
 
     async def get_user(self, user_id: UUID) -> Optional[User]:
