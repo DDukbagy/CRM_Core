@@ -1,0 +1,33 @@
+name: 🧹 Booking Cleanup (daily)
+
+# 지난 예약 자동 정리: 수업 후 3일이 지난 확정 예약 완료·차감, 수업 날짜가 지난 신청 취소
+# 규칙은 백엔드에 있고(POST /internal/bookings/cleanup), 이 워크플로는 하루 한 번 그 주소를 부르기만 한다.
+# 저장소 Secrets 에 아래 두 값이 없으면 아무것도 부르지 않고 끝난다.
+#   BOOKING_CLEANUP_URL : 백엔드 주소 전체 (…/internal/bookings/cleanup)
+#   CRON_SECRET         : 백엔드 환경변수 CRON_SECRET 과 같은 값
+# 정식 출시 때는 AWS 예약 작업으로 바꾼다.
+
+on:
+  schedule:
+    - cron: "0 18 * * *" # 매일 03:00 (한국 시간)
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Call cleanup endpoint
+        env:
+          CLEANUP_URL: ${{ secrets.BOOKING_CLEANUP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CLEANUP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "BOOKING_CLEANUP_URL 또는 CRON_SECRET 이 없어 건너뜁니다."
+            exit 0
+          fi
+          # 응답은 건수뿐이다 (완료·취소·남긴 건수). 서버가 잠들어 있을 수 있어 넉넉히 기다리고 다시 시도한다
+          curl --fail-with-body -sS -X POST -H "X-Cron-Secret: $CRON_SECRET" \
+            --max-time 120 --retry 2 --retry-delay 30 "$CLEANUP_URL"

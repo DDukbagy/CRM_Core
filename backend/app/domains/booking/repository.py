@@ -1,5 +1,5 @@
 # 예약 저장소: 레슨 신청·확정·취소·완료와 수강권 차감
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
@@ -13,7 +13,13 @@ from app.core.auth.deps import CurrentUser
 from app.core.clock import today_kst
 from app.core.logging import log_event
 from app.domains.booking.models import ACTIVE_LESSON_STATUSES, Booking, BookingSlot, BookingType
-from app.domains.booking.schemas import BookingCreate, BookingRead, BulkCompleteItem, BulkCompleteResponse
+from app.domains.booking.schemas import (
+    BookingCleanupResponse,
+    BookingCreate,
+    BookingRead,
+    BulkCompleteItem,
+    BulkCompleteResponse,
+)
 from app.domains.calendar.models import Calendar, TimeSlot
 from app.domains.calendar.repository import CalendarBlockRepository
 from app.domains.passes.repository import PassRepository
@@ -75,6 +81,12 @@ def _ensure_lesson_day_reached(when: date) -> None:
     """수업 당일부터 되는 동작 (완료·노쇼). 아직 오지 않은 수업이면 409 (그날이 되면 되는 요청)"""
     if when > today_kst():
         raise _reject("아직 수업 날짜가 되지 않은 예약입니다.")
+
+
+# 자동 정리: 강사가 처리하지 않은 지난 예약을 하루 한 번 정리한다
+AUTO_COMPLETE_AFTER_DAYS = 3   # 수업일 + 3일이 지나면(4일째부터) 확정 예약을 완료한다
+AUTO_CANCEL_REASON = "수업 날짜가 지나 자동으로 취소되었습니다."
+SYSTEM_ACTOR = "system"        # 사용 로그의 actor_id (사람이 아니라 자동 정리가 한 일)
 
 
 def _reason_values(reason: Optional[str]) -> dict:
@@ -393,7 +405,7 @@ class BookingRepository:
         commit 한 뒤에는 announce_completed 를 부른다.
         """
         await self.ensure_host_can_manage(booking, host)
-        return await self._use_lesson(booking, host, "COMPLETED", "booking.complete_rejected")
+        return await self._use_lesson(booking, str(host.id), "COMPLETED", "booking.complete_rejected")
 
     async def announce_completed(self, booking: Booking, host: CurrentUser, customer_pass_id: int) -> None:
         """완료가 commit 된 뒤: 사용 로그와 고객 푸시"""
@@ -442,7 +454,7 @@ class BookingRepository:
     async def mark_no_show(self, booking: Booking, host: CurrentUser) -> Booking:
         """노쇼: CONFIRMED → NO_SHOW. 수강권은 차감 (쓸 수 있는 수강권이 없으면 409, 예약도 그대로)"""
         await self.ensure_host_can_manage(booking, host)
-        customer_pass_id = await self._use_lesson(booking, host, "NO_SHOW", "booking.no_show_rejected")
+        customer_pass_id = await self._use_lesson(booking, str(host.id), "NO_SHOW", "booking.no_show_rejected")
         booking = await self._save(booking)
         _log("booking.no_show", booking, host, customer_pass_id=customer_pass_id)
         return booking
@@ -488,6 +500,68 @@ class BookingRepository:
         cal.add_component(event)
         return cal.to_ical()
 
+    async def cleanup_past(self) -> BookingCleanupResponse:
+        """지난 예약 자동 정리 (하루 한 번, 예약 실행이 부른다). 여러 번 불러도 결과는 같다
+
+        - 수업일 + 3일이 지난 확정 예약 → 완료 + 수강권 1회 차감 (강사·고객에게 알림).
+          차감할 수 없는 건(수강권을 다 씀)은 확정으로 남기고 거부 로그를 남긴다
+        - 수업 날짜가 지난 신청 → 취소 (고객에게 알림). 신청을 대신 확정하지는 않는다
+        - 수업일이 지난 '취소 신청 중'은 건드리지 않는다 (차감할지는 강사가 정한다). 건수만 센다
+        예약마다 따로 commit 하므로 한 건의 실패가 다른 건을 되돌리지 않는다.
+        강사가 같은 순간에 처리한 건은 조건부 UPDATE 에서 409 가 되어 건너뛴다.
+        """
+        today = today_kst()
+        lesson = Booking.type == BookingType.LESSON
+
+        async def ids_of(*conditions) -> list[int]:
+            rows = await self.session.execute(select(Booking.id).where(lesson, *conditions).order_by(Booking.when, Booking.id))
+            return list(rows.scalars().all())
+
+        completed = left_confirmed = 0
+        complete_before = today - timedelta(days=AUTO_COMPLETE_AFTER_DAYS)
+        for booking_id in await ids_of(Booking.status == "CONFIRMED", Booking.when < complete_before):
+            try:
+                booking = await self.get_or_404(booking_id)
+                customer_pass_id = await self._use_lesson(booking, SYSTEM_ACTOR, "COMPLETED", "booking.auto_complete_rejected")
+                booking = await self._save(booking)
+            except HTTPException as e:
+                if e.status_code != status.HTTP_409_CONFLICT:
+                    raise
+                await self.session.rollback()
+                # 그사이 강사가 처리했으면 남은 것이 아니다. 아직 확정이면 차감하지 못해 남긴 것이다
+                still = (await self.session.execute(select(Booking.status).where(Booking.id == booking_id))).scalar_one_or_none()
+                left_confirmed += still == "CONFIRMED"
+                continue
+            completed += 1
+            log_event("booking.auto_completed", booking_id=booking.id, actor_id=SYSTEM_ACTOR, customer_pass_id=customer_pass_id)
+            body = f"{booking.topic} ({booking.when}) 레슨이 수업 후 {AUTO_COMPLETE_AFTER_DAYS}일이 지나 자동으로 완료 처리되었습니다."
+            await self._push_guest(booking, "레슨 자동 완료", body)
+            await UserRepository(self.session).notify(await self.host_id_of(booking), "레슨 자동 완료", body, {"booking_id": booking.id})
+
+        cancelled = 0
+        for booking_id in await ids_of(Booking.status == "REQUESTED", Booking.when < today):
+            try:
+                booking = await self.get_or_404(booking_id)
+                await self._transition(booking, "REQUESTED", "CANCELLED", cancel_reason=AUTO_CANCEL_REASON)
+                booking = await self._save(booking)
+            except HTTPException as e:
+                if e.status_code != status.HTTP_409_CONFLICT:
+                    raise
+                await self.session.rollback()
+                continue
+            cancelled += 1
+            log_event("booking.auto_cancelled", booking_id=booking.id, actor_id=SYSTEM_ACTOR)
+            await self._push_guest(booking, "예약 신청 취소", f"{booking.topic} ({booking.when}) 신청이 수업 날짜가 지나 자동으로 취소되었습니다.")
+
+        pending = (await self.session.execute(
+            select(func.count()).select_from(Booking).where(lesson, Booking.status == "CANCEL_REQUESTED", Booking.when < today)
+        )).scalar_one()
+        result = BookingCleanupResponse(
+            completed=completed, cancelled=cancelled, left_confirmed=left_confirmed, pending_cancel_requests=pending
+        )
+        log_event("booking.cleanup", actor_id=SYSTEM_ACTOR, **result.model_dump())
+        return result
+
     # 내부
 
     async def _transition(self, booking: Booking, expected: str, new_status: str, **values) -> None:
@@ -521,7 +595,7 @@ class BookingRepository:
         await self.session.refresh(booking)
         return booking
 
-    async def _use_lesson(self, booking: Booking, host: CurrentUser, new_status: str, rejected_event: str) -> int:
+    async def _use_lesson(self, booking: Booking, actor_id: str, new_status: str, rejected_event: str) -> int:
         """완료·노쇼 공통: CONFIRMED → new_status + 수강권 1회 차감, 차감한 수강권 id 를 돌려준다 (commit 은 호출한 쪽에서)
 
         409 로 거부되면(상태가 맞지 않음, 쓸 수 있는 수강권 없음) 거부 사용 로그를 남기고 다시 던진다.
@@ -534,7 +608,7 @@ class BookingRepository:
             return await self._deduct_pass(booking)
         except HTTPException as e:
             if e.status_code == status.HTTP_409_CONFLICT:
-                log_event(rejected_event, booking_id=booking_id, actor_id=str(host.id), reason=str(e.detail))
+                log_event(rejected_event, booking_id=booking_id, actor_id=actor_id, reason=str(e.detail))
             raise
 
     # 완료·노쇼 시 예약에 고정된 수강권에서 1회 차감

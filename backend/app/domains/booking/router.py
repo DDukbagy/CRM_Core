@@ -8,12 +8,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth.deps import CurrentUser, get_current_user, require_role
+from app.core.auth.deps import CurrentUser, get_current_user, require_cron_secret, require_role
 from app.db.session import get_session
 from app.domains.booking.repository import BookingRepository
 from app.domains.booking.schemas import (
     BookingCancelRequest,
     BookingCancelResponse,
+    BookingCleanupResponse,
     BookingConfirmRequest,
     BookingCreate,
     BookingRead,
@@ -27,6 +28,8 @@ from app.domains.calendar.repository import CalendarRepository
 router = APIRouter()
 cal_router = APIRouter(prefix="/calendars", tags=["Booking"])
 bk_router = APIRouter(prefix="/bookings", tags=["Booking"])
+# 사람이 아니라 예약 실행(하루 한 번)이 부르는 주소. 로그인 대신 비밀 값으로 보호한다
+internal_router = APIRouter(prefix="/internal/bookings", tags=["Internal"])
 
 HOST_ROLES = {"INSTRUCTOR", "CONTENT_MANAGER", "ADMIN"}
 INSTRUCTOR_ROLES = {"INSTRUCTOR", "ADMIN"}
@@ -234,5 +237,12 @@ async def download_booking_ics(
     )
 
 
+@internal_router.post("/cleanup", response_model=BookingCleanupResponse, dependencies=[Depends(require_cron_secret)])
+async def cleanup_past_bookings(session: AsyncSession = Depends(get_session)):
+    """지난 예약 자동 정리: 수업 후 3일이 지난 확정 예약 완료·차감, 수업 날짜가 지난 신청 취소"""
+    return await BookingRepository(session).cleanup_past()
+
+
 router.include_router(cal_router)
 router.include_router(bk_router)
+router.include_router(internal_router)

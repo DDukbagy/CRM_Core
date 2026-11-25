@@ -456,3 +456,16 @@ def require_instructor_or_staff(instructor_id: str):
         raise HTTPException(status_code=403, detail="Insufficient role")
 
     return _guard
+
+def require_cron_secret(request: Request) -> None:
+    """예약 실행 전용 주소의 보호: 요청 헤더 X-Cron-Secret 이 서버 설정 CRON_SECRET 과 같아야 한다
+
+    서버에 값이 없으면 주소 자체가 없는 것처럼 404 (빈 값끼리 맞아서 열리는 일이 없게 한다).
+    """
+    expected = settings.CRON_SECRET
+    expected_value = expected.get_secret_value() if hasattr(expected, "get_secret_value") else expected  # 테스트는 문자열로 바꿔 넣는다
+    if not expected_value:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
+    given = request.headers.get("X-Cron-Secret") or ""
+    if not secrets.compare_digest(given.encode(), str(expected_value).encode()):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid cron secret")
