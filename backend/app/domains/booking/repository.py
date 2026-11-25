@@ -14,6 +14,7 @@ from app.core.clock import today_kst
 from app.core.logging import log_event
 from app.domains.booking.models import ACTIVE_LESSON_STATUSES, Booking, BookingSlot, BookingType
 from app.domains.booking.schemas import (
+    AdminBookingRead,
     BookingCleanupResponse,
     BookingCreate,
     BookingRead,
@@ -87,6 +88,8 @@ def _ensure_lesson_day_reached(when: date) -> None:
 AUTO_COMPLETE_AFTER_DAYS = 3   # 수업일 + 3일이 지나면(4일째부터) 확정 예약을 완료한다
 AUTO_CANCEL_REASON = "수업 날짜가 지나 자동으로 취소되었습니다."
 SYSTEM_ACTOR = "system"        # 사용 로그의 actor_id (사람이 아니라 자동 정리가 한 일)
+REVERT_REASON = "관리자가 완료를 취소했습니다."
+COMPLETED_LIST_DAYS = 90       # 관리자 화면의 완료 예약 목록 범위 (수업일 기준)
 
 
 def _reason_values(reason: Optional[str]) -> dict:
@@ -499,6 +502,50 @@ class BookingRepository:
         event.add("dtstamp", datetime.now())
         cal.add_component(event)
         return cal.to_ical()
+
+    async def list_completed_for_admin(self) -> list[AdminBookingRead]:
+        """관리자 화면: 최근 90일 안에 수업한 완료 예약 (최근 수업부터), 강사·고객 이름 포함"""
+        since = today_kst() - timedelta(days=COMPLETED_LIST_DAYS)
+        bookings = list((await self.session.execute(
+            select(Booking)
+            .where(Booking.type == BookingType.LESSON, Booking.status == "COMPLETED", Booking.when >= since)
+            .order_by(Booking.when.desc(), Booking.id.desc())
+        )).scalars().all())
+        hosts = dict((await self.session.execute(
+            select(Calendar.id, Calendar.host_id).where(Calendar.id.in_({b.calendar_id for b in bookings}))
+        )).all()) if bookings else {}
+        people = {*hosts.values(), *(b.guest_id for b in bookings)}
+        names = dict((await self.session.execute(
+            select(User.id, User.display_name).where(User.id.in_(people))
+        )).all()) if people else {}
+        return [
+            AdminBookingRead(
+                **read.model_dump(),
+                instructor_id=hosts.get(b.calendar_id),
+                instructor_name=names.get(hosts.get(b.calendar_id)),
+                guest_name=names.get(b.guest_id),
+            )
+            for b, read in zip(bookings, await self.read_many(bookings))
+        ]
+
+    async def revert_complete(self, booking: Booking, admin: CurrentUser, reason: Optional[str]) -> Booking:
+        """관리자의 완료 되돌리기: COMPLETED → CANCELLED + 고정된 수강권에 1회 복구 (시간도 다시 비운다)
+
+        확정으로 되돌리지 않는다: 수업일이 지난 확정 예약은 자동 정리가 다시 완료·차감한다.
+        수업을 다시 잡으려면 새로 예약한다. 누가 부를 수 있는지는 router 가 정한다 (관리자만).
+        수강권이 고정되지 않은 예전 예약은 어느 수강권에서 차감됐는지 알 수 없어 거부한다 (409).
+        """
+        if booking.status == "COMPLETED" and booking.customer_pass_id is None:
+            raise _reject("수강권 기록이 없는 예전 예약은 되돌릴 수 없습니다. 수강권 횟수를 직접 고쳐 주세요.")
+        detail = f"{REVERT_REASON} ({reason.strip()})" if reason and reason.strip() else REVERT_REASON
+        await self._transition(booking, "COMPLETED", "CANCELLED", cancel_reason=detail)
+        customer_pass_id = await PassRepository(self.session).restore_for_lesson(booking.customer_pass_id)
+        booking = await self._save(booking)
+        _log("booking.complete_reverted", booking, admin, customer_pass_id=customer_pass_id)
+        body = f"{booking.topic} ({booking.when}) 레슨의 완료 처리가 취소되고 수강권 1회가 복구되었습니다."
+        await self._push_guest(booking, "레슨 완료 취소", body)
+        await UserRepository(self.session).notify(await self.host_id_of(booking), "레슨 완료 취소", body, {"booking_id": booking.id})
+        return booking
 
     async def cleanup_past(self) -> BookingCleanupResponse:
         """지난 예약 자동 정리 (하루 한 번, 예약 실행이 부른다). 여러 번 불러도 결과는 같다

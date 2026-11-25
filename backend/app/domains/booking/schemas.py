@@ -89,6 +89,13 @@ class BookingCancelResponse(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+class AdminBookingRead(BookingRead):
+    """관리자 화면용 예약: 누구의 레슨인지 이름을 붙인다"""
+    instructor_id: UUID | None = None
+    instructor_name: str | None = None
+    guest_name: str | None = None
+
+
 class BookingCleanupResponse(BaseModel):
     """지난 예약 자동 정리 한 번의 결과 (건수)"""
     completed: int                 # 수업 후 3일이 지나 완료·차감한 확정 예약

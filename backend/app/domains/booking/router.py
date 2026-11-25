@@ -12,6 +12,7 @@ from app.core.auth.deps import CurrentUser, get_current_user, require_cron_secre
 from app.db.session import get_session
 from app.domains.booking.repository import BookingRepository
 from app.domains.booking.schemas import (
+    AdminBookingRead,
     BookingCancelRequest,
     BookingCancelResponse,
     BookingCleanupResponse,
@@ -30,6 +31,8 @@ cal_router = APIRouter(prefix="/calendars", tags=["Booking"])
 bk_router = APIRouter(prefix="/bookings", tags=["Booking"])
 # 사람이 아니라 예약 실행(하루 한 번)이 부르는 주소. 로그인 대신 비밀 값으로 보호한다
 internal_router = APIRouter(prefix="/internal/bookings", tags=["Internal"])
+# 관리자 전용: 완료된 예약 목록과 완료 되돌리기
+admin_router = APIRouter(prefix="/admin/bookings", tags=["Admin"])
 
 HOST_ROLES = {"INSTRUCTOR", "CONTENT_MANAGER", "ADMIN"}
 INSTRUCTOR_ROLES = {"INSTRUCTOR", "ADMIN"}
@@ -237,6 +240,27 @@ async def download_booking_ics(
     )
 
 
+@admin_router.get("/completed", response_model=list[AdminBookingRead])
+async def list_completed_bookings_as_admin(
+    session: AsyncSession = Depends(get_session),
+    admin: CurrentUser = Depends(require_role({"ADMIN"})),
+):
+    """최근 90일 안에 수업한 완료 예약 (되돌릴 대상을 찾는 목록)"""
+    return await BookingRepository(session).list_completed_for_admin()
+
+
+@admin_router.patch("/{booking_id}/revert-complete", response_model=BookingRead)
+async def revert_completed_booking_as_admin(
+    booking_id: int,
+    body: BookingCancelRequest | None = None,
+    session: AsyncSession = Depends(get_session),
+    admin: CurrentUser = Depends(require_role({"ADMIN"})),
+):
+    """완료 되돌리기: COMPLETED -> CANCELLED (수강권 1회 복구)"""
+    repo = BookingRepository(session)
+    return await repo.read(await repo.revert_complete(await repo.get_or_404(booking_id), admin, _reason(body)))
+
+
 @internal_router.post("/cleanup", response_model=BookingCleanupResponse, dependencies=[Depends(require_cron_secret)])
 async def cleanup_past_bookings(session: AsyncSession = Depends(get_session)):
     """지난 예약 자동 정리: 수업 후 3일이 지난 확정 예약 완료·차감, 수업 날짜가 지난 신청 취소"""
@@ -246,3 +270,4 @@ async def cleanup_past_bookings(session: AsyncSession = Depends(get_session)):
 router.include_router(cal_router)
 router.include_router(bk_router)
 router.include_router(internal_router)
+router.include_router(admin_router)
