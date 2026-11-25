@@ -89,6 +89,14 @@ class BookingCancelResponse(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+class BookingCleanupResponse(BaseModel):
+    """지난 예약 자동 정리 한 번의 결과 (건수)"""
+    completed: int                 # 수업 후 3일이 지나 완료·차감한 확정 예약
+    cancelled: int                 # 수업 날짜가 지나 취소한 신청
+    left_confirmed: int            # 차감할 수 없어 확정으로 남긴 예약 (수강권 확인 필요)
+    pending_cancel_requests: int   # 수업일이 지난 '취소 신청 중' (강사가 정해야 해서 건드리지 않는다)
+
+
 class BulkCompleteRequest(BaseModel):
     """강사가 여러 예약을 한 번에 완료할 때 입력"""
     booking_ids: list[int] = Field(min_length=1, max_length=50)

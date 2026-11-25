@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
     # 로컬 HS256 토큰 검증(Supabase 장애 때의 비상구). 평소에는 끄고, 장애 때만 운영자가 켠다
     LOCAL_JWT_FALLBACK_ENABLED: bool = False
+    # 예약 실행(하루 한 번 도는 자동 정리)이 내부 주소를 부를 때 보내는 비밀 값. 비어 있으면 그 주소는 닫혀 있다
+    CRON_SECRET: SecretStr | None = None
 
     # Super Admin
     SUPER_ADMIN_USER_ID: str | None = None
