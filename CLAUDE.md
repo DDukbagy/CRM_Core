@@ -87,7 +87,7 @@ backend/app/domains/{feature}/
 ## ✅ 프론트엔드 (Next.js)
 
 * Next.js 16 (App Router) · React 19 · Tailwind CSS
-* Zustand (클라이언트 상태) · TanStack Query (서버 상태)
+* 데이터 조회는 `src/lib/axios.ts` 의 `api` 로 한다 (화면마다 `useEffect` + `useState`). 전역 상태 라이브러리는 쓰지 않는다
 * API는 반드시 `/api/[...path]` 프록시 경유
 
 ### ❌ 절대 금지
@@ -215,7 +215,7 @@ secrets.*
 
 ## 프론트엔드
 
-* 서버 상태 TanStack Query / 클라이언트 상태 Zustand
+* API 호출은 `src/lib/axios.ts` 의 `api` 경유, 오류 문구는 `apiErrorMessage` 로 꺼낸다
 * protected route는 Suspense 경계 유지
 * 인증 로직은 중앙 관리
 

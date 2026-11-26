@@ -102,13 +102,13 @@
 | 강사: 프로모션 | 수강권 할인(비율·금액)·이벤트 만들기·중지·삭제 → 고객 앱 수강권 탭에 표시 *(프로토타입)* |
 | 관리자 | 대시보드, 강사 관리 · 시스템 관리 · 영업/통계 *(준비 중)* |
 
-**스택**: Next.js 16 (App Router) · React 19 · TanStack Query · Tailwind CSS · Supabase Auth (SSR 쿠키 세션) · `/api` 프록시
+**스택**: Next.js 16 (App Router) · React 19 · Tailwind CSS · axios · Supabase Auth (SSR 쿠키 세션) · `/api` 프록시
 
 ### 백엔드 — `backend`
 
 세 클라이언트가 같은 API 계약을 쓰는 단일 백엔드입니다. 예약 상태 전환, 수강권 차감, 휴무 규칙, 거래 기록 보존 같은 규칙을 모두 여기서 처리합니다.
 
-**스택**: FastAPI (async) · SQLModel · PostgreSQL (asyncpg, 커넥션 풀) · Alembic · Supabase JWT 검증 + RBAC · AWS S3 서명 URL · slowapi · Sentry · pytest (183개)
+**스택**: FastAPI (async) · SQLModel · PostgreSQL (asyncpg, 커넥션 풀) · Alembic · Supabase JWT 검증 + RBAC · AWS S3 서명 URL · slowapi · Sentry · pytest (291개)
 
 ---
 
@@ -163,7 +163,7 @@ CRM_Core/
 | 영역 | 기술 |
 |------|------|
 | 백엔드 | FastAPI · SQLModel · PostgreSQL (AsyncPG) · Alembic · Poetry · slowapi · Sentry |
-| 관리자·강사 웹 | Next.js 16 · React 19 · Supabase Auth · Zustand · TanStack Query · Tailwind CSS |
+| 관리자·강사 웹 | Next.js 16 · React 19 · Supabase Auth · axios · Tailwind CSS |
 | 고객 앱 · 강사 앱 | Expo 54 · React Native · Expo Router · Supabase Auth · Sentry |
 | 인증 | Supabase JWT (주) · HS256 로컬 JWT (긴급 폴백) · RBAC |
 | 파일 저장소 | AWS S3 (비공개 버킷 + 서명 URL) — 게시물 미디어 · 레슨노트 PDF |
