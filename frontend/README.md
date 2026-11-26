@@ -1,7 +1,7 @@
 # Frontend — 관리자·강사용 웹 포털 (Next.js)
 
 CRM Core의 관리자·강사용 웹 포털입니다.
-Next.js 16 (App Router) + React 19 + TanStack Query + Zustand + Tailwind CSS 기반.
+Next.js 16 (App Router) + React 19 + Tailwind CSS 기반.
 
 ---
 
@@ -36,8 +36,7 @@ API_BASE_URL=http://localhost:8000
 |------|-----------|
 | 프레임워크 | Next.js 16 (App Router) |
 | UI | React 19 · Tailwind CSS |
-| 서버 상태 | TanStack Query |
-| 클라이언트 상태 | Zustand |
+| 데이터 조회 | axios (`/api` 프록시 경유), 화면마다 `useEffect` + `useState` |
 | 인증 | Supabase Auth |
 
 ---
