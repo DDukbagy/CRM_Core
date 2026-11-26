@@ -16,6 +16,15 @@ S3_URL = "https://test-bucket.s3.ap-northeast-2.amazonaws.com/instructor-posts/u
 S3_KEY = "instructor-posts/u1/photo.jpg"
 
 
+@pytest.fixture(autouse=True)
+def bucket(monkeypatch: pytest.MonkeyPatch) -> None:
+    """게시물 미디어는 우리 버킷의 주소만 받는다. 이 파일에서 우리 버킷은 S3_URL 의 test-bucket 이다"""
+    import app.core.s3 as s3
+
+    monkeypatch.setattr(s3, "BUCKET_NAME", "test-bucket")
+    monkeypatch.setattr(s3, "REGION", "ap-northeast-2")
+
+
 async def _insert_user(session: AsyncSession, role: str, manager_id: uuid.UUID | None = None) -> uuid.UUID:
     user_id = uuid.uuid4()
     await session.execute(
