@@ -1,14 +1,14 @@
 # 게시물·미디어·댓글 스키마
 from __future__ import annotations
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 
 class MediaItemCreate(BaseModel):
-    url: str
-    media_type: str  # IMAGE | VIDEO
+    url: str  # 우리 버킷의 게시물 폴더 주소만 받는다 (repository 의 media_key_or_400)
+    media_type: Literal["IMAGE", "VIDEO"]
     sort_order: int = 0
 
 

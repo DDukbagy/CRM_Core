@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from sqlalchemy import select, desc, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.core.s3 as s3
 from app.core.auth.deps import CurrentUser
 from app.domains.instructor.models import InstructorStaff
 from app.domains.notifications.models import NotificationType
@@ -33,6 +34,30 @@ def canonical_media_url(url: str) -> str:
     if s3_key_from_url(url) is None:
         return url
     return url.split("?", 1)[0]
+
+
+MEDIA_FOLDER = "instructor-posts/"  # 업로드 주소를 내줄 때 쓰는 폴더 (router 의 get_upload_url)
+
+
+def media_key_or_400(url: str) -> str:
+    """게시물 미디어로 받을 수 있는 주소인지 확인하고 S3 객체 키를 돌려준다. 아니면 400
+
+    받는 주소: 우리 버킷의 게시물 폴더에 있는 https 주소 (임시 서명이 붙어 있어도 된다).
+    - 화면이 이 주소를 그대로 이미지·영상 주소로 쓰므로 다른 사이트나 javascript:·data: 주소를 받지 않는다
+    - 서버가 이 키로 임시 서명 주소를 만들어 주므로, 다른 버킷의 주소나 게시물 폴더 밖의 키(레슨노트 PDF 등)를 받으면
+      남의 비공개 파일을 볼 수 있는 주소를 내주게 된다
+    """
+    parsed = urlparse(url)
+    key = unquote(parsed.path.lstrip("/"))
+    try:
+        plain_host = parsed.port is None and parsed.username is None
+    except ValueError:
+        plain_host = False
+    ours = bool(s3.BUCKET_NAME) and parsed.hostname == f"{s3.BUCKET_NAME}.s3.{s3.REGION}.amazonaws.com"
+    in_folder = key.startswith(MEDIA_FOLDER) and len(key) > len(MEDIA_FOLDER) and ".." not in key.split("/")
+    if not (parsed.scheme == "https" and plain_host and ours and in_folder):
+        raise HTTPException(status_code=400, detail="게시물에는 이 앱에서 올린 사진·영상만 넣을 수 있습니다.")
+    return key
 
 
 class PostRepository:
@@ -243,12 +268,13 @@ class PostRepository:
         return keys
 
     def _add_media(self, post_id: UUID, items: list[MediaItemCreate]) -> None:
-        for item in items:
+        keys = [media_key_or_400(item.url) for item in items]  # 하나라도 받을 수 없는 주소면 아무것도 넣지 않는다
+        for item, key in zip(items, keys):
             self.session.add(
                 PostMedia(
                     post_id=post_id,
                     url=canonical_media_url(item.url),
-                    s3_key=s3_key_from_url(item.url),
+                    s3_key=key,
                     media_type=item.media_type,
                     sort_order=item.sort_order,
                 )
